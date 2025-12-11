@@ -1,28 +1,28 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React from "react";
+import { Routes, Route } from "react-router-dom";
+import AuthPage from "./pages/AuthPage";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import AdminHome from "./pages/admin/AdminHome";
+import PMHome from "./pages/pm/PMHome";
+import HRHome from "./pages/hr/HRHome"; 
+import InternHome from "./pages/intern/InternHome";  
+import PMInternChat from "./pages/chat/PMInternChat";
+import ProfileSetup from "./pages/intern/ProfileSetup";
 
 function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-gray-50">
-        <Routes>
-          <Route path="/" element={
-            <div className="flex items-center justify-center h-screen">
-              <div className="text-center">
-                <h1 className="text-4xl font-bold text-blue-600 mb-4">
-                  🎯 Intern Tracking Portal
-                </h1>
-                <p className="text-gray-600 text-lg">
-                  Frontend Setup Complete! 🎉
-                </p>
-                <p className="text-gray-500 text-sm mt-2">
-                  Firebase will be configured next
-                </p>
-              </div>
-            </div>
-          } />
-        </Routes>
-      </div>
-    </Router>
+    <Routes>
+      <Route path="/" element={<AuthPage />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/dashboard/:role" element={<Dashboard />} />
+      <Route path="/dashboard/admin" element={<AdminHome />} />
+      <Route path="/dashboard/pm" element={<PMHome />} />
+      <Route path="/dashboard/hr" element={<HRHome />} /> 
+      <Route path="/dashboard/intern" element={<InternHome />} />
+      <Route path="/chat" element={<PMInternChat />} />
+      <Route path="/profile-setup" element={<ProfileSetup />} />
+    </Routes>
   );
 }
 
