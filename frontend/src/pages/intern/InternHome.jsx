@@ -2,13 +2,15 @@ import React, { useState, useEffect } from "react";
 import DailyLogPage from './DailyLogPage';
 import ProfilePage from './ProfilePage';
 import MessagesPage from './MessagesPage';
+import ReportsPage from './ReportsPage';
 
 import { 
   User, Bell, MessageCircle, FileText, Award, Calendar, 
   MapPin, Briefcase, Mail, Phone, GraduationCap,
   Home, BookOpen, Send, Menu, X, Users, Clock, CheckCircle,
   ChevronRight, Sparkles, TrendingUp, Zap, Star,
-  Github, Globe, Upload, AlertCircle, Coffee, Target, Rocket
+  Github, Globe, Upload, AlertCircle, Coffee, Target, Rocket,
+  ClipboardList
 } from "lucide-react";
 
 // Original color palette preserved
@@ -177,6 +179,7 @@ export default function InternDashboard() {
   const menuItems = [
     { id: "overview", label: "Overview", icon: <Home size={20} /> },
     { id: "daily-log", label: "Daily Log", icon: <BookOpen size={20} /> },
+    { id: "reports", label: "Reports", icon: <ClipboardList size={20} /> },
     { id: "chat", label: "Messages", icon: <MessageCircle size={20} />, badge: 5 },
     { id: "profile", label: "My Profile", icon: <User size={20} /> },
     { id: "project-submission", label: "Submit Project", icon: <Send size={20} /> },
@@ -324,6 +327,7 @@ export default function InternDashboard() {
           <div style={{ padding: isMobile ? 20 : 32, minHeight: "calc(100vh - 81px)" }}>
             {activePage === "overview" && <OverviewPage intern={currentIntern} pm={assignedPM} hr={assignedHR} announcements={announcements} stats={stats} isMobile={isMobile} />}
             {activePage === "daily-log" && <DailyLogPage isMobile={isMobile} assignedPM={assignedPM} />}
+            {activePage === "reports" && <ReportsPage isMobile={isMobile} />}
             {activePage === "chat" && <MessagesPage isMobile={isMobile} assignedPM={assignedPM} assignedHR={assignedHR} />}
             {activePage === "profile" && <ProfilePage intern={currentIntern} isMobile={isMobile} />}
             {activePage === "project-submission" && <ProjectSubmissionPage isMobile={isMobile} />}
@@ -335,12 +339,12 @@ export default function InternDashboard() {
 }
 
 function getPageTitle(page) {
-  return { "overview": "Dashboard", "daily-log": "Daily Log", "chat": "Messages", "profile": "My Profile", "project-submission": "Submit Project" }[page] || "Dashboard";
+  return { "overview": "Dashboard", "daily-log": "Daily Log", "reports": "Reports", "chat": "Messages", "profile": "My Profile", "project-submission": "Submit Project" }[page] || "Dashboard";
 }
 
 function getPageSubtitle(page, intern) {
   const name = intern?.fullName?.split(" ")[0] || "there";
-  return { "overview": `Welcome back, ${name}!`, "daily-log": "Track your daily progress", "chat": "Connect with your team", "profile": "Manage your information", "project-submission": "Share your work" }[page] || "";
+  return { "overview": `Welcome back, ${name}!`, "daily-log": "Track your daily progress", "reports": "TNA & Project Blueprint", "chat": "Connect with your team", "profile": "Manage your information", "project-submission": "Share your work" }[page] || "";
 }
 
 function OverviewPage({ intern, pm, hr, announcements, stats, isMobile }) {
