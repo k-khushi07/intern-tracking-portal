@@ -1,9 +1,11 @@
+//frontend/src/App.jsx
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 import AuthPage from "./pages/AuthPage";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
-import AdminHome from "./pages/admin/AdminHome";
+import AdminLogin from "./pages/Admin/AdminLogin";
+import AdminHome from "./pages/Admin/AdminHome";
 import PMHome from "./pages/pm/PMHome";
 import HRHome from "./pages/hr/HRHome"; 
 import InternHome from "./pages/intern/InternHome";  
@@ -16,7 +18,12 @@ function App() {
       <Route path="/" element={<AuthPage />} />
       <Route path="/register" element={<Register />} />
       <Route path="/dashboard/:role" element={<Dashboard />} />
-      <Route path="/dashboard/admin" element={<AdminHome />} />
+      
+      {/* ADMIN ROUTES */}
+      <Route path="/login" element={<AdminLogin />} />  {/* ADD THIS */}
+      <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/admin" element={<AdminHome />} />
+      
       <Route path="/dashboard/pm" element={<PMHome />} />
       <Route path="/dashboard/hr" element={<HRHome />} /> 
       <Route path="/dashboard/intern" element={<InternHome />} />

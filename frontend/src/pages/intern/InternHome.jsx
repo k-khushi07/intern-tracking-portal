@@ -1,3 +1,4 @@
+//intern/InternHome.jsx
 import React, { useState, useEffect } from "react";
 import { User, Bell, MessageCircle, FileText, Award, Calendar, MapPin, Briefcase, Mail, Phone, Heart, GraduationCap, Eye } from "lucide-react";
 import ChatSystem from "../../components/ChatSystem";
