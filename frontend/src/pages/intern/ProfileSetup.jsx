@@ -1,4 +1,3 @@
-//intern/ProfileSetup.jsx
 import React, { useState, useEffect } from "react";
 import { User, MapPin, Phone, Heart, GraduationCap, Calendar, Briefcase, Upload, Image, FileText, CheckCircle } from "lucide-react";
 
@@ -9,7 +8,6 @@ const COLORS = {
   peachGlow: "#ffe5d9",
   racingRed: "#d90429",
 };
-
 
 export default function InternProfileSetup() {
   const [currentUser, setCurrentUser] = useState(null);

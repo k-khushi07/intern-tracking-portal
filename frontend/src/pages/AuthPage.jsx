@@ -1,4 +1,3 @@
-// AuthPage.jsx
 import React, { useState, useEffect } from "react";
 import { Eye, EyeOff, Mail, Lock, Key, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -39,13 +38,7 @@ export default function AuthPage() {
       createdAt: new Date().toISOString()
     });
     localStorage.setItem("users", JSON.stringify(users));
-    
-    // Set as current user for testing
-    const adminUser = users.find(u => u.email === "admin@test.com");
-    localStorage.setItem("currentUser", JSON.stringify(adminUser));
-    
-    alert("✅ Admin user created successfully!\n\nLogin with:\nEmail: admin@test.com\nPassword: 12345678\n\nRedirecting to admin dashboard...");
-    setTimeout(() => navigate("/dashboard/admin"), 1500);
+    alert("✅ Admin user created successfully!\n\nLogin with:\nEmail: admin@test.com\nPassword: 12345678\n\nThen go to: /dashboard/admin");
   };
 
   // 👨‍💼 TEST PM FUNCTION
@@ -85,9 +78,7 @@ export default function AuthPage() {
         pmCode: "PM001",
         degree: "Computer Science",
         dob: "2000-05-15",
-        createdAt: new Date().toISOString(),
-        profileCompleted: true,
-        approved: true
+        createdAt: new Date().toISOString()
       },
       {
         role: "intern",
@@ -98,9 +89,7 @@ export default function AuthPage() {
         pmCode: "PM001",
         degree: "Data Science",
         dob: "2001-08-22",
-        createdAt: new Date().toISOString(),
-        profileCompleted: true,
-        approved: true
+        createdAt: new Date().toISOString()
       },
       {
         role: "intern",
@@ -111,9 +100,7 @@ export default function AuthPage() {
         pmCode: "PM001",
         degree: "Software Engineering",
         dob: "1999-12-10",
-        createdAt: new Date().toISOString(),
-        profileCompleted: true,
-        approved: true
+        createdAt: new Date().toISOString()
       }
     ];
     
@@ -428,9 +415,9 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              {/* Role Tabs - FIXED TO INCLUDE ADMIN */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-                {["intern", "hr", "pm", "admin"].map((r) => (
+              {/* Role Tabs */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+                {["intern", "hr", "pm"].map((r) => (
                   <button
                     key={r}
                     onClick={() => {
@@ -440,7 +427,6 @@ export default function AuthPage() {
                     type="button"
                     style={{
                       flex: 1,
-                      minWidth: "90px",
                       padding: "10px 14px",
                       borderRadius: 999,
                       border: "none",
@@ -497,7 +483,7 @@ export default function AuthPage() {
                     value={loginData.password}
                     onChange={handleInput}
                     type={showPassword ? "text" : "password"}
-                    placeholder="PASSWORD"
+                    placeholder="PASSWORD (8-digit numeric)"
                     style={inputStyle}
                     required
                     autoComplete="current-password"
@@ -539,6 +525,10 @@ export default function AuthPage() {
                     <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
                     Remember me
                   </label>
+
+                  <Link to="/register" style={{ color: COLORS.peachGlow, textDecoration: "none", fontStyle: "italic" }}>
+                    Not yet Registered? Register here
+                  </Link>
                 </div>
 
                 {error && <div style={{ color: COLORS.racingRed, fontWeight: 700 }}>{error}</div>}
