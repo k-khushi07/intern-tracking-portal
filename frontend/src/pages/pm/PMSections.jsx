@@ -1,4 +1,4 @@
-// PMSections.jsx
+// PMSections.jsx - pm dashboard 
 import React from "react";
 import {
   Users, FileText, Megaphone, Plus, Download, Clock, CheckCircle, Activity, TrendingUp

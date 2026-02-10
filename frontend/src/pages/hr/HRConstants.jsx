@@ -1,34 +1,61 @@
+// HRConstants.jsx 
 import {
   Users, UserCheck, Clock, Home, FileText, BarChart3, Briefcase
 } from "lucide-react";
 
+// ==================== STATUS CONSTANTS ====================
+export const INTERN_STATUS = {
+  NEW: "",
+  PENDING: "pending",
+  ACTIVE: "active",
+  DISABLED: "disabled",
+};
 
-// Make sure these are NAMED exports, not default
+// ==================== PM DASHBOARD COLORS (EXACT MATCH) ====================
 export const COLORS = {
+  // Main backgrounds
   bgPrimary: "#020617",
   bgSecondary: "#0a2528",
+  
+  // Surface & Glass
   surfaceGlass: "rgba(255, 255, 255, 0.06)",
   borderGlass: "rgba(255, 255, 255, 0.12)",
+  
+  // Brand colors - Bright Teal
   deepOcean: "#0f766e",
   jungleTeal: "#14b8a6",
   emeraldGlow: "#10b981",
   cyanHighlight: "#22d3ee",
+  
+  // Text
   textPrimary: "#f8fafc",
   textSecondary: "rgba(248, 250, 252, 0.7)",
   textMuted: "rgba(248, 250, 252, 0.5)",
+  
+  // Status colors
   orange: "#f59e0b",
   red: "#ef4444",
   purple: "#a78bfa",
+  success: "#10b981",
+  warning: "#f59e0b",
+  error: "#ef4444",
+  info: "#3b82f6",
+  
+  // Compatibility aliases
+  teal: "#14b8a6",
+  tealDark: "#0f766e",
+  tealDeep: "#0f766e",
+  cyan: "#22d3ee",
+  peachGlow: "#ffe5d9",
 };
-
 
 export const GRADIENTS = {
   primary: `linear-gradient(135deg, ${COLORS.bgPrimary} 0%, ${COLORS.bgSecondary} 50%, ${COLORS.bgPrimary} 100%)`,
   accent: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
   emerald: `linear-gradient(135deg, ${COLORS.emeraldGlow} 0%, ${COLORS.jungleTeal} 100%)`,
   ocean: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.cyanHighlight} 100%)`,
+  welcome: `linear-gradient(135deg, #16a085 0%, ${COLORS.jungleTeal} 100%)`,
 };
-
 
 export const keyframes = `
   @keyframes fadeIn {
@@ -57,16 +84,14 @@ export const keyframes = `
   }
 `;
 
-
 export const navItems = (stats) => [
-  { id: "dashboard", icon: Home, label: "Dashboard" },
-  { id: "approval", icon: Clock, label: "Approval Center", badge: stats.pending },
-  { id: "active", icon: UserCheck, label: "Active Interns", badge: stats.active },
-  { id: "new", icon: FileText, label: "New Registrations", badge: stats.newRegistrations },
-  { id: "pms", icon: Briefcase, label: "Project Managers" },
-  { id: "reports", icon: BarChart3, label: "Reports" },
+  { id: "dashboard", icon: Home, label: "HR Dashboard", badge: 0 },
+  { id: "new", icon: FileText, label: "New Registrations", badge: stats?.newRegistrations || 0 },
+  { id: "approval", icon: Clock, label: "Approval Center", badge: stats?.pending || 0 },
+  { id: "active", icon: UserCheck, label: "Active Interns", badge: 0 },
+  { id: "projectManagers", icon: Briefcase, label: "Project Managers", badge: 0 },
+  { id: "reports", icon: BarChart3, label: "Reports", badge: 0 },
 ];
-
 
 export const glassCardStyle = {
   background: COLORS.surfaceGlass,
@@ -77,13 +102,12 @@ export const glassCardStyle = {
   boxShadow: `0 8px 30px rgba(15, 118, 110, 0.15)`,
 };
 
-
 export const inputStyle = {
   width: "100%",
   padding: "14px 16px",
   borderRadius: 12,
-  border: `1px solid rgba(255,255,255,0.15)`,
-  background: "rgba(255,255,255,0.04)",
+  border: `1px solid ${COLORS.borderGlass}`,
+  background: COLORS.surfaceGlass,
   color: COLORS.textPrimary,
   outline: "none",
   fontSize: 14,
@@ -91,18 +115,16 @@ export const inputStyle = {
   transition: "border-color 0.2s",
 };
 
-
 export const selectStyle = {
   padding: "10px 16px",
   borderRadius: 12,
-  border: `1px solid rgba(255,255,255,0.15)`,
-  background: "rgba(255,255,255,0.04)",
+  border: `1px solid ${COLORS.borderGlass}`,
+  background: COLORS.surfaceGlass,
   color: COLORS.textPrimary,
   outline: "none",
   fontSize: 14,
   cursor: "pointer",
 };
-
 
 export const primaryButtonStyle = {
   padding: "12px 20px",
@@ -120,11 +142,10 @@ export const primaryButtonStyle = {
   transition: "transform 0.2s, box-shadow 0.2s",
 };
 
-
 export const secondaryButtonStyle = {
   padding: "12px 20px",
   borderRadius: 12,
-  border: `1px solid rgba(255,255,255,0.2)`,
+  border: `1px solid ${COLORS.borderGlass}`,
   background: "transparent",
   color: COLORS.textSecondary,
   fontWeight: 600,
@@ -136,10 +157,9 @@ export const secondaryButtonStyle = {
   fontFamily: "inherit",
 };
 
-
 export const smallButtonStyle = {
-  padding: "8px 14px",
-  borderRadius: 10,
+  padding: "10px 20px",
+  borderRadius: 12,
   border: "none",
   background: GRADIENTS.accent,
   color: "white",
@@ -147,11 +167,11 @@ export const smallButtonStyle = {
   cursor: "pointer",
   display: "flex",
   alignItems: "center",
-  gap: 6,
-  fontSize: 13,
+  gap: 8,
+  fontSize: 14,
   fontFamily: "inherit",
+  transition: "all 0.2s",
 };
-
 
 export const actionButtonStyle = {
   width: 36,
@@ -165,7 +185,6 @@ export const actionButtonStyle = {
   color: "white",
 };
 
-
 export const tinyButtonStyle = {
   width: 28,
   height: 28,
@@ -177,4 +196,54 @@ export const tinyButtonStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+};
+
+export const emailInputStyle = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 10,
+  border: `1px solid ${COLORS.borderGlass}`,
+  background: COLORS.surfaceGlass,
+  color: COLORS.textPrimary,
+  outline: "none",
+  fontSize: 13,
+};
+
+export const emailPrimaryButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  padding: "14px 20px",
+  borderRadius: 12,
+  border: "none",
+  fontWeight: 600,
+  background: GRADIENTS.accent,
+  color: "white",
+};
+
+// Validation functions
+export const validateEmail = (email) => {
+  return /^[\w.-]+@[\w.-]+\.\w+$/.test(email.trim());
+};
+
+export const validateMultipleEmails = (emailString) => {
+  if (!emailString || !emailString.trim()) return true;
+  const emails = emailString.split(',').map(e => e.trim()).filter(e => e);
+  return emails.every(email => validateEmail(email));
+};
+
+export const formatDate = (isoString) => {
+  if (!isoString) return "—";
+  return new Date(isoString).toLocaleDateString();
+};
+
+export const formatTime = (isoString) => {
+  if (!isoString) return "—";
+  return new Date(isoString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+export const formatDateTime = (isoString) => {
+  if (!isoString) return "—";
+  return `${formatDate(isoString)} ${formatTime(isoString)}`;
 };

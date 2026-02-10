@@ -1,52 +1,59 @@
-import React, { useEffect, useState } from "react";
+//frontend/src/pages/Dashboard.jsx
+import React, { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import AdminHome from "./Admin/AdminHome";
+import HRHome from "./hr/HRHome";
+import PMHome from "./pm/PMHome";
+import InternHome from "./intern/InternHome";
 
 export default function Dashboard() {
   const { role } = useParams();
-  const [user, setUser] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Check if user is logged in
     try {
-      const cu = JSON.parse(localStorage.getItem("currentUser"));
-      setUser(cu);
-    } catch {
-      setUser(null);
+      const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+      if (!currentUser) {
+        navigate("/");
+        return;
+      }
+
+      // Check if role matches
+      if (currentUser.role !== role) {
+        console.warn("Role mismatch - redirecting");
+        navigate("/");
+        return;
+      }
+    } catch (err) {
+      console.error("Error checking user:", err);
+      navigate("/");
     }
-  }, []);
+  }, [role, navigate]);
 
-  const logout = () => {
-    localStorage.removeItem("currentUser");
-    navigate("/");
-  };
-
-  if (!user) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#071e22", color: "white", padding: 24 }}>
-        <p>No user logged in. Redirecting to login...</p>
-      </div>
-    );
+  // Route to specific dashboard based on role
+  if (role === "admin") {
+    return <AdminHome />;
   }
 
-  return (
-    <div style={{ minHeight: "100vh", background: "#071e22", color: "white", padding: 24 }}>
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <h1 style={{ textTransform: "capitalize" }}>{role} dashboard</h1>
-        <p>Welcome, <strong>{user.fullName || user.email}</strong></p>
-        <div style={{ marginTop: 12 }}>
-          <p>Email: {user.email}</p>
-          <p>Phone: {user.phone || "—"}</p>
-          {user.dob && <p>Date of birth: {user.dob}</p>}
-          {user.degree && <p>Degree: {user.degree}</p>}
-          {user.pmCode && <p>PM Code: {user.pmCode}</p>}
-          <p>Registered on: {new Date(user.createdAt).toLocaleString()}</p>
-        </div>
+  if (role === "hr") {
+    return <HRHome />;
+  }
 
-        <div style={{ marginTop: 20 }}>
-          <button onClick={logout} style={{ padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer" }}>
-            Logout
-          </button>
-        </div>
+  if (role === "pm") {
+    return <PMHome />;
+  }
+
+  if (role === "intern") {
+    return <InternHome />;
+  }
+
+  // If unknown role, redirect to login
+  return (
+    <div style={{ minHeight: "100vh", background: "#071e22", color: "white", padding: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center" }}>
+        <h2>Invalid Role</h2>
+        <p>Redirecting to login...</p>
       </div>
     </div>
   );

@@ -1,429 +1,551 @@
+// MyInternsPage.jsx
 import React, { useState } from "react";
-import {
-  Users,
-  Search,
-  X,
-  ChevronRight,
-  Mail,
-  Phone,
-  User,
-} from "lucide-react";
+import { Search, Mail, Eye, MapPin, Calendar, Award, TrendingUp, Clock } from "lucide-react";
+
 
 const COLORS = {
-  jungleTeal: "#679289",
+  inkBlack: "#071e22",
   deepOcean: "#1d7874",
-  success: "#4ade80",
-  warning: "#f59e0b",
+  jungleTeal: "#679289",
+  peachGlow: "#ffe5d9",
+  racingRed: "#d90429",
 };
 
-export default function MyInternsPage({ interns, isMobile }) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [selectedIntern, setSelectedIntern] = useState(null);
 
-  const [showChat, setShowChat] = useState(false);
-  const [activeChatIntern, setActiveChatIntern] = useState(null);
+const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
+  const [searchQuery, setSearchQuery] = useState("");
+
+
+  // Mock data for assigned interns
+  const interns = [
+    {
+      id: 1,
+      name: "John Doe",
+      email: "john.doe@company.com",
+      avatar: "JD",
+      role: "Frontend Developer",
+      department: "Engineering",
+      status: "active",
+      joinDate: "2024-01-15",
+      location: "New York, USA",
+      tasksCompleted: 24,
+      tasksTotal: 30,
+      weeklyReports: 8,
+      monthlyReports: 2,
+      lastActive: "2 hours ago",
+      performance: 85,
+      skills: ["React", "JavaScript", "CSS"],
+    },
+    {
+      id: 2,
+      name: "Jane Smith",
+      email: "jane.smith@company.com",
+      avatar: "JS",
+      role: "Backend Developer",
+      department: "Engineering",
+      status: "active",
+      joinDate: "2024-02-01",
+      location: "San Francisco, USA",
+      tasksCompleted: 18,
+      tasksTotal: 25,
+      weeklyReports: 6,
+      monthlyReports: 1,
+      lastActive: "5 hours ago",
+      performance: 92,
+      skills: ["Node.js", "Python", "MongoDB"],
+    },
+    {
+      id: 3,
+      name: "Mike Johnson",
+      email: "mike.johnson@company.com",
+      avatar: "MJ",
+      role: "UI/UX Designer",
+      department: "Design",
+      status: "active",
+      joinDate: "2024-01-20",
+      location: "Austin, USA",
+      tasksCompleted: 21,
+      tasksTotal: 28,
+      weeklyReports: 7,
+      monthlyReports: 2,
+      lastActive: "1 hour ago",
+      performance: 88,
+      skills: ["Figma", "Adobe XD", "Prototyping"],
+    },
+    {
+      id: 4,
+      name: "Emily Davis",
+      email: "emily.davis@company.com",
+      avatar: "ED",
+      role: "Data Analyst",
+      department: "Analytics",
+      status: "inactive",
+      joinDate: "2024-03-10",
+      location: "Chicago, USA",
+      tasksCompleted: 15,
+      tasksTotal: 20,
+      weeklyReports: 5,
+      monthlyReports: 1,
+      lastActive: "2 days ago",
+      performance: 78,
+      skills: ["Python", "SQL", "Tableau"],
+    },
+  ];
+
 
   const filteredInterns = interns.filter((intern) => {
     const matchesSearch =
-      intern.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      intern.email.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === "all" || intern.status === filterStatus;
-
-    return matchesSearch && matchesFilter;
+      intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      intern.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      intern.role.toLowerCase().includes(searchQuery.toLowerCase());
+   
+    return matchesSearch;
   });
 
-  return (
-    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-      <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, marginBottom: 16 }}>
-        My Interns ({filteredInterns.length})
-      </h2>
 
-      <div className="glass" style={{ padding: 16, borderRadius: 14, marginBottom: 20 }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            gap: 12,
-          }}
-        >
-          <div style={{ position: "relative", flex: 1 }}>
-            <Search
-              size={18}
-              style={{
-                position: "absolute",
-                left: 14,
-                top: "50%",
-                transform: "translateY(-50%)",
-                opacity: 0.5,
-              }}
-            />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or email"
-              style={{
-                width: "100%",
-                padding: "12px 16px 12px 44px",
-                borderRadius: 10,
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "white",
-                outline: "none",
-              }}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  color: "white",
-                  cursor: "pointer",
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{
-              padding: "12px 16px",
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              color: "white",
-              outline: "none",
-            }}
-          >
-            <option value="all">All</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      {filteredInterns.length === 0 ? (
-        <div className="glass" style={{ padding: 40, borderRadius: 16, textAlign: "center" }}>
-          <Users size={40} opacity={0.5} />
-          <p style={{ marginTop: 12, color: "rgba(255,255,255,0.6)" }}>
-            No interns found
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {filteredInterns.map((intern) => (
-            <InternRow
-              key={intern.id}
-              intern={intern}
-              onClick={() => setSelectedIntern(intern)}
-            />
-          ))}
-        </div>
-      )}
-
-      {selectedIntern && (
-        <InternDetailModal
-          intern={selectedIntern}
-          onClose={() => setSelectedIntern(null)}
-          onSendMessage={(intern) => {
-            setActiveChatIntern(intern);
-            setShowChat(true);
-          }}
-        />
-      )}
-
-      {showChat && activeChatIntern && (
-        <ChatSidebar
-          intern={activeChatIntern}
-          onClose={() => setShowChat(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-function InternRow({ intern, onClick }) {
-  return (
-    <div
-      className="glass"
-      onClick={onClick}
-      style={{
-        padding: 16,
-        borderRadius: 14,
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 12,
-          background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "white",
-          fontWeight: 700,
-          fontSize: 18,
-        }}
-      >
-        {intern.fullName.charAt(0)}
-      </div>
-
-      <div style={{ flex: 1 }}>
-        <div style={{ color: "white", fontWeight: 600 }}>{intern.fullName}</div>
-        <div style={{ fontSize: 13, opacity: 0.6 }}>{intern.email}</div>
-      </div>
-
-      <div
-        style={{
-          fontSize: 12,
-          padding: "6px 12px",
-          borderRadius: 20,
-          textTransform: "capitalize",
-          background:
-            intern.status === "active"
-              ? "rgba(74,222,128,0.15)"
-              : "rgba(245,158,11,0.15)",
-          color:
-            intern.status === "active" ? COLORS.success : COLORS.warning,
-        }}
-      >
-        {intern.status}
-      </div>
-
-      <ChevronRight size={18} opacity={0.4} />
-    </div>
-  );
-}
-
-function InternDetailModal({ intern, onClose, onSendMessage }) {
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.8)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="glass"
-        style={{
-          width: "100%",
-          maxWidth: 560,
-          borderRadius: 20,
-          padding: 28,
-        }}
-      >
-        <h2 style={{ color: "white", marginBottom: 16 }}>{intern.fullName}</h2>
-
-        <ProfileRow label="Status" value={intern.status} />
-        <ProfileRow label="Email" value={intern.email} icon={<Mail size={16} />} />
-        <ProfileRow label="Phone" value={intern.phone || "N/A"} icon={<Phone size={16} />} />
-        <ProfileRow label="Degree" value={intern.degree || "N/A"} icon={<User size={16} />} />
-        <ProfileRow label="Hours Logged" value={`${intern.hoursLogged || 0}h`} />
-        <ProfileRow label="Tasks Completed" value={intern.tasksCompleted || 0} />
-        <ProfileRow label="PM Code" value={intern.pmCode || "N/A"} />
-
-        <button
-          onClick={() => onSendMessage(intern)}
-          style={{
-            width: "100%",
-            marginTop: 24,
-            padding: 14,
-            borderRadius: 12,
-            border: "none",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-            color: "white",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Send Message
-        </button>
-
-        <button
-          onClick={onClose}
-          style={{
-            width: "100%",
-            marginTop: 10,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(255,255,255,0.05)",
-            border: "none",
-            color: "white",
-            cursor: "pointer",
-          }}
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ProfileRow({ label, value, icon }) {
-  return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 12,
-        background: "rgba(255,255,255,0.04)",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        marginBottom: 10,
-      }}
-    >
-      {icon}
-      <div>
-        <div style={{ fontSize: 12, opacity: 0.6 }}>{label}</div>
-        <div style={{ color: "white", fontWeight: 500 }}>{value}</div>
-      </div>
-    </div>
-  );
-}
-
-function ChatSidebar({ intern, onClose }) {
-  const [messages, setMessages] = useState([
-    { from: "intern", text: "Hello" },
-    { from: "pm", text: "Hi, how is the work going" },
-  ]);
-  const [input, setInput] = useState("");
-
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    setMessages([...messages, { from: "pm", text: input }]);
-    setInput("");
+  const stats = {
+    total: interns.length,
+    active: interns.filter((i) => i.status === "active").length,
+    avgPerformance: Math.round(
+      interns.reduce((sum, i) => sum + i.performance, 0) / interns.length
+    ),
   };
 
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        height: "100vh",
-        width: 380,
-        background: "#071e22",
-        borderLeft: "1px solid rgba(255,255,255,0.1)",
-        zIndex: 3000,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <div className="animate-fadeIn">
+      {/* Stats Cards */}
       <div
         style={{
-          padding: 16,
-          borderBottom: "1px solid rgba(255,255,255,0.1)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "16px",
+          marginBottom: "24px",
         }}
       >
-        <div style={{ color: "white", fontWeight: 600 }}>
-          {intern.fullName}
-        </div>
-        <button
-          onClick={onClose}
+        <div
+          className="glass hover-lift animate-fadeIn stagger-1"
           style={{
-            background: "none",
-            border: "none",
-            color: "white",
-            cursor: "pointer",
+            padding: "16px",
+            borderRadius: "12px",
+            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
           }}
         >
-          <X size={18} />
-        </button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.8)", marginBottom: "4px" }}>
+                Total Interns
+              </p>
+              <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.peachGlow }}>
+                {stats.total}
+              </h3>
+            </div>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                background: "rgba(255, 229, 217, 0.2)",
+                borderRadius: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Award size={20} color={COLORS.peachGlow} />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="glass hover-lift animate-fadeIn stagger-2"
+          style={{
+            padding: "16px",
+            borderRadius: "12px",
+            background: `linear-gradient(135deg, rgba(103, 146, 137, 0.3), rgba(29, 120, 116, 0.3))`,
+            border: `1px solid rgba(103, 146, 137, 0.3)`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.8)", marginBottom: "4px" }}>
+                Active Interns
+              </p>
+              <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.peachGlow }}>
+                {stats.active}
+              </h3>
+            </div>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                background: "rgba(103, 146, 137, 0.3)",
+                borderRadius: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <TrendingUp size={20} color={COLORS.jungleTeal} />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="glass hover-lift animate-fadeIn stagger-3"
+          style={{
+            padding: "16px",
+            borderRadius: "12px",
+            background: `linear-gradient(135deg, rgba(103, 146, 137, 0.3), rgba(29, 120, 116, 0.3))`,
+            border: `1px solid rgba(103, 146, 137, 0.3)`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.8)", marginBottom: "4px" }}>
+                Avg Performance
+              </p>
+              <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.peachGlow }}>
+                {stats.avgPerformance}%
+              </h3>
+            </div>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                background: "rgba(103, 146, 137, 0.3)",
+                borderRadius: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Clock size={20} color={COLORS.jungleTeal} />
+            </div>
+          </div>
+        </div>
       </div>
 
+
+      {/* Search Bar */}
       <div
+        className="glass animate-fadeIn stagger-4"
         style={{
-          flex: 1,
-          padding: 16,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
+          padding: "16px",
+          borderRadius: "12px",
+          marginBottom: "24px",
         }}
       >
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
+        {/* Search Input */}
+        <div style={{ position: "relative" }}>
+          <Search
+            size={18}
+            color="rgba(255, 229, 217, 0.5)"
+            style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)" }}
+          />
+          <input
+            type="text"
+            placeholder="Search by name, email, or role..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             style={{
-              alignSelf: msg.from === "pm" ? "flex-end" : "flex-start",
-              background:
-                msg.from === "pm"
-                  ? COLORS.deepOcean
-                  : "rgba(255,255,255,0.08)",
-              color: "white",
-              padding: "10px 14px",
-              borderRadius: 14,
-              maxWidth: "80%",
+              width: "100%",
+              padding: "12px 14px 12px 44px",
+              background: "rgba(103, 146, 137, 0.1)",
+              border: `1px solid rgba(103, 146, 137, 0.3)`,
+              borderRadius: "10px",
+              color: COLORS.peachGlow,
+              fontSize: "14px",
+              transition: "all 0.3s ease",
+            }}
+          />
+        </div>
+      </div>
+
+
+      {/* Interns Grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
+          gap: "24px",
+        }}
+      >
+        {filteredInterns.map((intern, index) => (
+          <div
+            key={intern.id}
+            className={`glass hover-lift animate-fadeIn stagger-${(index % 5) + 1}`}
+            style={{
+              padding: "24px",
+              borderRadius: "16px",
+              background: "rgba(29, 120, 116, 0.1)",
+              border: `1px solid rgba(103, 146, 137, 0.3)`,
             }}
           >
-            {msg.text}
+            {/* Intern Header */}
+            <div style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px" }}>
+              <div
+                style={{
+                  width: "60px",
+                  height: "60px",
+                  background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "700",
+                  fontSize: "20px",
+                  color: COLORS.peachGlow,
+                  marginRight: "16px",
+                  flexShrink: 0,
+                }}
+              >
+                {intern.avatar}
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: "700",
+                    color: COLORS.peachGlow,
+                    marginBottom: "4px",
+                  }}
+                >
+                  {intern.name}
+                </h3>
+                <p style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>
+                  {intern.role}
+                </p>
+              </div>
+            </div>
+
+
+            {/* Intern Details */}
+            <div style={{ marginBottom: "20px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  marginBottom: "10px",
+                  fontSize: "13px",
+                  color: "rgba(255, 229, 217, 0.7)",
+                }}
+              >
+                <Mail size={16} color={COLORS.jungleTeal} />
+                <span>{intern.email}</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  marginBottom: "10px",
+                  fontSize: "13px",
+                  color: "rgba(255, 229, 217, 0.7)",
+                }}
+              >
+                <MapPin size={16} color={COLORS.jungleTeal} />
+                <span>{intern.location}</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "13px",
+                  color: "rgba(255, 229, 217, 0.7)",
+                }}
+              >
+                <Calendar size={16} color={COLORS.jungleTeal} />
+                <span>Joined: {new Date(intern.joinDate).toLocaleDateString()}</span>
+              </div>
+            </div>
+
+
+            {/* Performance Bar */}
+            <div style={{ marginBottom: "20px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "8px",
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.7)" }}>
+                  Performance
+                </span>
+                <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.peachGlow }}>
+                  {intern.performance}%
+                </span>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "8px",
+                  background: "rgba(103, 146, 137, 0.2)",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${intern.performance}%`,
+                    height: "100%",
+                    background: `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                    borderRadius: "10px",
+                    transition: "width 0.5s ease",
+                  }}
+                />
+              </div>
+            </div>
+
+
+            {/* Quick Stats */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                marginBottom: "20px",
+              }}
+            >
+              <div
+                style={{
+                  padding: "12px",
+                  background: "rgba(103, 146, 137, 0.1)",
+                  borderRadius: "10px",
+                  textAlign: "center",
+                }}
+              >
+                <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
+                  Tasks Progress
+                </p>
+                <p style={{ fontSize: "16px", fontWeight: "700", color: COLORS.peachGlow }}>
+                  {intern.tasksCompleted}/{intern.tasksTotal}
+                </p>
+              </div>
+              <div
+                style={{
+                  padding: "12px",
+                  background: "rgba(103, 146, 137, 0.1)",
+                  borderRadius: "10px",
+                  textAlign: "center",
+                }}
+              >
+                <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
+                  Reports
+                </p>
+                <p style={{ fontSize: "16px", fontWeight: "700", color: COLORS.peachGlow }}>
+                  {intern.weeklyReports + intern.monthlyReports}
+                </p>
+              </div>
+            </div>
+
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={() => onViewProfile(intern)}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                  border: "none",
+                  borderRadius: "10px",
+                  color: COLORS.peachGlow,
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(103, 146, 137, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                <Eye size={18} />
+                View Profile
+              </button>
+              <button
+                onClick={() => onNavigateToMessages(intern)}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: "rgba(103, 146, 137, 0.2)",
+                  border: `1px solid ${COLORS.jungleTeal}`,
+                  borderRadius: "10px",
+                  color: COLORS.peachGlow,
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(103, 146, 137, 0.3)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(103, 146, 137, 0.2)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
+              >
+                <Mail size={18} />
+                Send Message
+              </button>
+            </div>
           </div>
         ))}
       </div>
 
-      <div
-        style={{
-          padding: 14,
-          borderTop: "1px solid rgba(255,255,255,0.1)",
-          display: "flex",
-          gap: 8,
-        }}
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message"
+
+      {/* Empty State */}
+      {filteredInterns.length === 0 && (
+        <div
+          className="glass animate-fadeIn"
           style={{
-            flex: 1,
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(255,255,255,0.05)",
-            color: "white",
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={sendMessage}
-          style={{
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: COLORS.deepOcean,
-            color: "white",
-            border: "none",
-            cursor: "pointer",
-            fontWeight: 600,
+            padding: "60px 40px",
+            borderRadius: "16px",
+            textAlign: "center",
           }}
         >
-          Send
-        </button>
-      </div>
+          <div
+            style={{
+              width: "80px",
+              height: "80px",
+              background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px",
+            }}
+          >
+            <Search size={36} color={COLORS.peachGlow} />
+          </div>
+          <h3 style={{ fontSize: "20px", fontWeight: "700", color: COLORS.peachGlow, marginBottom: "8px" }}>
+            No Interns Found
+          </h3>
+          <p style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.6)" }}>
+            Try adjusting your search criteria
+          </p>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+
+export default MyInternsPage;

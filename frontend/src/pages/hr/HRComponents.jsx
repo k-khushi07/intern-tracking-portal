@@ -1,11 +1,13 @@
+// HRComponents.jsx - Reusable components for HR Dashboard
+// ✅ UPDATED WITH VIEW APPLICATION BUTTON
 import React, { useState } from "react";
+import { FileText } from "lucide-react";
 import {
   Check, X, Eye, EyeOff, Key, Mail, Phone, MapPin, Users, MessageSquare,
   GraduationCap, Calendar, Activity, Pin, Trash2, Plus, Download, Send,
   Search
 } from "lucide-react";
 import { COLORS, GRADIENTS, glassCardStyle, inputStyle, primaryButtonStyle, secondaryButtonStyle, smallButtonStyle, actionButtonStyle, tinyButtonStyle } from "./HRConstants";
-
 
 // ==================== STAT COMPONENTS ====================
 export function StatCard({ icon, label, value, color, delay = 0 }) {
@@ -21,7 +23,7 @@ export function StatCard({ icon, label, value, color, delay = 0 }) {
         width: 52, height: 52, borderRadius: 14,
         background: `${color}20`,
         display: "flex", alignItems: "center", justifyContent: "center",
-        color: color,
+        color: "#ffffff",  // Changed to white for visibility
       }}>
         {icon}
       </div>
@@ -32,7 +34,6 @@ export function StatCard({ icon, label, value, color, delay = 0 }) {
     </div>
   );
 }
-
 
 export function StatMini({ icon, value, label, color }) {
   return (
@@ -53,9 +54,40 @@ export function StatMini({ icon, value, label, color }) {
   );
 }
 
-
 // ==================== CARD COMPONENTS ====================
+// ✅ UPDATED PendingCard with "View Application" Button
 export function PendingCard({ intern, onApprove, onReject, compact = false, showTimestamp = false }) {
+  const handleViewPDF = () => {
+    if (!intern.applicationPDF || !intern.applicationPDF.base64) {
+      alert('⚠️ Application PDF not available for this intern.');
+      return;
+    }
+
+    try {
+      // Open PDF in new tab
+      const pdfWindow = window.open('', '_blank');
+      if (pdfWindow) {
+        pdfWindow.document.write(`
+          <html>
+            <head>
+              <title>Application - ${intern.fullName}</title>
+              <style>
+                body { margin: 0; padding: 0; }
+                iframe { width: 100%; height: 100vh; border: none; }
+              </style>
+            </head>
+            <body>
+              <iframe src="${intern.applicationPDF.base64}"></iframe>
+            </body>
+          </html>
+        `);
+      }
+    } catch (error) {
+      console.error('Error viewing PDF:', error);
+      alert('❌ Error opening PDF. Please try again.');
+    }
+  };
+
   return (
     <div style={{
       ...glassCardStyle,
@@ -89,6 +121,18 @@ export function PendingCard({ intern, onApprove, onReject, compact = false, show
         </div>
         {!compact && (
           <div style={{ display: "flex", gap: 8 }}>
+            {intern.applicationPDF && (
+              <button 
+                onClick={handleViewPDF}
+                title="View Application PDF"
+                style={{ 
+                  ...actionButtonStyle, 
+                  background: COLORS.jungleTeal,
+                }}
+              >
+                <FileText size={16} />
+              </button>
+            )}
             <button onClick={() => onApprove(intern)} style={{ ...actionButtonStyle, background: COLORS.emeraldGlow }}>
               <Check size={16} />
             </button>
@@ -100,6 +144,18 @@ export function PendingCard({ intern, onApprove, onReject, compact = false, show
       </div>
       {compact && (
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          {intern.applicationPDF && (
+            <button 
+              onClick={handleViewPDF}
+              style={{ 
+                ...smallButtonStyle, 
+                flex: 1, 
+                background: COLORS.jungleTeal 
+              }}
+            >
+              <FileText size={14} /> View App
+            </button>
+          )}
           <button onClick={() => onApprove(intern)} style={{ ...smallButtonStyle, flex: 1, background: COLORS.emeraldGlow }}>
             <Check size={14} /> Approve
           </button>
@@ -111,7 +167,6 @@ export function PendingCard({ intern, onApprove, onReject, compact = false, show
     </div>
   );
 }
-
 
 export function ActiveInternCard({ intern, onViewProfile, onToggleDisable, onChat }) {
   return (
@@ -141,14 +196,12 @@ export function ActiveInternCard({ intern, onViewProfile, onToggleDisable, onCha
         </div>
       </div>
 
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         <InfoItem icon={<Key size={14} />} label="PM Code" value={intern.pmCode || "—"} />
         <InfoItem icon={<GraduationCap size={14} />} label="Degree" value={intern.degree || "—"} />
         <InfoItem icon={<Calendar size={14} />} label="Joined" value={intern.approvedAt ? new Date(intern.approvedAt).toLocaleDateString() : "—"} />
         <InfoItem icon={<Activity size={14} />} label="Last Log" value={intern.lastLogTime || "—"} />
       </div>
-
 
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => onViewProfile(intern)} style={{ ...smallButtonStyle, flex: 1 }}>
@@ -164,7 +217,6 @@ export function ActiveInternCard({ intern, onViewProfile, onToggleDisable, onCha
     </div>
   );
 }
-
 
 export function PMCard({ pm, internCount, onViewProfile, onChat }) {
   return (
@@ -184,14 +236,12 @@ export function PMCard({ pm, internCount, onViewProfile, onChat }) {
         </div>
       </div>
 
-
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
         <InfoItem icon={<Mail size={14} />} value={pm.email} />
         {pm.phone && <InfoItem icon={<Phone size={14} />} value={pm.phone} />}
         {pm.location && <InfoItem icon={<MapPin size={14} />} value={pm.location} />}
         <InfoItem icon={<Users size={14} />} value={`${internCount} interns assigned`} highlight />
       </div>
-
 
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => onViewProfile(pm)} style={{ ...smallButtonStyle, flex: 1 }}>
@@ -204,7 +254,6 @@ export function PMCard({ pm, internCount, onViewProfile, onChat }) {
     </div>
   );
 }
-
 
 export function AnnouncementCard({ announcement, onDelete, onPin }) {
   return (
@@ -240,7 +289,6 @@ export function AnnouncementCard({ announcement, onDelete, onPin }) {
   );
 }
 
-
 // ==================== UI COMPONENTS ====================
 export function InfoItem({ icon, label, value, highlight = false }) {
   return (
@@ -253,7 +301,6 @@ export function InfoItem({ icon, label, value, highlight = false }) {
     </div>
   );
 }
-
 
 export function SearchBar({ value, onChange, placeholder }) {
   return (
@@ -270,7 +317,6 @@ export function SearchBar({ value, onChange, placeholder }) {
   );
 }
 
-
 export function EmptyState({ icon, message, subMessage }) {
   return (
     <div style={{ textAlign: "center", padding: 40 }}>
@@ -280,7 +326,6 @@ export function EmptyState({ icon, message, subMessage }) {
     </div>
   );
 }
-
 
 // ==================== MODAL COMPONENTS ====================
 export function Modal({ children, onClose, wide = false }) {
@@ -307,7 +352,6 @@ export function Modal({ children, onClose, wide = false }) {
   );
 }
 
-
 export function ApprovalModal({ intern, pmCodeInput, setPmCodeInput, allPMs, onApprove, onClose }) {
   return (
     <>
@@ -327,7 +371,6 @@ export function ApprovalModal({ intern, pmCodeInput, setPmCodeInput, allPMs, onA
           <div style={{ fontSize: 14, color: COLORS.textMuted }}>{intern?.email}</div>
         </div>
       </div>
-
 
       <div style={{ marginBottom: 20 }}>
         <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
@@ -359,7 +402,6 @@ export function ApprovalModal({ intern, pmCodeInput, setPmCodeInput, allPMs, onA
         </div>
       </div>
 
-
       <div style={{ display: "flex", gap: 12 }}>
         <button onClick={onApprove} style={primaryButtonStyle}>
           <Check size={18} /> Approve Intern
@@ -369,7 +411,6 @@ export function ApprovalModal({ intern, pmCodeInput, setPmCodeInput, allPMs, onA
     </>
   );
 }
-
 
 export function RejectModal({ intern, rejectReason, setRejectReason, onReject, onClose }) {
   return (
@@ -391,7 +432,6 @@ export function RejectModal({ intern, rejectReason, setRejectReason, onReject, o
         </div>
       </div>
 
-
       <div style={{ marginBottom: 20 }}>
         <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
           Reason for Rejection (Optional)
@@ -403,7 +443,6 @@ export function RejectModal({ intern, rejectReason, setRejectReason, onReject, o
           style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
         />
       </div>
-
 
       <div style={{ display: "flex", gap: 12 }}>
         <button onClick={onReject} style={{ ...primaryButtonStyle, background: COLORS.red }}>
@@ -417,7 +456,6 @@ export function RejectModal({ intern, rejectReason, setRejectReason, onReject, o
   );
 }
 
-
 export function ChatModal({ user }) {
   const [messages, setMessages] = useState([
     { id: 1, from: "them", text: "Hi, I have a question about my assignment.", time: "10:30 AM" },
@@ -425,13 +463,11 @@ export function ChatModal({ user }) {
   ]);
   const [input, setInput] = useState("");
 
-
   const handleSend = () => {
     if (!input.trim()) return;
     setMessages([...messages, { id: Date.now(), from: "me", text: input, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]);
     setInput("");
   };
-
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: 500 }}>
@@ -449,7 +485,6 @@ export function ChatModal({ user }) {
         </div>
       </div>
 
-
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
         {messages.map(msg => (
           <div key={msg.id} style={{ display: "flex", justifyContent: msg.from === "me" ? "flex-end" : "flex-start" }}>
@@ -464,7 +499,6 @@ export function ChatModal({ user }) {
           </div>
         ))}
       </div>
-
 
       <div style={{ display: "flex", gap: 8 }}>
         <input
@@ -482,7 +516,6 @@ export function ChatModal({ user }) {
   );
 }
 
-
 export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
   const tabs = [
     { id: "personal", label: "Personal" },
@@ -492,7 +525,6 @@ export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
     { id: "reports", label: "Reports" },
     { id: "performance", label: "Performance" },
   ];
-
 
   return (
     <>
@@ -513,7 +545,6 @@ export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
         </button>
       </div>
 
-
       <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap", background: COLORS.surfaceGlass, padding: 6, borderRadius: 12 }}>
         {tabs.map(tab => (
           <button
@@ -530,7 +561,6 @@ export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
           </button>
         ))}
       </div>
-
 
       <div>
         {profileTab === "personal" && (
@@ -565,7 +595,6 @@ export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
   );
 }
 
-
 function ProfileField({ label, value }) {
   return (
     <div style={{ background: COLORS.surfaceGlass, padding: 14, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
@@ -575,14 +604,12 @@ function ProfileField({ label, value }) {
   );
 }
 
-
 function LogsTable() {
   const mockLogs = [
     { date: "2024-01-15", hours: 8, task: "Dashboard development", status: "Approved" },
     { date: "2024-01-14", hours: 7, task: "API integration", status: "Approved" },
     { date: "2024-01-13", hours: 8, task: "Bug fixes", status: "Pending" },
   ];
-
 
   return (
     <div>
@@ -608,7 +635,6 @@ function LogsTable() {
   );
 }
 
-
 function ReportsTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -628,10 +654,6 @@ function ReportsTab() {
     </div>
   );
 }
-
-
-// Add this to the end of HRComponents.jsx file
-
 
 function PerformanceTab() {
   return (
@@ -654,12 +676,10 @@ function PerformanceTab() {
   );
 }
 
-
 export function AnnouncementModal({ onSave, onClose }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(false);
-
 
   return (
     <>
@@ -690,6 +710,68 @@ export function AnnouncementModal({ onSave, onClose }) {
   );
 }
 
+// ==================== NOTIFICATION COMPONENTS ====================
+export function NotificationModal({ notifications, onClose, onClear, onMarkAsRead }) {
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
+          Notifications
+        </h2>
+        <button onClick={onClear} style={{ ...smallButtonStyle, background: COLORS.red }}>
+          <Trash2 size={16} /> Clear All
+        </button>
+      </div>
+
+      {notifications.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <p style={{ color: COLORS.textMuted }}>No notifications</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 400, overflowY: "auto" }}>
+          {notifications.map(notification => (
+            <div
+              key={notification.id}
+              onClick={() => onMarkAsRead(notification.id)}
+              style={{
+                padding: 16,
+                borderRadius: 12,
+                background: notification.read ? COLORS.surfaceGlass : `${COLORS.jungleTeal}15`,
+                border: `1px solid ${notification.read ? COLORS.borderGlass : COLORS.jungleTeal}`,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14, marginBottom: 4 }}>
+                    {notification.title}
+                  </div>
+                  <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 6 }}>
+                    {notification.message}
+                  </div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>{notification.time}</div>
+                </div>
+                {!notification.read && (
+                  <div style={{
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: COLORS.jungleTeal, flexShrink: 0,
+                  }} />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 20 }}>
+        <button onClick={onClose} style={secondaryButtonStyle}>
+          Close
+        </button>
+      </div>
+    </>
+  );
+}
 
 // ==================== REPORT COMPONENTS ====================
 export function DailyLogsReport() {
@@ -698,7 +780,6 @@ export function DailyLogsReport() {
     { date: "2024-01-15", intern: "Jane Smith", hours: 7, task: "API testing", status: "Pending" },
     { date: "2024-01-14", intern: "John Doe", hours: 8, task: "Bug fixes", status: "Approved" },
   ];
-
 
   return (
     <div>
@@ -725,7 +806,6 @@ export function DailyLogsReport() {
   );
 }
 
-
 export function SummaryReport() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
@@ -737,7 +817,6 @@ export function SummaryReport() {
   );
 }
 
-
 function SummaryCard({ title, value, subtitle, color }) {
   return (
     <div style={{ background: COLORS.surfaceGlass, padding: 20, borderRadius: 14, border: `1px solid ${COLORS.borderGlass}` }}>
@@ -748,14 +827,12 @@ function SummaryCard({ title, value, subtitle, color }) {
   );
 }
 
-
 export function TNAReport() {
   const tnaData = [
     { project: "Dashboard Redesign", submissions: 15, approved: 12, pending: 3 },
     { project: "API Development", submissions: 8, approved: 6, pending: 2 },
     { project: "Mobile App", submissions: 20, approved: 18, pending: 2 },
   ];
-
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -781,14 +858,12 @@ export function TNAReport() {
   );
 }
 
-
 export function AttendanceReport() {
   const attendanceData = [
     { intern: "John Doe", present: 20, absent: 2, percentage: 91 },
     { intern: "Jane Smith", present: 21, absent: 1, percentage: 95 },
     { intern: "Mike Johnson", present: 18, absent: 4, percentage: 82 },
   ];
-
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -816,20 +891,22 @@ export function AttendanceReport() {
   );
 }
 
-
 export function PMPerformanceReport() {
   const pmData = [
-    { name: "Sarah Wilson", pmCode: "PM001", interns: 8, avgRating: 4.5, tasksCompleted: 45 },
-    { name: "Tom Brown", pmCode: "PM002", interns: 6, avgRating: 4.2, tasksCompleted: 32 },
-    { name: "Lisa Chen", pmCode: "PM003", interns: 10, avgRating: 4.8, tasksCompleted: 58 },
+    { name: "Test Project Manager", pmCode: "PM001", interns: 4, tasksCompleted: 45 },
+    { name: "Khushi", pmCode: "PM002", interns: 0, tasksCompleted: 0 },
   ];
-
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {pmData.map((pm, idx) => (
         <div key={idx} style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${COLORS.purple}, ${COLORS.jungleTeal})`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "white", fontSize: 18 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: "50%",
+            background: `linear-gradient(135deg, ${COLORS.purple}, ${COLORS.jungleTeal})`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 700, color: "white", fontSize: 18
+          }}>
             {pm.name.charAt(0)}
           </div>
           <div style={{ flex: 1 }}>
@@ -840,10 +917,6 @@ export function PMPerformanceReport() {
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.cyanHighlight }}>{pm.interns}</div>
               <div style={{ fontSize: 11, color: COLORS.textMuted }}>Interns</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.emeraldGlow }}>{pm.avgRating}</div>
-              <div style={{ fontSize: 11, color: COLORS.textMuted }}>Rating</div>
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.purple }}>{pm.tasksCompleted}</div>

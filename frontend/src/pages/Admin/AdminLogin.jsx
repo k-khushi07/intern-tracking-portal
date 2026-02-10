@@ -1,4 +1,4 @@
-//AdminLogin.jsx
+// frontend/src/pages/Admin/AdminLogin.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Mail } from 'lucide-react';

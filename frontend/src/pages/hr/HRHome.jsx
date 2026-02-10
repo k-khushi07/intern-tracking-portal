@@ -1,94 +1,237 @@
+// HRHome.jsx - FIXED with PM Dashboard colors
 import React, { useState, useEffect } from "react";
-import { Users, UserCheck, UserX, Clock, MessageCircle, Award, Search, Eye, EyeOff, Check, X, Key, Mail, Phone } from "lucide-react";
-import ChatSystem from "../../components/ChatSystem";
+import { Menu, Bell, LogOut, Sparkles, X } from "lucide-react";
+import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
+import {
+  DashboardSection,
+  ApprovalSection,
+  NewRegistrationsSection,
+  PMSection,
+  ReportsSection,
+  ActiveInterns
+} from "./HRSections";
+import {
+  Modal,
+  RejectModal,
+  ProfileModal,
+  AnnouncementModal,
+} from "./HRComponents";
 
-const COLORS = {
-  inkBlack: "#071e22",
-  deepOcean: "#1d7874",
-  jungleTeal: "#679289",
-  peachGlow: "#ffe5d9",
-  racingRed: "#d90429",
-};
+import MessagesPage from './MessagesPage';
 
 export default function HRHome() {
-  const [activeTab, setActiveTab] = useState("overview");
+  // State Management
+  const [activeSection, setActiveSection] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentHR, setCurrentHR] = useState(null);
   const [users, setUsers] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [selectedIntern, setSelectedIntern] = useState(null);
-  const [pmCodeInput, setPmCodeInput] = useState("");
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
 
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Modal States
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+ 
+  // Filter States
+  const [rejectReason, setRejectReason] = useState("");
+  const [profileTab, setProfileTab] = useState("personal");
+  const [reportsTab, setReportsTab] = useState("review");
+
+  // Responsive Handler
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+      if (window.innerWidth < 1024) setSidebarOpen(false);
+    };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Close notifications when clicking outside
   useEffect(() => {
-    loadCurrentHR();
-    loadUsers();
-  }, []);
+    const handleClickOutside = (event) => {
+      if (
+        showNotifications &&
+        !event.target.closest('[data-notification-dropdown]')
+      ) {
+        setShowNotifications(false);
+      }
+    };
 
+    document.addEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNotifications]);
+
+  // Data Loading Functions
   const loadCurrentHR = () => {
     try {
       const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
       if (user.role === "hr") {
         setCurrentHR(user);
       }
-    } catch (error) {
-      console.error("Error loading HR:", error);
+    } catch (e) {
+      console.error("Error loading HR:", e);
     }
   };
 
   const loadUsers = () => {
     try {
       const storedUsers = JSON.parse(localStorage.getItem("users") || "[]");
-      setUsers(storedUsers);
+     
+      // Add sample data if empty
+      if (storedUsers.length === 0) {
+        const sampleUsers = [
+          // New Registrations (no status)
+          { email: "sarah@intern.com", fullName: "Sarah Johnson", role: "intern", degree: "Data Science", registeredAt: new Date().toISOString() },
+          { email: "mike@intern.com", fullName: "Mike Chen", role: "intern", degree: "Software Engineering", registeredAt: new Date().toISOString() },
+         
+          // Pending Approval
+          {
+            email: "john.doe@example.com",
+            fullName: "John Doe",
+            role: "intern",
+            degree: "Computer Science",
+            status: INTERN_STATUS.PENDING,
+            registeredAt: new Date().toISOString(),
+            movedToApprovalAt: new Date().toISOString()
+          },
+          {
+            email: "jane.smith@example.com",
+            fullName: "Jane Smith",
+            role: "intern",
+            degree: "Data Science",
+            status: INTERN_STATUS.PENDING,
+            registeredAt: new Date().toISOString(),
+            movedToApprovalAt: new Date().toISOString()
+          },
+
+          // Active Interns
+          {
+            email: "alex@intern.com",
+            fullName: "Alex Kumar",
+            role: "intern",
+            degree: "Computer Science",
+            status: INTERN_STATUS.ACTIVE,
+            internId: "INT001",
+            password: "Test123@",
+            pmCode: "PM001",
+            approvedAt: new Date().toISOString(),
+            approvedBy: "hr@company.com",
+            lastLogTime: "2 hours ago"
+          },
+
+          // Project Managers
+          { email: "pm1@company.com", fullName: "Test Project Manager", role: "pm", pmCode: "PM001", phone: "9876543210", location: "Mumbai" },
+          { email: "pm2@company.com", fullName: "Khushi", role: "pm", pmCode: "PM002", phone: "8884445175", location: "Bangalore" },
+        ];
+        localStorage.setItem("users", JSON.stringify(sampleUsers));
+        setUsers(sampleUsers);
+      } else {
+        setUsers(storedUsers);
+      }
     } catch {
       setUsers([]);
     }
   };
 
+  const loadAnnouncements = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("announcements") || "[]");
+      setAnnouncements(stored.length ? stored : [
+        { id: 1, title: "Welcome to Q4", content: "New intern orientation begins next week.", pinned: true, date: new Date().toISOString() },
+        { id: 2, title: "Policy Update", content: "Updated remote work guidelines are now in effect.", pinned: false, date: new Date().toISOString() },
+      ]);
+    } catch {
+      setAnnouncements([]);
+    }
+  };
+
+  const loadNotifications = () => {
+    const sampleNotifications = [
+      { id: 1, title: "New Intern Registration", message: "Sarah Johnson has registered", time: "5 min ago", read: false, type: "info" },
+      { id: 2, title: "Profile Completed", message: "Mike Chen completed profile setup", time: "1 hour ago", read: false, type: "success" },
+      { id: 3, title: "Daily Log Submitted", message: "Alex Kumar submitted daily log", time: "2 hours ago", read: true, type: "info" },
+      { id: 4, title: "Approval Pending", message: "John Doe awaiting final approval", time: "3 hours ago", read: false, type: "warning" },
+      { id: 5, title: "Report Submitted", message: "Jane Smith submitted weekly report", time: "5 hours ago", read: true, type: "info" },
+    ];
+    setNotifications(sampleNotifications);
+  };
+
+  // Data Loading
+  useEffect(() => {
+    const initializeData = async () => {
+      loadCurrentHR();
+      loadUsers();
+      loadAnnouncements();
+      loadNotifications();
+    };
+    initializeData();
+  }, []);
+
+  // Statistics
   const getStats = () => {
-    const pendingInterns = users.filter((u) => u.role === "intern" && !u.status).length;
-    const activeInterns = users.filter((u) => u.role === "intern" && u.status === "active").length;
-    const totalInterns = users.filter((u) => u.role === "intern").length;
-    const pms = users.filter((u) => u.role === "pm").length;
-    return { pendingInterns, activeInterns, totalInterns, pms };
+    const interns = users.filter(u => u.role === "intern");
+    return {
+      pending: interns.filter(u => u.status === INTERN_STATUS.PENDING).length,
+      active: interns.filter(u => u.status === INTERN_STATUS.ACTIVE).length,
+      total: interns.length,
+      newRegistrations: interns.filter(u => !u.status && isRecent(u.registeredAt)).length,
+      pms: users.filter(u => u.role === "pm").length,
+      unreadMessages: notifications.filter(n => !n.read).length,
+    };
+  };
+
+  const isRecent = (date) => {
+    if (!date) return true;
+    const now = new Date().getTime();
+    const diff = now - new Date(date).getTime();
+    return diff < 7 * 24 * 60 * 60 * 1000;
   };
 
   const stats = getStats();
 
-  const handleApproveClick = (intern) => {
-    setSelectedIntern(intern);
-    setPmCodeInput("");
-    setShowApprovalModal(true);
+  // Handlers
+  const handleApprove = (updatedIntern) => {
+    try {
+      const usersFromStorage = JSON.parse(localStorage.getItem("users") || "[]");
+
+      const updatedUsers = usersFromStorage.map(u =>
+        u.email === updatedIntern.email ? updatedIntern : u
+      );
+
+      localStorage.setItem("users", JSON.stringify(updatedUsers));
+      setUsers(updatedUsers);
+
+      alert(`✅ ${updatedIntern.fullName} has been approved and activated!`);
+
+      console.log("✅ Intern approved:", updatedIntern.email);
+    } catch (err) {
+      console.error("❌ Approval error:", err);
+      alert("❌ Something went wrong during approval. Please try again.");
+    }
   };
 
-  const handleApproveIntern = () => {
-    if (!pmCodeInput) {
-      alert("Please enter a PM Code");
-      return;
-    }
-
-    const pmExists = users.find((u) => u.role === "pm" && u.pmCode === pmCodeInput);
-    if (!pmExists) {
-      alert("Invalid PM Code. Please verify the PM Code exists.");
-      return;
-    }
-
-    const updatedUsers = users.map((u) => {
-      if (u.email === selectedIntern.email && u.role === "intern") {
+  const handleMoveToApproval = (intern) => {
+    const updatedUsers = users.map(u => {
+      if (u.email === intern.email && u.role === "intern") {
         return {
           ...u,
-          pmCode: pmCodeInput,
-          status: "pending_profile_completion",
-          approvedBy: currentHR?.email,
-          approvedAt: new Date().toISOString(),
+          status: INTERN_STATUS.PENDING,
+          movedToApprovalBy: currentHR?.email || "HR",
+          movedToApprovalAt: new Date().toISOString(),
+          meetingDate: intern.meetingDate,
+          meetingTime: intern.meetingTime,
+          meetingLink: intern.meetingLink,
+          meetingScheduledAt: intern.meetingScheduledAt,
         };
       }
       return u;
@@ -96,631 +239,662 @@ export default function HRHome() {
 
     localStorage.setItem("users", JSON.stringify(updatedUsers));
     setUsers(updatedUsers);
-    setShowApprovalModal(false);
-    alert(`Intern ${selectedIntern.fullName} approved with PM Code: ${pmCodeInput}`);
+
+    alert(`✅ ${intern.fullName} moved to Approval Center!`);
   };
 
-  const handleRejectIntern = (intern) => {
-    if (!confirm(`Are you sure you want to reject ${intern.fullName}?`)) return;
+  const handleRejectIntern = () => {
+    const updatedUsers = users.filter(
+      u => !(u.email === selectedUser.email && u.role === "intern")
+    );
 
-    const updatedUsers = users.filter((u) => !(u.email === intern.email && u.role === "intern"));
     localStorage.setItem("users", JSON.stringify(updatedUsers));
     setUsers(updatedUsers);
+    setShowRejectModal(false);
+
+    alert(`⚠️ ${selectedUser.fullName} has been rejected and removed.`);
   };
 
-  const handleToggleDisable = (email, role) => {
-    const updatedUsers = users.map((u) => {
-      if (u.email === email && u.role === role) {
-        return { ...u, disabled: !u.disabled };
-      }
-      return u;
-    });
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-    setUsers(updatedUsers);
+  const handleRejectClick = (intern) => {
+    setSelectedUser(intern);
+    setRejectReason("");
+    setShowRejectModal(true);
   };
 
-  const handleViewProfile = (intern) => {
-    setSelectedIntern(intern);
-    setShowProfileModal(true);
+  const handleChat = (user) => {
+    setSelectedUser(user);
+    setActiveSection("messages");
+  };
+
+  const handlePMChat = (pm) => {
+    handleChat(pm);
+  };
+
+  const handleViewPMInterns = (pm) => {
+    alert(`Viewing interns under ${pm.fullName}`);
+    console.log("PM clicked:", pm);
+  };
+
+  const handleNavigateToMessages = (user) => {
+    setSelectedUser(user);
+    setActiveSection("messages");
+  };
+
+  const handleCreateAnnouncement = (announcement) => {
+    const newAnnouncement = {
+      ...announcement,
+      id: Date.now(),
+      date: new Date().toISOString(),
+    };
+
+    const updated = [newAnnouncement, ...announcements];
+    localStorage.setItem("announcements", JSON.stringify(updated));
+    setAnnouncements(updated);
+    setShowAnnouncementModal(false);
+
+    alert("✅ Announcement created successfully!");
+  };
+
+  const handleDeleteAnnouncement = (id) => {
+    const announcement = announcements.find(a => a.id === id);
+    const updated = announcements.filter(a => a.id !== id);
+
+    localStorage.setItem("announcements", JSON.stringify(updated));
+    setAnnouncements(updated);
+
+    alert(`ℹ️ "${announcement?.title}" has been deleted.`);
+  };
+
+  const handlePinAnnouncement = (id) => {
+    const updated = announcements.map(a =>
+      a.id === id ? { ...a, pinned: !a.pinned } : a
+    );
+
+    const announcement = updated.find(a => a.id === id);
+    localStorage.setItem("announcements", JSON.stringify(updated));
+    setAnnouncements(updated);
+
+    if (announcement.pinned) {
+      alert(`ℹ️ "${announcement.title}" has been pinned.`);
+    } else {
+      alert(`ℹ️ "${announcement.title}" has been unpinned.`);
+    }
+  };
+
+  const markAllAsRead = () => {
+    const updatedNotifications = notifications.map(n => ({ ...n, read: true }));
+    setNotifications(updatedNotifications);
+    alert("✅ All notifications marked as read");
+  };
+
+  const markNotificationAsRead = (id) => {
+    const updatedNotifications = notifications.map(n =>
+      n.id === id ? { ...n, read: true } : n
+    );
+    setNotifications(updatedNotifications);
   };
 
   const filteredInterns = (status) => {
     return users
-      .filter((u) => {
+      .filter(u => {
         if (u.role !== "intern") return false;
-        if (status === "pending") return !u.status;
-        if (status === "active") return u.status === "active";
+
+        if (status === "new") return !u.status || u.status === "";
+        if (status === "pending") return u.status === INTERN_STATUS.PENDING;
+        if (status === "active") return u.status === INTERN_STATUS.ACTIVE && u.internId;
+
         return true;
       })
-      .filter((u) =>
-        u.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      .filter(u => {
+        const matchSearch =
+          u.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          u.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        return matchSearch;
+      });
   };
 
-  const allPMs = users.filter((u) => u.role === "pm");
+  const allPMs = [
+    {
+      id: "1",
+      name: "Demo PM",
+      email: "demo@pm.com",
+      phone: "9999999999",
+      pmCode: "PM001",
+      status: "active",
+      role: "pm"
+    }
+  ];
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  };
+
+  const iconButtonStyle = {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    border: `1px solid ${COLORS.borderGlass}`,
+    background: "transparent",
+    color: COLORS.textSecondary,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, ${COLORS.deepOcean} 50%, ${COLORS.jungleTeal} 100%)`,
-        color: "white",
-        padding: isMobile ? 16 : 32,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div
-          style={{
-            position: "absolute",
-            top: "20%",
-            right: "-10%",
-            width: 500,
-            height: 500,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-            opacity: 0.25,
-            filter: "blur(100px)",
-            animation: "pulse 4s ease-in-out infinite",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: "15%",
-            left: "-5%",
-            width: 400,
-            height: 400,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.peachGlow})`,
-            opacity: 0.2,
-            filter: "blur(100px)",
-            animation: "pulse 5s ease-in-out infinite",
-          }}
-        />
-      </div>
+    <div style={{ display: "flex", minHeight: "100vh", background: GRADIENTS.primary, fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <style>{keyframes}</style>
 
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.25; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.08); }
-        }
-      `}</style>
-
-      <div style={{ position: "relative", zIndex: 10, maxWidth: 1400, margin: "0 auto" }}>
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <UserCheck size={isMobile ? 32 : 40} color={COLORS.peachGlow} />
-            <h1 style={{ fontSize: isMobile ? 28 : 42, margin: 0, fontWeight: 800 }}>HR Dashboard</h1>
-          </div>
-          <p style={{ color: "rgba(255,255,255,0.75)", fontSize: isMobile ? 14 : 16 }}>
-            Welcome back, {currentHR?.fullName || "HR"}! Manage intern registrations and approvals.
-          </p>
-        </div>
-
-        {activeTab === "overview" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: 16,
-              marginBottom: 32,
-            }}
-          >
-            <StatCard icon={<Clock size={28} />} label="Pending Approvals" value={stats.pendingInterns} color="#f59e0b" />
-            <StatCard icon={<UserCheck size={28} />} label="Active Interns" value={stats.activeInterns} color="#4ade80" />
-            <StatCard icon={<Users size={28} />} label="Total Interns" value={stats.totalInterns} color={COLORS.peachGlow} />
-            <StatCard icon={<Award size={28} />} label="Project Managers" value={stats.pms} color="#a78bfa" />
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-            background: "rgba(255,255,255,0.04)",
-            padding: 8,
-            borderRadius: 16,
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          {[
-            { id: "overview", label: "Overview" },
-            { id: "pending", label: `Pending (${stats.pendingInterns})` },
-            { id: "active", label: "Active Interns" },
-            { id: "pms", label: "Project Managers" },
-            { id: "chat", label: "Messages" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                flex: isMobile ? "1 1 45%" : "0 0 auto",
-                padding: "12px 20px",
-                borderRadius: 12,
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 700,
-                background: activeTab === tab.id ? "white" : "transparent",
-                color: activeTab === tab.id ? COLORS.inkBlack : "white",
-                transition: "all 0.2s",
-                fontSize: isMobile ? 13 : 15,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            backdropFilter: "blur(20px)",
-            borderRadius: 24,
-            padding: isMobile ? 16 : 32,
-            border: "1px solid rgba(255,255,255,0.12)",
-            minHeight: 400,
-          }}
-        >
-          {activeTab === "overview" && (
-            <OverviewContent
-              pendingInterns={filteredInterns("pending")}
-              activeInterns={filteredInterns("active")}
-              onApprove={handleApproveClick}
-              onReject={handleRejectIntern}
-              onViewProfile={handleViewProfile}
-              isMobile={isMobile}
-            />
-          )}
-
-          {activeTab === "pending" && (
-            <PendingInterns
-              interns={filteredInterns("pending")}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              onApprove={handleApproveClick}
-              onReject={handleRejectIntern}
-              isMobile={isMobile}
-            />
-          )}
-
-          {activeTab === "active" && (
-            <ActiveInterns
-              interns={filteredInterns("active")}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              onViewProfile={handleViewProfile}
-              onToggleDisable={handleToggleDisable}
-              isMobile={isMobile}
-            />
-          )}
-
-          {activeTab === "pms" && <PMsList pms={allPMs} isMobile={isMobile} />}
-
-          {activeTab === "chat" && <ChatSystem userRole="hr" currentUser={currentHR} />}
-        </div>
-      </div>
-
-      {showApprovalModal && (
-        <Modal onClose={() => setShowApprovalModal(false)} isMobile={isMobile}>
-          <h2 style={{ marginBottom: 16, fontSize: isMobile ? 20 : 24 }}>Approve Intern</h2>
-          <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
-              Approving: <strong>{selectedIntern?.fullName}</strong>
-            </p>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>{selectedIntern?.email}</p>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Assign PM Code</label>
-            <div style={{ position: "relative" }}>
-              <Key
-                size={18}
-                style={{
-                  position: "absolute",
-                  left: 14,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "rgba(255,255,255,0.5)",
-                }}
-              />
-              <input
-                placeholder="Enter PM Code (e.g., PM001)"
-                value={pmCodeInput}
-                onChange={(e) => setPmCodeInput(e.target.value)}
-                style={{ ...inputStyle, paddingLeft: 44 }}
-              />
-            </div>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>
-              Make sure the PM Code exists in the system
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={handleApproveIntern} style={primaryButtonStyle}>
-              <Check size={18} /> Approve
-            </button>
-            <button
-              onClick={() => setShowApprovalModal(false)}
-              style={{ ...primaryButtonStyle, background: "transparent", border: "1px solid white" }}
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {showProfileModal && selectedIntern && (
-        <Modal onClose={() => setShowProfileModal(false)} isMobile={isMobile}>
-          <InternProfileView intern={selectedIntern} isMobile={isMobile} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value, color }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.08)", backdropFilter: "blur(10px)", padding: 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 16 }}>
-      <div style={{ color }}>{icon}</div>
-      <div>
-        <div style={{ fontSize: 32, fontWeight: 800, color }}>{value}</div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{label}</div>
-      </div>
-    </div>
-  );
-}
-
-function OverviewContent({ pendingInterns, activeInterns, onApprove, onReject, onViewProfile, isMobile }) {
-  const recentPending = pendingInterns.slice(0, 3);
-  const recentActive = activeInterns.slice(0, 3);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      <div>
-        <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22, display: "flex", alignItems: "center", gap: 8 }}>
-          <Clock size={22} /> Pending Approvals ({pendingInterns.length})
-        </h3>
-        {recentPending.length === 0 ? (
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>No pending registrations.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {recentPending.map((intern, idx) => (
-              <PendingInternCard key={idx} intern={intern} onApprove={onApprove} onReject={onReject} isMobile={isMobile} />
-            ))}
-            {pendingInterns.length > 3 && (
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", fontStyle: "italic" }}>
-                + {pendingInterns.length - 3} more pending...
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22, display: "flex", alignItems: "center", gap: 8 }}>
-          <UserCheck size={22} /> Recently Active Interns
-        </h3>
-        {recentActive.length === 0 ? (
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>No active interns yet.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {recentActive.map((intern, idx) => (
-              <ActiveInternCard key={idx} intern={intern} onViewProfile={onViewProfile} isMobile={isMobile} showActions={false} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PendingInterns({ interns, searchTerm, setSearchTerm, onApprove, onReject, isMobile }) {
-  return (
-    <div>
-      <h3 style={{ marginBottom: 20, fontSize: isMobile ? 18 : 22 }}>Pending Registrations ({interns.length})</h3>
-
-      <div style={{ position: "relative", marginBottom: 20 }}>
-        <Search size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.5)" }} />
-        <input placeholder="Search by name or email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ ...inputStyle, paddingLeft: 44 }} />
-      </div>
-
-      {interns.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <Clock size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 16 }} />
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>
-            {searchTerm ? "No pending interns found." : "No pending registrations at this time."}
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {interns.map((intern, idx) => (
-            <PendingInternCard key={idx} intern={intern} onApprove={onApprove} onReject={onReject} isMobile={isMobile} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PendingInternCard({ intern, onApprove, onReject, isMobile }) {
-  return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        padding: isMobile ? 14 : 18,
-        borderRadius: 12,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: 12,
-        borderLeft: `4px solid #f59e0b`,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16 }}>{intern.fullName}</div>
-        <div style={{ fontSize: isMobile ? 12 : 14, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>{intern.email}</div>
-        {intern.phone && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{intern.phone}</div>}
-        {intern.degree && <div style={{ fontSize: 12, color: COLORS.peachGlow, marginTop: 4 }}>{intern.degree}</div>}
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => onApprove(intern)} style={{ ...actionButtonStyle, background: "#4ade80" }}>
-          <Check size={16} /> Approve
-        </button>
-        <button onClick={() => onReject(intern)} style={{ ...actionButtonStyle, background: COLORS.racingRed }}>
-          <X size={16} /> Reject
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ActiveInterns({ interns, searchTerm, setSearchTerm, onViewProfile, onToggleDisable, isMobile }) {
-  return (
-    <div>
-      <h3 style={{ marginBottom: 20, fontSize: isMobile ? 18 : 22 }}>Active Interns ({interns.length})</h3>
-
-      <div style={{ position: "relative", marginBottom: 20 }}>
-        <Search size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.5)" }} />
-        <input placeholder="Search interns..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ ...inputStyle, paddingLeft: 44 }} />
-      </div>
-
-      {interns.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <Users size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 16 }} />
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>
-            {searchTerm ? "No active interns found." : "No active interns yet."}
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {interns.map((intern, idx) => (
-            <ActiveInternCard key={idx} intern={intern} onViewProfile={onViewProfile} onToggleDisable={onToggleDisable} isMobile={isMobile} showActions={true} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ActiveInternCard({ intern, onViewProfile, onToggleDisable, isMobile, showActions }) {
-  return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        padding: isMobile ? 14 : 18,
-        borderRadius: 12,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: 12,
-        opacity: intern.disabled ? 0.5 : 1,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16 }}>
-          {intern.fullName}
-          {intern.disabled && <span style={{ color: COLORS.racingRed, fontSize: 12, marginLeft: 8 }}>(DISABLED)</span>}
-        </div>
-        <div style={{ fontSize: isMobile ? 12 : 14, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>{intern.email}</div>
-        {intern.pmCode && <div style={{ fontSize: 12, color: COLORS.peachGlow, marginTop: 4 }}>PM Code: {intern.pmCode}</div>}
-      </div>
-      {showActions && (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => onViewProfile(intern)} style={{ ...actionButtonStyle, background: COLORS.jungleTeal }}>
-            <Eye size={16} /> View
-          </button>
-          <button onClick={() => onToggleDisable(intern.email, intern.role)} style={{ ...actionButtonStyle, background: intern.disabled ? "#4ade80" : COLORS.racingRed }}>
-            {intern.disabled ? <Eye size={16} /> : <EyeOff size={16} />}
-            {intern.disabled ? "Enable" : "Disable"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PMsList({ pms, isMobile }) {
-  return (
-    <div>
-      <h3 style={{ marginBottom: 20, fontSize: isMobile ? 18 : 22 }}>Project Managers ({pms.length})</h3>
-
-      {pms.length === 0 ? (
-        <p style={{ color: "rgba(255,255,255,0.6)" }}>No project managers in the system.</p>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {pms.map((pm, idx) => (
-            <PMCard key={idx} pm={pm} isMobile={isMobile} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PMCard({ pm, isMobile }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", padding: 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, #a78bfa, ${COLORS.jungleTeal})`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 18,
-          }}
-        >
-          {pm.fullName?.charAt(0) || "P"}
-        </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{pm.fullName}</div>
-          <div style={{ fontSize: 12, color: COLORS.peachGlow, fontWeight: 600 }}>PM Code: {pm.pmCode}</div>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.7)" }}>
-          <Mail size={14} />
-          {pm.email}
-        </div>
-        {pm.phone && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.7)" }}>
-            <Phone size={14} />
-            {pm.phone}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InternProfileView({ intern, isMobile }) {
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-        <div
-          style={{
-            width: 80,
-            height: 80,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 32,
-          }}
-        >
-          {intern.fullName?.charAt(0) || "I"}
-        </div>
-        <div>
-          <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 26 }}>{intern.fullName}</h2>
-          <p style={{ color: "rgba(255,255,255,0.7)", margin: "4px 0 0 0" }}>{intern.degree || "Intern"}</p>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <ProfileField label="Email" value={intern.email} />
-        <ProfileField label="Phone" value={intern.phone || "Not provided"} />
-        <ProfileField label="Date of Birth" value={intern.dob || "Not provided"} />
-        <ProfileField label="Degree" value={intern.degree || "Not provided"} />
-        <ProfileField label="PM Code" value={intern.pmCode || "Not assigned"} />
-        <ProfileField label="Status" value={intern.status === "active" ? "Active" : "Pending Profile Completion"} />
-        {intern.approvedBy && <ProfileField label="Approved By" value={intern.approvedBy} />}
-      </div>
-    </div>
-  );
-}
-
-function ProfileField({ label, value }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", padding: 16, borderRadius: 12 }}>
-      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontWeight: 600, fontSize: 14 }}>{value}</div>
-    </div>
-  );
-}
-
-function Modal({ children, onClose, isMobile }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.7)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: 20,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
+      {/* ✅ FIXED SIDEBAR - EXACT PM DASHBOARD MATCH */}
+      <aside
         style={{
-          background: `linear-gradient(135deg, ${COLORS.inkBlack}, ${COLORS.deepOcean})`,
-          borderRadius: 20,
-          padding: isMobile ? 24 : 32,
-          maxWidth: 600,
-          width: "100%",
-          border: "1px solid rgba(255,255,255,0.12)",
-          color: "white",
-          maxHeight: "90vh",
-          overflowY: "auto",
+          width: sidebarOpen ? 280 : 0,
+          minHeight: "100vh",
+          background: `linear-gradient(180deg, ${COLORS.bgSecondary} 0%, ${COLORS.bgPrimary} 100%)`,
+          backdropFilter: "blur(20px)",
+          borderRight: `1px solid ${COLORS.borderGlass}`,
+          transition: "width 0.3s ease",
+          overflow: "hidden",
+          position: "fixed",
+          left: 0,
+          top: 0,
+          zIndex: isMobile ? 1000 : 100,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        {children}
-      </div>
+        <div style={{ 
+          display: "flex", 
+          flexDirection: "column", 
+          height: "100%", 
+          overflowY: "auto",
+          overflowX: "hidden",
+        }}>
+          {/* Logo Section */}
+          <div style={{ padding: 24, borderBottom: `1px solid ${COLORS.borderGlass}` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, background: GRADIENTS.accent,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Sparkles size={20} color="white" />
+                </div>
+                <span style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary }}>InternHub</span>
+              </div>
+              {isMobile && (
+                <button onClick={() => setSidebarOpen(false)} style={iconButtonStyle}>
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* User Card */}
+          <div style={{ padding: 20 }}>
+            <div style={{
+              background: COLORS.surfaceGlass, borderRadius: 16, padding: 16,
+              border: `1px solid ${COLORS.borderGlass}`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18, fontWeight: 700, color: "white",
+                }}>
+                  {currentHR?.fullName?.charAt(0) || "H"}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
+                    {currentHR?.fullName || "HR Manager"}
+                  </div>
+                  <div style={{ fontSize: 12, color: COLORS.textMuted }}>HR Manager</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <nav style={{ flex: 1, padding: "0 12px", overflowY: "auto", overflowX: "hidden" }}>
+            {navItems(stats).map((item, idx) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveSection(item.id)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "14px 16px",
+                  marginBottom: 4,
+                  borderRadius: 12,
+                  border: "none",
+                  cursor: "pointer",
+                  background: activeSection === item.id ? GRADIENTS.accent : "transparent",
+                  color: activeSection === item.id ? "white" : COLORS.textSecondary,
+                  fontWeight: activeSection === item.id ? 600 : 400,
+                  fontSize: 14,
+                  transition: "all 0.2s ease",
+                  animation: `slideIn 0.4s ease ${idx * 0.05}s both`,
+                }}
+              >
+                <item.icon size={20} />
+                <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>
+                {item.badge > 0 && (
+                  <span style={{
+                    background: activeSection === item.id ? "rgba(255,255,255,0.2)" : COLORS.orange,
+                    color: "white",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 99,
+                  }}>
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* Sidebar Footer */}
+          <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
+            <button
+              onClick={() => {
+                localStorage.removeItem("currentUser");
+                window.location.href = "/login";
+              }}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: `1px solid ${COLORS.borderGlass}`,
+                background: "transparent",
+                color: COLORS.textSecondary,
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              <LogOut size={18} />
+              Logout
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ✅ FIXED MAIN CONTENT AREA */}
+      <main style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+        marginLeft: sidebarOpen && !isMobile ? 280 : 0,
+        transition: "margin-left 0.3s ease",
+        position: "relative",
+        height: "100vh",
+        overflow: "hidden",
+      }}>
+
+        {/* ✅ FIXED TOP BAR - EXACT PM DASHBOARD MATCH */}
+        <header style={{
+          height: 72,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 24px",
+          background: COLORS.surfaceGlass,
+          backdropFilter: "blur(20px)",
+          borderBottom: `1px solid ${COLORS.borderGlass}`,
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {(!sidebarOpen || isMobile) && (
+              <button onClick={() => setSidebarOpen(true)} style={iconButtonStyle}>
+                <Menu size={22} />
+              </button>
+            )}
+            <div>
+              <h1 style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
+                {navItems(stats).find(n => n.id === activeSection)?.label || "Dashboard"}
+              </h1>
+              <p style={{ fontSize: 13, color: COLORS.textMuted, margin: 0 }}>
+                Manage your intern workforce
+              </p>
+            </div>
+          </div>
+
+          {/* Notifications & User Avatar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Notifications Dropdown */}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                style={{
+                  ...iconButtonStyle,
+                  position: "relative",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      background: COLORS.red,
+                      color: "white",
+                      borderRadius: "50%",
+                      width: 20,
+                      height: 20,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: `2px solid ${COLORS.bgPrimary}`,
+                    }}
+                  >
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown Panel */}
+              {showNotifications && (
+                <div
+                  data-notification-dropdown
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 60,
+                    width: 360,
+                    maxHeight: 480,
+                    overflowY: "auto",
+                    borderRadius: 16,
+                    padding: 16,
+                    zIndex: 2000,
+                    background: "rgba(15, 32, 36, 0.95)",
+                    backdropFilter: "blur(16px)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+                    animation: "slideUp 0.3s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <h3
+                      style={{
+                        color: COLORS.textPrimary,
+                        fontSize: 16,
+                        fontWeight: 600,
+                        margin: 0,
+                      }}
+                    >
+                      Notifications
+                    </h3>
+                    <button
+                      onClick={markAllAsRead}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: COLORS.jungleTeal,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Mark all read
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: 20 }}>
+                        <p style={{ color: COLORS.textMuted, fontSize: 14 }}>No notifications</p>
+                      </div>
+                    ) : (
+                      notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          onClick={() => markNotificationAsRead(notif.id)}
+                          style={{
+                            padding: 12,
+                            background: notif.read
+                              ? "rgba(255,255,255,0.06)"
+                              : "rgba(20, 160, 140, 0.25)",
+                            borderRadius: 12,
+                            cursor: "pointer",
+                            border: `1px solid ${
+                              notif.read ? COLORS.borderGlass : COLORS.jungleTeal
+                            }`,
+                            transition: "all 0.2s",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = notif.read
+                              ? "rgba(255,255,255,0.08)"
+                              : `${COLORS.jungleTeal}25`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = notif.read
+                              ? "rgba(255,255,255,0.06)"
+                              : `${COLORS.jungleTeal}15`;
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "start",
+                              marginBottom: 4,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontWeight: 600,
+                                fontSize: 14,
+                                color: COLORS.textPrimary,
+                              }}
+                            >
+                              {notif.title}
+                            </span>
+                            {!notif.read && (
+                              <div
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: "50%",
+                                  background: COLORS.red,
+                                  flexShrink: 0,
+                                }}
+                              />
+                            )}
+                          </div>
+                          <p
+                            style={{
+                              fontSize: 13,
+                              color: "rgba(255,255,255,0.85)",
+                              margin: 0,
+                              marginBottom: 4,
+                            }}
+                          >
+                            {notif.message}
+                          </p>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "rgba(255,255,255,0.6)",
+                            }}
+                          >
+                            {notif.time}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User Avatar */}
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                background: GRADIENTS.accent,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              {currentHR?.fullName?.charAt(0) || "H"}
+            </div>
+          </div>
+        </header>
+
+        {/* ✅ FIXED PAGE CONTENT - SCROLLABLE */}
+        <div style={{ 
+          flex: 1, 
+          padding: 24, 
+          overflowY: "auto",
+          overflowX: "hidden",
+          background: COLORS.bgPrimary,
+        }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+            {activeSection === "dashboard" && (
+              <DashboardSection
+                stats={stats}
+                currentHR={currentHR}
+                getGreeting={getGreeting}
+                announcements={announcements}
+                onCreateAnnouncement={() => setShowAnnouncementModal(true)}
+                onDeleteAnnouncement={handleDeleteAnnouncement}
+                onPinAnnouncement={handlePinAnnouncement}
+              />
+            )}
+
+            {activeSection === "approval" && (
+              <ApprovalSection
+                interns={filteredInterns("pending")}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                onApprove={handleApprove}
+                onReject={handleRejectClick}
+                currentHR={currentHR}
+              />
+            )}
+
+            {activeSection === "active" && (
+              <ActiveInterns onNavigateToMessages={handleNavigateToMessages} />
+            )}
+
+            {activeSection === "new" && (
+              <NewRegistrationsSection
+                interns={filteredInterns("new")}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                onApprove={handleMoveToApproval}
+                onReject={handleRejectClick}
+              />
+            )}
+
+            {activeSection === 'projectManagers' && (
+              <PMSection
+                pms={allPMs}
+                users={users}
+                onViewInterns={handleViewPMInterns}
+                onChat={handlePMChat}
+              />
+            )}
+
+            {activeSection === "messages" && (
+              <MessagesPage selectedIntern={selectedUser} />
+            )}
+
+            {activeSection === "reports" && (
+              <ReportsSection
+                users={users}
+                reportsTab={reportsTab}
+                setReportsTab={setReportsTab}
+                currentHR={currentHR}
+              />
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Modals */}
+      {showRejectModal && (
+        <Modal onClose={() => setShowRejectModal(false)}>
+          <RejectModal
+            intern={selectedUser}
+            rejectReason={rejectReason}
+            setRejectReason={setRejectReason}
+            onReject={handleRejectIntern}
+            onClose={() => setShowRejectModal(false)}
+          />
+        </Modal>
+      )}
+
+      {showProfileModal && selectedUser && (
+        <Modal onClose={() => setShowProfileModal(false)} wide>
+          <ProfileModal
+            user={selectedUser}
+            profileTab={profileTab}
+            setProfileTab={setProfileTab}
+            allPMs={allPMs}
+            onChat={() => { setShowProfileModal(false); handleChat(selectedUser); }}
+          />
+        </Modal>
+      )}
+
+      {showAnnouncementModal && (
+        <Modal onClose={() => setShowAnnouncementModal(false)}>
+          <AnnouncementModal
+            onSave={handleCreateAnnouncement}
+            onClose={() => setShowAnnouncementModal(false)}
+          />
+        </Modal>
+      )}
+
+      {/* Mobile Overlay */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+            zIndex: 999, backdropFilter: "blur(4px)",
+          }}
+        />
+      )}
     </div>
   );
 }
-
-const inputStyle = {
-  width: "100%",
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.2)",
-  background: "rgba(255,255,255,0.08)",
-  color: "white",
-  outline: "none",
-  fontSize: 14,
-};
-
-const primaryButtonStyle = {
-  padding: "10px 20px",
-borderRadius: 999,
-border: "none",
-background: "white",
-color: COLORS.inkBlack,
-fontWeight: 700,
-cursor: "pointer",
-display: "flex",
-alignItems: "center",
-gap: 8,
-fontSize: 14,
-};
-const actionButtonStyle = {
-padding: "8px 16px",
-borderRadius: 999,
-border: "none",
-color: "white",
-fontWeight: 700,
-cursor: "pointer",
-display: "flex",
-alignItems: "center",
-gap: 6,
-fontSize: 13,
-};
