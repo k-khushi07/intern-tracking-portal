@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-=======
 //frontend/src/pages/intern/ProfilePage.jsx
->>>>>>> 0459e1788ddb5f149b97ab4468a9511b362ae99f
 import React, { useState, useCallback } from "react";
 import {
   User, Mail, Phone, MapPin, GraduationCap, Briefcase,

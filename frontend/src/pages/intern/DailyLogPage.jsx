@@ -92,12 +92,12 @@ const generateWeeklySummary = (week, weekKey) => {
     .map(l => ({ date: l.date, blocker: l.blockers }));
 
   const consistencyScore = Math.min(100, (daysWorked / 5) * 100);
-  const consistencyRating = consistencyScore >= 80 ? "Excellent" :
-    consistencyScore >= 60 ? "Good" :
-      consistencyScore >= 40 ? "Fair" : "Needs Improvement";
-  const productivity = totalHours >= 35 ? "High" :
-    totalHours >= 25 ? "Good" :
-      totalHours >= 15 ? "Moderate" : "Low";
+  const consistencyRating = consistencyScore >= 80 ? "Excellent" : 
+    consistencyScore >= 60 ? "Good" : 
+    consistencyScore >= 40 ? "Fair" : "Needs Improvement";
+  const productivity = totalHours >= 35 ? "High" : 
+    totalHours >= 25 ? "Good" : 
+    totalHours >= 15 ? "Moderate" : "Low";
 
   return {
     weekKey,
@@ -128,13 +128,13 @@ const generateMonthlySummary = (month, monthKey) => {
   const sortedLogs = [...logs].sort((a, b) => new Date(a.date) - new Date(b.date));
   const firstHalf = sortedLogs.slice(0, Math.floor(sortedLogs.length / 2));
   const secondHalf = sortedLogs.slice(Math.floor(sortedLogs.length / 2));
-  const firstHalfAvg = firstHalf.length > 0
-    ? firstHalf.reduce((sum, l) => sum + (l.hoursWorked || 0), 0) / firstHalf.length
+  const firstHalfAvg = firstHalf.length > 0 
+    ? firstHalf.reduce((sum, l) => sum + (l.hoursWorked || 0), 0) / firstHalf.length 
     : 0;
-  const secondHalfAvg = secondHalf.length > 0
-    ? secondHalf.reduce((sum, l) => sum + (l.hoursWorked || 0), 0) / secondHalf.length
+  const secondHalfAvg = secondHalf.length > 0 
+    ? secondHalf.reduce((sum, l) => sum + (l.hoursWorked || 0), 0) / secondHalf.length 
     : 0;
-  const productivityTrend = secondHalfAvg > firstHalfAvg * 1.1 ? "Increasing" :
+  const productivityTrend = secondHalfAvg > firstHalfAvg * 1.1 ? "Increasing" : 
     secondHalfAvg < firstHalfAvg * 0.9 ? "Decreasing" : "Stable";
 
   const allAccomplishments = logs
@@ -150,9 +150,9 @@ const generateMonthlySummary = (month, monthKey) => {
     .map(l => ({ date: l.date, blocker: l.blockers }));
 
   const consistencyScore = Math.min(100, (totalDays / (weeksCount * 5)) * 100);
-  const consistencyRating = consistencyScore >= 80 ? "Excellent" :
-    consistencyScore >= 60 ? "Good" :
-      consistencyScore >= 40 ? "Fair" : "Needs Improvement";
+  const consistencyRating = consistencyScore >= 80 ? "Excellent" : 
+    consistencyScore >= 60 ? "Good" : 
+    consistencyScore >= 40 ? "Fair" : "Needs Improvement";
 
   const recommendations = [];
   if (productivityTrend === "Decreasing") {
@@ -204,26 +204,26 @@ const sampleLogs = [
 
 // ==================== UI COMPONENTS ====================
 const StatMini = ({ icon, label, value, color }) => (
-  <div
-    className="glass"
-    style={{
-      padding: 16,
-      borderRadius: 14,
-      display: "flex",
-      alignItems: "center",
-      gap: 12
+  <div 
+    className="glass" 
+    style={{ 
+      padding: 16, 
+      borderRadius: 14, 
+      display: "flex", 
+      alignItems: "center", 
+      gap: 12 
     }}
   >
-    <div style={{
-      width: 38,
-      height: 38,
-      borderRadius: 10,
-      background: `${color}20`,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      color,
-      flexShrink: 0
+    <div style={{ 
+      width: 38, 
+      height: 38, 
+      borderRadius: 10, 
+      background: `${color}20`, 
+      display: "flex", 
+      alignItems: "center", 
+      justifyContent: "center", 
+      color, 
+      flexShrink: 0 
     }}>
       {icon}
     </div>
@@ -235,30 +235,30 @@ const StatMini = ({ icon, label, value, color }) => (
 );
 
 const FilterChip = ({ active, label, count, onClick }) => (
-  <button
-    onClick={onClick}
-    style={{
-      padding: "8px 16px",
-      borderRadius: 20,
-      border: `1px solid ${active ? COLORS.jungleTeal : "rgba(255,255,255,0.1)"}`,
-      background: active ? `${COLORS.jungleTeal}20` : "rgba(255,255,255,0.05)",
-      color: active ? COLORS.jungleTeal : "rgba(255,255,255,0.6)",
-      cursor: "pointer",
-      fontSize: 13,
-      fontWeight: 500,
-      display: "flex",
-      alignItems: "center",
+  <button 
+    onClick={onClick} 
+    style={{ 
+      padding: "8px 16px", 
+      borderRadius: 20, 
+      border: `1px solid ${active ? COLORS.jungleTeal : "rgba(255,255,255,0.1)"}`, 
+      background: active ? `${COLORS.jungleTeal}20` : "rgba(255,255,255,0.05)", 
+      color: active ? COLORS.jungleTeal : "rgba(255,255,255,0.6)", 
+      cursor: "pointer", 
+      fontSize: 13, 
+      fontWeight: 500, 
+      display: "flex", 
+      alignItems: "center", 
       gap: 8,
       transition: "all 0.2s"
     }}
   >
     {label}
-    <span style={{
-      background: active ? COLORS.jungleTeal : "rgba(255,255,255,0.2)",
-      color: active ? "white" : "rgba(255,255,255,0.8)",
-      padding: "2px 8px",
-      borderRadius: 10,
-      fontSize: 11
+    <span style={{ 
+      background: active ? COLORS.jungleTeal : "rgba(255,255,255,0.2)", 
+      color: active ? "white" : "rgba(255,255,255,0.8)", 
+      padding: "2px 8px", 
+      borderRadius: 10, 
+      fontSize: 11 
     }}>
       {count}
     </span>
@@ -269,41 +269,41 @@ const FilterChip = ({ active, label, count, onClick }) => (
 const SearchFilterBar = ({ searchQuery, setSearchQuery, activeFilter, setActiveFilter, filterCounts }) => (
   <div className="glass" style={{ padding: 20, borderRadius: 16, marginBottom: 20 }}>
     <div style={{ position: "relative", marginBottom: 16 }}>
-      <Search
-        size={18}
-        style={{
-          position: "absolute",
-          left: 14,
-          top: "50%",
-          transform: "translateY(-50%)",
-          color: "rgba(255,255,255,0.4)"
-        }}
+      <Search 
+        size={18} 
+        style={{ 
+          position: "absolute", 
+          left: 14, 
+          top: "50%", 
+          transform: "translateY(-50%)", 
+          color: "rgba(255,255,255,0.4)" 
+        }} 
       />
-      <input
-        type="text"
-        placeholder="Search tasks, learnings, or blockers..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={{ ...inputStyle, paddingLeft: 44, background: "rgba(0,0,0,0.2)" }}
+      <input 
+        type="text" 
+        placeholder="Search tasks, learnings, or blockers..." 
+        value={searchQuery} 
+        onChange={(e) => setSearchQuery(e.target.value)} 
+        style={{ ...inputStyle, paddingLeft: 44, background: "rgba(0,0,0,0.2)" }} 
       />
       {searchQuery && (
-        <button
-          onClick={() => setSearchQuery('')}
-          style={{
-            position: "absolute",
-            right: 14,
-            top: "50%",
-            transform: "translateY(-50%)",
-            background: "rgba(255,255,255,0.1)",
-            border: "none",
-            borderRadius: 6,
-            width: 24,
-            height: 24,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: "rgba(255,255,255,0.6)"
+        <button 
+          onClick={() => setSearchQuery('')} 
+          style={{ 
+            position: "absolute", 
+            right: 14, 
+            top: "50%", 
+            transform: "translateY(-50%)", 
+            background: "rgba(255,255,255,0.1)", 
+            border: "none", 
+            borderRadius: 6, 
+            width: 24, 
+            height: 24, 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            cursor: "pointer", 
+            color: "rgba(255,255,255,0.6)" 
           }}
         >
           ×
@@ -311,32 +311,32 @@ const SearchFilterBar = ({ searchQuery, setSearchQuery, activeFilter, setActiveF
       )}
     </div>
     <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        color: "rgba(255,255,255,0.5)",
-        fontSize: 13
+      <div style={{ 
+        display: "flex", 
+        alignItems: "center", 
+        gap: 6, 
+        color: "rgba(255,255,255,0.5)", 
+        fontSize: 13 
       }}>
         <Filter size={16} />Filters:
       </div>
-      <FilterChip
-        active={activeFilter === "all"}
-        label="All Logs"
-        count={filterCounts.all}
-        onClick={() => setActiveFilter("all")}
+      <FilterChip 
+        active={activeFilter === "all"} 
+        label="All Logs" 
+        count={filterCounts.all} 
+        onClick={() => setActiveFilter("all")} 
       />
-      <FilterChip
-        active={activeFilter === "blockers"}
-        label="With Blockers"
-        count={filterCounts.blockers}
-        onClick={() => setActiveFilter("blockers")}
+      <FilterChip 
+        active={activeFilter === "blockers"} 
+        label="With Blockers" 
+        count={filterCounts.blockers} 
+        onClick={() => setActiveFilter("blockers")} 
       />
-      <FilterChip
-        active={activeFilter === "highHours"}
-        label="High Hours (8+)"
-        count={filterCounts.highHours}
-        onClick={() => setActiveFilter("highHours")}
+      <FilterChip 
+        active={activeFilter === "highHours"} 
+        label="High Hours (8+)" 
+        count={filterCounts.highHours} 
+        onClick={() => setActiveFilter("highHours")} 
       />
     </div>
   </div>
@@ -344,172 +344,172 @@ const SearchFilterBar = ({ searchQuery, setSearchQuery, activeFilter, setActiveF
 
 // ==================== LOG ENTRY FORM ====================
 const LogEntryForm = ({ onSubmit, onCancel, isMobile }) => {
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split("T")[0],
-    tasks: "",
-    learnings: "",
-    blockers: "",
-    hoursWorked: ""
+  const [formData, setFormData] = useState({ 
+    date: new Date().toISOString().split("T")[0], 
+    tasks: "", 
+    learnings: "", 
+    blockers: "", 
+    hoursWorked: "" 
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(formData);
-    setFormData({
-      date: new Date().toISOString().split("T")[0],
-      tasks: "",
-      learnings: "",
-      blockers: "",
-      hoursWorked: ""
-    });
+  const handleSubmit = (e) => { 
+    e.preventDefault(); 
+    onSubmit(formData); 
+    setFormData({ 
+      date: new Date().toISOString().split("T")[0], 
+      tasks: "", 
+      learnings: "", 
+      blockers: "", 
+      hoursWorked: "" 
+    }); 
   };
 
   return (
-    <div
-      className="glass"
-      style={{
-        padding: isMobile ? 24 : 32,
-        borderRadius: 20,
-        marginBottom: 24,
-        animation: "scaleIn 0.3s ease-out"
+    <div 
+      className="glass" 
+      style={{ 
+        padding: isMobile ? 24 : 32, 
+        borderRadius: 20, 
+        marginBottom: 24, 
+        animation: "scaleIn 0.3s ease-out" 
       }}
     >
-      <h3 style={{
-        color: "white",
-        marginBottom: 24,
-        fontSize: 20,
-        fontWeight: 700,
-        display: "flex",
-        alignItems: "center",
-        gap: 10
+      <h3 style={{ 
+        color: "white", 
+        marginBottom: 24, 
+        fontSize: 20, 
+        fontWeight: 700, 
+        display: "flex", 
+        alignItems: "center", 
+        gap: 10 
       }}>
         <Star size={22} color={COLORS.peachGlow} />
         Log Today's Progress
       </h3>
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
-          <label style={{
-            display: "block",
-            color: "rgba(255,255,255,0.9)",
-            marginBottom: 8,
-            fontWeight: 500,
-            fontSize: 14
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
           }}>
             Date <span style={{ color: COLORS.racingRed }}>*</span>
           </label>
-          <input
-            type="date"
-            value={formData.date}
-            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-            style={inputStyle}
-            required
+          <input 
+            type="date" 
+            value={formData.date} 
+            onChange={(e) => setFormData({ ...formData, date: e.target.value })} 
+            style={inputStyle} 
+            required 
           />
         </div>
         <div>
-          <label style={{
-            display: "block",
-            color: "rgba(255,255,255,0.9)",
-            marginBottom: 8,
-            fontWeight: 500,
-            fontSize: 14
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
           }}>
             Tasks completed <span style={{ color: COLORS.racingRed }}>*</span>
           </label>
-          <textarea
-            placeholder="Describe the tasks you worked on today..."
-            value={formData.tasks}
-            onChange={(e) => setFormData({ ...formData, tasks: e.target.value })}
-            style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
-            required
+          <textarea 
+            placeholder="Describe the tasks you worked on today..." 
+            value={formData.tasks} 
+            onChange={(e) => setFormData({ ...formData, tasks: e.target.value })} 
+            style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} 
+            required 
           />
         </div>
         <div>
-          <label style={{
-            display: "block",
-            color: "rgba(255,255,255,0.9)",
-            marginBottom: 8,
-            fontWeight: 500,
-            fontSize: 14
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
           }}>
             Learnings <span style={{ color: COLORS.racingRed }}>*</span>
           </label>
-          <textarea
-            placeholder="Share your learnings..."
-            value={formData.learnings}
-            onChange={(e) => setFormData({ ...formData, learnings: e.target.value })}
-            style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
-            required
+          <textarea 
+            placeholder="Share your learnings..." 
+            value={formData.learnings} 
+            onChange={(e) => setFormData({ ...formData, learnings: e.target.value })} 
+            style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} 
+            required 
           />
         </div>
         <div>
-          <label style={{
-            display: "block",
-            color: "rgba(255,255,255,0.9)",
-            marginBottom: 8,
-            fontWeight: 500,
-            fontSize: 14
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
           }}>
             Blockers
           </label>
-          <textarea
-            placeholder="Any obstacles? (or 'None')"
-            value={formData.blockers}
-            onChange={(e) => setFormData({ ...formData, blockers: e.target.value })}
-            style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
+          <textarea 
+            placeholder="Any obstacles? (or 'None')" 
+            value={formData.blockers} 
+            onChange={(e) => setFormData({ ...formData, blockers: e.target.value })} 
+            style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} 
           />
         </div>
         <div>
-          <label style={{
-            display: "block",
-            color: "rgba(255,255,255,0.9)",
-            marginBottom: 8,
-            fontWeight: 500,
-            fontSize: 14
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
           }}>
             Hours worked <span style={{ color: COLORS.racingRed }}>*</span>
           </label>
-          <input
-            type="number"
-            placeholder="e.g., 8"
-            value={formData.hoursWorked}
-            onChange={(e) => setFormData({ ...formData, hoursWorked: e.target.value })}
-            style={{ ...inputStyle, maxWidth: 120 }}
-            min="0"
-            max="24"
-            required
+          <input 
+            type="number" 
+            placeholder="e.g., 8" 
+            value={formData.hoursWorked} 
+            onChange={(e) => setFormData({ ...formData, hoursWorked: e.target.value })} 
+            style={{ ...inputStyle, maxWidth: 120 }} 
+            min="0" 
+            max="24" 
+            required 
           />
         </div>
         <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-          <button
-            type="submit"
-            style={{
-              padding: "14px 28px",
-              background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              gap: 8
+          <button 
+            type="submit" 
+            style={{ 
+              padding: "14px 28px", 
+              background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
+              color: "white", 
+              border: "none", 
+              borderRadius: 12, 
+              fontWeight: 600, 
+              cursor: "pointer", 
+              fontSize: 14, 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 8 
             }}
           >
             <CheckCircle size={18} />Save Entry
           </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: "14px 28px",
-              background: "rgba(255,255,255,0.08)",
-              color: "white",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontSize: 14
+          <button 
+            type="button" 
+            onClick={onCancel} 
+            style={{ 
+              padding: "14px 28px", 
+              background: "rgba(255,255,255,0.08)", 
+              color: "white", 
+              border: "1px solid rgba(255,255,255,0.1)", 
+              borderRadius: 12, 
+              fontWeight: 600, 
+              cursor: "pointer", 
+              fontSize: 14 
             }}
           >
             Cancel
@@ -527,12 +527,12 @@ const LogSection = ({ title, content, icon, color }) => (
       <div style={{ color }}>{icon}</div>
       <span style={{ fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.6)" }}>{title}</span>
     </div>
-    <p style={{
-      color: "rgba(255,255,255,0.85)",
-      margin: 0,
-      lineHeight: 1.7,
-      fontSize: 14,
-      paddingLeft: 24
+    <p style={{ 
+      color: "rgba(255,255,255,0.85)", 
+      margin: 0, 
+      lineHeight: 1.7, 
+      fontSize: 14, 
+      paddingLeft: 24 
     }}>
       {content}
     </p>
@@ -545,41 +545,41 @@ const LogCard = ({ log, index }) => {
   const hasBlocker = log.blockers && log.blockers.toLowerCase() !== "none";
 
   return (
-    <div
-      className="glass"
-      style={{
-        padding: 24,
-        borderRadius: 18,
-        animation: `fadeInUp 0.3s ease-out ${index * 0.05}s both`
+    <div 
+      className="glass" 
+      style={{ 
+        padding: 24, 
+        borderRadius: 18, 
+        animation: `fadeInUp 0.3s ease-out ${index * 0.05}s both` 
       }}
     >
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 20,
-        flexWrap: "wrap",
-        gap: 12
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "flex-start", 
+        marginBottom: 20, 
+        flexWrap: "wrap", 
+        gap: 12 
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{
-            width: 58,
-            height: 58,
-            borderRadius: 14,
-            background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center"
+          <div style={{ 
+            width: 58, 
+            height: 58, 
+            borderRadius: 14, 
+            background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
+            display: "flex", 
+            flexDirection: "column", 
+            alignItems: "center", 
+            justifyContent: "center" 
           }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: "white", lineHeight: 1 }}>
               {new Date(log.date).getDate()}
             </div>
-            <div style={{
-              fontSize: 10,
-              color: COLORS.peachGlow,
-              textTransform: "uppercase",
-              fontWeight: 600
+            <div style={{ 
+              fontSize: 10, 
+              color: COLORS.peachGlow, 
+              textTransform: "uppercase", 
+              fontWeight: 600 
             }}>
               {new Date(log.date).toLocaleDateString("en-US", { month: "short" })}
             </div>
@@ -591,14 +591,14 @@ const LogCard = ({ log, index }) => {
             </div>
           </div>
         </div>
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          background: `${COLORS.jungleTeal}20`,
-          padding: "8px 14px",
-          borderRadius: 20,
-          border: `1px solid ${COLORS.jungleTeal}30`
+        <div style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          gap: 6, 
+          background: `${COLORS.jungleTeal}20`, 
+          padding: "8px 14px", 
+          borderRadius: 20, 
+          border: `1px solid ${COLORS.jungleTeal}30` 
         }}>
           <Clock size={14} color={COLORS.jungleTeal} />
           <span style={{ fontWeight: 600, color: COLORS.jungleTeal, fontSize: 14 }}>{log.hoursWorked}h</span>
@@ -649,39 +649,39 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
         const hasSummary = !!weeklySummaries[weekKey];
 
         return (
-          <div
-            key={weekKey}
-            className="glass"
-            style={{
-              borderRadius: 18,
-              overflow: "hidden",
-              animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both`
+          <div 
+            key={weekKey} 
+            className="glass" 
+            style={{ 
+              borderRadius: 18, 
+              overflow: "hidden", 
+              animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both` 
             }}
           >
-            <div
-              onClick={() => toggleWeek(weekKey)}
-              style={{
-                padding: "20px 24px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                cursor: "pointer",
-                background: isExpanded ? "rgba(103, 146, 137, 0.1)" : "transparent",
-                flexWrap: "wrap",
+            <div 
+              onClick={() => toggleWeek(weekKey)} 
+              style={{ 
+                padding: "20px 24px", 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center", 
+                cursor: "pointer", 
+                background: isExpanded ? "rgba(103, 146, 137, 0.1)" : "transparent", 
+                flexWrap: "wrap", 
                 gap: 12,
                 transition: "background 0.2s"
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 14,
-                  background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center"
+                <div style={{ 
+                  width: 52, 
+                  height: 52, 
+                  borderRadius: 14, 
+                  background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  alignItems: "center", 
+                  justifyContent: "center" 
                 }}>
                   <div style={{ fontSize: 10, color: COLORS.peachGlow, fontWeight: 600, textTransform: "uppercase" }}>Week</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: "white", lineHeight: 1 }}>{week.weekNumber}</div>
@@ -694,27 +694,27 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openSummaryModal("weekly", weekKey); }}
-                  style={{
-                    padding: "8px 16px",
-                    background: hasSummary ? `${COLORS.jungleTeal}30` : "rgba(255,255,255,0.08)",
-                    border: `1px solid ${hasSummary ? COLORS.jungleTeal : "rgba(255,255,255,0.1)"}`,
-                    borderRadius: 10,
-                    color: hasSummary ? COLORS.jungleTeal : "rgba(255,255,255,0.7)",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6
+                <button 
+                  onClick={(e) => { e.stopPropagation(); openSummaryModal("weekly", weekKey); }} 
+                  style={{ 
+                    padding: "8px 16px", 
+                    background: hasSummary ? `${COLORS.jungleTeal}30` : "rgba(255,255,255,0.08)", 
+                    border: `1px solid ${hasSummary ? COLORS.jungleTeal : "rgba(255,255,255,0.1)"}`, 
+                    borderRadius: 10, 
+                    color: hasSummary ? COLORS.jungleTeal : "rgba(255,255,255,0.7)", 
+                    cursor: "pointer", 
+                    fontSize: 12, 
+                    fontWeight: 600, 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: 6 
                   }}
                 >
                   <BarChart3 size={14} />
                   {hasSummary ? "View Summary" : "Generate Summary"}
                 </button>
-                {isExpanded
-                  ? <ChevronDown size={20} color="rgba(255,255,255,0.5)" />
+                {isExpanded 
+                  ? <ChevronDown size={20} color="rgba(255,255,255,0.5)" /> 
                   : <ChevronRight size={20} color="rgba(255,255,255,0.5)" />
                 }
               </div>
@@ -722,23 +722,23 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
 
             {isExpanded && (
               <div style={{ padding: "0 24px 24px" }}>
-                <div style={{
-                  background: "rgba(0,0,0,0.2)",
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  border: "1px solid rgba(255,255,255,0.05)"
+                <div style={{ 
+                  background: "rgba(0,0,0,0.2)", 
+                  borderRadius: 12, 
+                  overflow: "hidden", 
+                  border: "1px solid rgba(255,255,255,0.05)" 
                 }}>
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px",
-                    gap: 12,
-                    padding: "14px 18px",
-                    background: "rgba(103, 146, 137, 0.1)",
-                    borderBottom: "1px solid rgba(255,255,255,0.05)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: COLORS.jungleTeal,
-                    textTransform: "uppercase"
+                  <div style={{ 
+                    display: "grid", 
+                    gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px", 
+                    gap: 12, 
+                    padding: "14px 18px", 
+                    background: "rgba(103, 146, 137, 0.1)", 
+                    borderBottom: "1px solid rgba(255,255,255,0.05)", 
+                    fontSize: 11, 
+                    fontWeight: 600, 
+                    color: COLORS.jungleTeal, 
+                    textTransform: "uppercase" 
                   }}>
                     {!isMobile && (
                       <>
@@ -752,17 +752,17 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                     {isMobile && <div>Log Details</div>}
                   </div>
                   {week.logs.map((log, idx) => (
-                    <div
-                      key={log.id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px",
-                        gap: 12,
-                        padding: "16px 18px",
-                        borderBottom: idx < week.logs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
-                        fontSize: 13,
-                        color: "rgba(255,255,255,0.8)",
-                        alignItems: "flex-start"
+                    <div 
+                      key={log.id} 
+                      style={{ 
+                        display: "grid", 
+                        gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px", 
+                        gap: 12, 
+                        padding: "16px 18px", 
+                        borderBottom: idx < week.logs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", 
+                        fontSize: 13, 
+                        color: "rgba(255,255,255,0.8)", 
+                        alignItems: "flex-start" 
                       }}
                     >
                       <div style={{ fontWeight: 600, color: "white" }}>
@@ -774,21 +774,21 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                       <div style={{ lineHeight: 1.5 }}>
                         {log.learnings.substring(0, 80)}{log.learnings.length > 80 ? "..." : ""}
                       </div>
-                      <div style={{
-                        color: log.blockers && log.blockers.toLowerCase() !== "none" ? COLORS.racingRed : "rgba(255,255,255,0.4)",
-                        fontSize: 12
+                      <div style={{ 
+                        color: log.blockers && log.blockers.toLowerCase() !== "none" ? COLORS.racingRed : "rgba(255,255,255,0.4)", 
+                        fontSize: 12 
                       }}>
-                        {log.blockers && log.blockers.toLowerCase() !== "none"
-                          ? log.blockers.substring(0, 30) + "..."
+                        {log.blockers && log.blockers.toLowerCase() !== "none" 
+                          ? log.blockers.substring(0, 30) + "..." 
                           : "None"
                         }
                       </div>
-                      <div style={{
-                        fontWeight: 700,
-                        color: COLORS.jungleTeal,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4
+                      <div style={{ 
+                        fontWeight: 700, 
+                        color: COLORS.jungleTeal, 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: 4 
                       }}>
                         <Clock size={14} />{log.hoursWorked}h
                       </div>
@@ -813,50 +813,50 @@ const MonthlyView = ({ logsByMonth, sortedMonthKeys, expandedMonths, toggleMonth
       const hasSummary = !!monthlySummaries[monthKey];
 
       return (
-        <div
-          key={monthKey}
-          className="glass"
-          style={{
-            borderRadius: 18,
-            overflow: "hidden",
-            animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both`
+        <div 
+          key={monthKey} 
+          className="glass" 
+          style={{ 
+            borderRadius: 18, 
+            overflow: "hidden", 
+            animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both` 
           }}
         >
-          <div
-            onClick={() => toggleMonth(monthKey)}
-            style={{
-              padding: "24px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              cursor: "pointer",
-              background: isExpanded ? "rgba(103, 146, 137, 0.1)" : "transparent",
-              flexWrap: "wrap",
+          <div 
+            onClick={() => toggleMonth(monthKey)} 
+            style={{ 
+              padding: "24px", 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center", 
+              cursor: "pointer", 
+              background: isExpanded ? "rgba(103, 146, 137, 0.1)" : "transparent", 
+              flexWrap: "wrap", 
               gap: 12,
               transition: "background 0.2s"
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{
-                width: 58,
-                height: 58,
-                borderRadius: 16,
-                background: `linear-gradient(135deg, ${COLORS.peachGlow}30 0%, ${COLORS.deepOcean} 100%)`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center"
+              <div style={{ 
+                width: 58, 
+                height: 58, 
+                borderRadius: 16, 
+                background: `linear-gradient(135deg, ${COLORS.peachGlow}30 0%, ${COLORS.deepOcean} 100%)`, 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center" 
               }}>
                 <FolderOpen size={26} color={COLORS.peachGlow} />
               </div>
               <div>
                 <div style={{ fontWeight: 700, color: "white", fontSize: 20 }}>{month.monthLabel}</div>
-                <div style={{
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: 13,
-                  marginTop: 4,
-                  display: "flex",
-                  gap: 16,
-                  flexWrap: "wrap"
+                <div style={{ 
+                  color: "rgba(255,255,255,0.5)", 
+                  fontSize: 13, 
+                  marginTop: 4, 
+                  display: "flex", 
+                  gap: 16, 
+                  flexWrap: "wrap" 
                 }}>
                   <span>{month.logs.length} days</span>
                   <span>•</span>
@@ -867,27 +867,27 @@ const MonthlyView = ({ logsByMonth, sortedMonthKeys, expandedMonths, toggleMonth
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); openSummaryModal("monthly", monthKey); }}
-                style={{
-                  padding: "10px 20px",
-                  background: hasSummary ? `${COLORS.peachGlow}20` : "rgba(255,255,255,0.08)",
-                  border: `1px solid ${hasSummary ? COLORS.peachGlow : "rgba(255,255,255,0.1)"}`,
-                  borderRadius: 10,
-                  color: hasSummary ? COLORS.peachGlow : "rgba(255,255,255,0.7)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8
+              <button 
+                onClick={(e) => { e.stopPropagation(); openSummaryModal("monthly", monthKey); }} 
+                style={{ 
+                  padding: "10px 20px", 
+                  background: hasSummary ? `${COLORS.peachGlow}20` : "rgba(255,255,255,0.08)", 
+                  border: `1px solid ${hasSummary ? COLORS.peachGlow : "rgba(255,255,255,0.1)"}`, 
+                  borderRadius: 10, 
+                  color: hasSummary ? COLORS.peachGlow : "rgba(255,255,255,0.7)", 
+                  cursor: "pointer", 
+                  fontSize: 13, 
+                  fontWeight: 600, 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: 8 
                 }}
               >
                 <PieChart size={16} />
                 {hasSummary ? "View Report" : "Generate Report"}
               </button>
-              {isExpanded
-                ? <ChevronDown size={22} color="rgba(255,255,255,0.5)" />
+              {isExpanded 
+                ? <ChevronDown size={22} color="rgba(255,255,255,0.5)" /> 
                 : <ChevronRight size={22} color="rgba(255,255,255,0.5)" />
               }
             </div>
@@ -895,10 +895,10 @@ const MonthlyView = ({ logsByMonth, sortedMonthKeys, expandedMonths, toggleMonth
 
           {isExpanded && (
             <div style={{ padding: "0 24px 24px" }}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)",
-                gap: 12
+              <div style={{ 
+                display: "grid", 
+                gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", 
+                gap: 12 
               }}>
                 {[
                   { label: "Total Hours", value: month.totalHours, color: COLORS.jungleTeal },
@@ -906,14 +906,14 @@ const MonthlyView = ({ logsByMonth, sortedMonthKeys, expandedMonths, toggleMonth
                   { label: "Avg Hours/Day", value: (month.totalHours / month.logs.length).toFixed(1), color: COLORS.success },
                   { label: "Active Weeks", value: month.weekCount, color: COLORS.purple }
                 ].map(stat => (
-                  <div
-                    key={stat.label}
-                    style={{
-                      padding: 16,
-                      background: `${stat.color}10`,
-                      borderRadius: 12,
-                      border: `1px solid ${stat.color}20`,
-                      textAlign: "center"
+                  <div 
+                    key={stat.label} 
+                    style={{ 
+                      padding: 16, 
+                      background: `${stat.color}10`, 
+                      borderRadius: 12, 
+                      border: `1px solid ${stat.color}20`, 
+                      textAlign: "center" 
                     }}
                   >
                     <div style={{ fontSize: 24, fontWeight: 700, color: stat.color }}>{stat.value}</div>
@@ -931,20 +931,20 @@ const MonthlyView = ({ logsByMonth, sortedMonthKeys, expandedMonths, toggleMonth
 
 // ==================== SUMMARY COMPONENTS ====================
 const SummarySection = ({ title, icon, color, children }) => (
-  <div style={{
-    padding: 18,
-    background: "rgba(0,0,0,0.2)",
-    borderRadius: 14,
-    borderLeft: `4px solid ${color}`
+  <div style={{ 
+    padding: 18, 
+    background: "rgba(0,0,0,0.2)", 
+    borderRadius: 14, 
+    borderLeft: `4px solid ${color}` 
   }}>
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      marginBottom: 14,
-      color,
-      fontWeight: 600,
-      fontSize: 14
+    <div style={{ 
+      display: "flex", 
+      alignItems: "center", 
+      gap: 10, 
+      marginBottom: 14, 
+      color, 
+      fontWeight: 600, 
+      fontSize: 14 
     }}>
       {icon}{title}
     </div>
@@ -962,27 +962,27 @@ const ConsistencyBadge = ({ rating, score }) => {
 
   return (
     <div style={{ textAlign: "center" }}>
-      <div style={{
-        width: 80,
-        height: 80,
-        borderRadius: "50%",
-        background: `conic-gradient(${getColor()} ${score}%, rgba(255,255,255,0.1) ${score}%)`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        margin: "0 auto 12px"
+      <div style={{ 
+        width: 80, 
+        height: 80, 
+        borderRadius: "50%", 
+        background: `conic-gradient(${getColor()} ${score}%, rgba(255,255,255,0.1) ${score}%)`, 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center", 
+        margin: "0 auto 12px" 
       }}>
-        <div style={{
-          width: 64,
-          height: 64,
-          borderRadius: "50%",
-          background: COLORS.inkBlack,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: getColor(),
-          fontWeight: 700,
-          fontSize: 18
+        <div style={{ 
+          width: 64, 
+          height: 64, 
+          borderRadius: "50%", 
+          background: COLORS.inkBlack, 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center", 
+          color: getColor(), 
+          fontWeight: 700, 
+          fontSize: 18 
         }}>
           {score}%
         </div>
@@ -999,10 +999,10 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
   const isWeekly = type === "weekly";
 
   const handleExport = () => {
-    const text = isWeekly
+    const text = isWeekly 
       ? `WEEKLY SUMMARY\n${summary.dateRange}\n\nHours: ${summary.totalHours}\nDays: ${summary.daysWorked}\n\nAccomplishments:\n${summary.accomplishments.map(a => `• ${a}`).join('\n')}\n\nLearnings:\n${summary.learnings.map(l => `• ${l}`).join('\n')}`
       : `MONTHLY REPORT\n${summary.monthLabel}\n\nHours: ${summary.totalHours}\nDays: ${summary.totalDays}\nTrend: ${summary.productivityTrend}\n\nAccomplishments:\n${summary.accomplishments.map(a => `• ${a}`).join('\n')}\n\nRecommendations:\n${summary.recommendations.map(r => `→ ${r}`).join('\n')}`;
-
+    
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1023,53 +1023,53 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
   };
 
   return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.8)",
-      backdropFilter: "blur(8px)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 2000,
-      padding: 20
+    <div style={{ 
+      position: "fixed", 
+      inset: 0, 
+      background: "rgba(0,0,0,0.8)", 
+      backdropFilter: "blur(8px)", 
+      display: "flex", 
+      alignItems: "center", 
+      justifyContent: "center", 
+      zIndex: 2000, 
+      padding: 20 
     }}>
-      <div
-        className="glass"
-        style={{
-          width: "100%",
-          maxWidth: 700,
-          maxHeight: "90vh",
-          overflowY: "auto",
-          borderRadius: 24,
-          animation: "scaleIn 0.3s ease-out"
+      <div 
+        className="glass" 
+        style={{ 
+          width: "100%", 
+          maxWidth: 700, 
+          maxHeight: "90vh", 
+          overflowY: "auto", 
+          borderRadius: 24, 
+          animation: "scaleIn 0.3s ease-out" 
         }}
       >
         {/* Modal Header */}
-        <div style={{
-          padding: "24px 28px",
-          borderBottom: "1px solid rgba(255,255,255,0.1)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          position: "sticky",
-          top: 0,
-          background: "rgba(7, 30, 34, 0.95)",
-          backdropFilter: "blur(20px)",
-          zIndex: 10
+        <div style={{ 
+          padding: "24px 28px", 
+          borderBottom: "1px solid rgba(255,255,255,0.1)", 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center", 
+          position: "sticky", 
+          top: 0, 
+          background: "rgba(7, 30, 34, 0.95)", 
+          backdropFilter: "blur(20px)", 
+          zIndex: 10 
         }}>
           <div>
-            <h2 style={{
-              color: "white",
-              margin: 0,
-              fontSize: 22,
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: 10
+            <h2 style={{ 
+              color: "white", 
+              margin: 0, 
+              fontSize: 22, 
+              fontWeight: 700, 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 10 
             }}>
-              {isWeekly
-                ? <BarChart3 size={24} color={COLORS.jungleTeal} />
+              {isWeekly 
+                ? <BarChart3 size={24} color={COLORS.jungleTeal} /> 
                 : <PieChart size={24} color={COLORS.peachGlow} />
               }
               {isWeekly ? "Weekly Summary" : "Monthly Report"}
@@ -1078,19 +1078,19 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               {isWeekly ? summary.dateRange : summary.monthLabel}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              borderRadius: 10,
-              width: 40,
-              height: 40,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: "white"
+          <button 
+            onClick={onClose} 
+            style={{ 
+              background: "rgba(255,255,255,0.1)", 
+              border: "none", 
+              borderRadius: 10, 
+              width: 40, 
+              height: 40, 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center", 
+              cursor: "pointer", 
+              color: "white" 
             }}
           >
             <X size={20} />
@@ -1100,11 +1100,11 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
         {/* Modal Content */}
         <div style={{ padding: 28 }}>
           {/* Stats Grid */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
-            gap: 12,
-            marginBottom: 28
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", 
+            gap: 12, 
+            marginBottom: 28 
           }}>
             {[
               { value: summary.totalHours, label: "Total Hours", icon: <Clock size={16} />, color: COLORS.jungleTeal },
@@ -1112,22 +1112,22 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               { value: summary.avgHoursPerDay, label: "Avg Hours/Day", icon: <Target size={16} />, color: COLORS.success },
               { value: isWeekly ? summary.productivity : summary.productivityTrend, label: isWeekly ? "Productivity" : "Trend", icon: <TrendingUp size={16} />, color: getProductivityColor(isWeekly ? summary.productivity : summary.productivityTrend) }
             ].map(stat => (
-              <div
-                key={stat.label}
-                style={{
-                  padding: 18,
-                  background: `${stat.color}15`,
-                  borderRadius: 14,
-                  border: `1px solid ${stat.color}30`,
-                  textAlign: "center"
+              <div 
+                key={stat.label} 
+                style={{ 
+                  padding: 18, 
+                  background: `${stat.color}15`, 
+                  borderRadius: 14, 
+                  border: `1px solid ${stat.color}30`, 
+                  textAlign: "center" 
                 }}
               >
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  marginBottom: 4
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center", 
+                  gap: 8, 
+                  marginBottom: 4 
                 }}>
                   <span style={{ color: stat.color, opacity: 0.7 }}>{stat.icon}</span>
                 </div>
@@ -1144,14 +1144,14 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               {summary.accomplishments?.length > 0 ? (
                 <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
                   {summary.accomplishments.map((item, idx) => (
-                    <li
-                      key={idx}
-                      style={{
-                        color: "rgba(255,255,255,0.8)",
-                        lineHeight: 1.7,
-                        marginBottom: 8,
-                        paddingLeft: 20,
-                        position: "relative"
+                    <li 
+                      key={idx} 
+                      style={{ 
+                        color: "rgba(255,255,255,0.8)", 
+                        lineHeight: 1.7, 
+                        marginBottom: 8, 
+                        paddingLeft: 20, 
+                        position: "relative" 
                       }}
                     >
                       <span style={{ position: "absolute", left: 0, color: COLORS.jungleTeal }}>•</span>
@@ -1169,14 +1169,14 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               <SummarySection title="Key Learnings" icon={<Lightbulb size={18} />} color="#f59e0b">
                 <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
                   {summary.learnings.map((item, idx) => (
-                    <li
-                      key={idx}
-                      style={{
-                        color: "rgba(255,255,255,0.8)",
-                        lineHeight: 1.7,
-                        marginBottom: 8,
-                        paddingLeft: 20,
-                        position: "relative"
+                    <li 
+                      key={idx} 
+                      style={{ 
+                        color: "rgba(255,255,255,0.8)", 
+                        lineHeight: 1.7, 
+                        marginBottom: 8, 
+                        paddingLeft: 20, 
+                        position: "relative" 
                       }}
                     >
                       <span style={{ position: "absolute", left: 0, color: "#f59e0b" }}>•</span>
@@ -1192,26 +1192,26 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               <SummarySection title="Challenges Encountered" icon={<AlertCircle size={18} />} color={COLORS.racingRed}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {summary.blockers.map((blocker, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        background: `${COLORS.racingRed}10`,
-                        border: `1px solid ${COLORS.racingRed}20`,
-                        borderRadius: 10,
-                        padding: "10px 14px",
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 10
+                    <div 
+                      key={idx} 
+                      style={{ 
+                        background: `${COLORS.racingRed}10`, 
+                        border: `1px solid ${COLORS.racingRed}20`, 
+                        borderRadius: 10, 
+                        padding: "10px 14px", 
+                        display: "flex", 
+                        alignItems: "flex-start", 
+                        gap: 10 
                       }}
                     >
-                      <span style={{
-                        fontSize: 11,
-                        color: COLORS.racingRed,
-                        fontWeight: 600,
-                        background: `${COLORS.racingRed}20`,
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        flexShrink: 0
+                      <span style={{ 
+                        fontSize: 11, 
+                        color: COLORS.racingRed, 
+                        fontWeight: 600, 
+                        background: `${COLORS.racingRed}20`, 
+                        padding: "2px 8px", 
+                        borderRadius: 4, 
+                        flexShrink: 0 
                       }}>
                         {new Date(blocker.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
@@ -1224,14 +1224,14 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               </SummarySection>
             ) : (
               <SummarySection title="Challenges" icon={<CheckCircle size={18} />} color={COLORS.success}>
-                <div style={{
-                  background: `${COLORS.success}10`,
-                  border: `1px solid ${COLORS.success}20`,
-                  borderRadius: 10,
-                  padding: "12px 16px",
-                  color: COLORS.success,
-                  fontWeight: 500,
-                  fontSize: 14
+                <div style={{ 
+                  background: `${COLORS.success}10`, 
+                  border: `1px solid ${COLORS.success}20`, 
+                  borderRadius: 10, 
+                  padding: "12px 16px", 
+                  color: COLORS.success, 
+                  fontWeight: 500, 
+                  fontSize: 14 
                 }}>
                   ✓ No significant blockers {isWeekly ? "this week" : "this month"}!
                 </div>
@@ -1243,14 +1243,14 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
               <SummarySection title="Recommendations" icon={<Star size={18} />} color={COLORS.purple}>
                 <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
                   {summary.recommendations.map((rec, idx) => (
-                    <li
-                      key={idx}
-                      style={{
-                        color: "rgba(255,255,255,0.8)",
-                        lineHeight: 1.7,
-                        marginBottom: 8,
-                        paddingLeft: 20,
-                        position: "relative"
+                    <li 
+                      key={idx} 
+                      style={{ 
+                        color: "rgba(255,255,255,0.8)", 
+                        lineHeight: 1.7, 
+                        marginBottom: 8, 
+                        paddingLeft: 20, 
+                        position: "relative" 
                       }}
                     >
                       <span style={{ position: "absolute", left: 0, color: COLORS.purple }}>→</span>
@@ -1262,86 +1262,86 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
             )}
 
             {/* Consistency Badge */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 20,
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: 14,
-              marginTop: 8
+            <div style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center", 
+              padding: 20, 
+              background: "rgba(255,255,255,0.03)", 
+              borderRadius: 14, 
+              marginTop: 8 
             }}>
               <ConsistencyBadge rating={summary.consistencyRating} score={summary.consistencyScore} />
             </div>
           </div>
 
           {/* Actions */}
-          <div style={{
-            marginTop: 28,
-            padding: 20,
-            background: "rgba(103, 146, 137, 0.1)",
-            borderRadius: 16,
-            border: `1px solid ${COLORS.jungleTeal}30`
+          <div style={{ 
+            marginTop: 28, 
+            padding: 20, 
+            background: "rgba(103, 146, 137, 0.1)", 
+            borderRadius: 16, 
+            border: `1px solid ${COLORS.jungleTeal}30` 
           }}>
-            <div style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 16
+            <div style={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center", 
+              flexWrap: "wrap", 
+              gap: 16 
             }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "white", marginBottom: 4 }}>
                   Share this report
                 </div>
-                <div style={{
-                  fontSize: 13,
-                  color: "rgba(255,255,255,0.5)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6
+                <div style={{ 
+                  fontSize: 13, 
+                  color: "rgba(255,255,255,0.5)", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: 6 
                 }}>
                   <Mail size={14} />
                   {assignedPM?.fullName || "Project Manager"}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <button
-                  onClick={handleExport}
-                  style={{
-                    padding: "12px 20px",
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: 12,
-                    color: "rgba(255,255,255,0.7)",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8
+                <button 
+                  onClick={handleExport} 
+                  style={{ 
+                    padding: "12px 20px", 
+                    background: "transparent", 
+                    border: "1px solid rgba(255,255,255,0.1)", 
+                    borderRadius: 12, 
+                    color: "rgba(255,255,255,0.7)", 
+                    cursor: "pointer", 
+                    fontSize: 14, 
+                    fontWeight: 600, 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: 8 
                   }}
                 >
                   <Download size={18} />Export
                 </button>
-                <button
-                  onClick={onSend}
-                  disabled={isSending || sendSuccess}
-                  style={{
-                    padding: "12px 24px",
-                    background: sendSuccess
-                      ? COLORS.success
-                      : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
-                    color: "white",
-                    border: "none",
-                    borderRadius: 12,
-                    fontWeight: 600,
-                    cursor: isSending || sendSuccess ? "default" : "pointer",
-                    fontSize: 14,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    opacity: isSending ? 0.7 : 1
+                <button 
+                  onClick={onSend} 
+                  disabled={isSending || sendSuccess} 
+                  style={{ 
+                    padding: "12px 24px", 
+                    background: sendSuccess 
+                      ? COLORS.success 
+                      : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
+                    color: "white", 
+                    border: "none", 
+                    borderRadius: 12, 
+                    fontWeight: 600, 
+                    cursor: isSending || sendSuccess ? "default" : "pointer", 
+                    fontSize: 14, 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: 10, 
+                    opacity: isSending ? 0.7 : 1 
                   }}
                 >
                   {isSending ? (
@@ -1388,11 +1388,11 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
       const weekRange = getWeekDateRange(log.date);
       const weekKey = weekRange.start.toISOString().split('T')[0];
       if (!grouped[weekKey]) {
-        grouped[weekKey] = {
-          weekNumber: getWeekNumber(log.date),
-          dateRange: weekRange,
-          logs: [],
-          totalHours: 0
+        grouped[weekKey] = { 
+          weekNumber: getWeekNumber(log.date), 
+          dateRange: weekRange, 
+          logs: [], 
+          totalHours: 0 
         };
       }
       grouped[weekKey].logs.push(log);
@@ -1410,11 +1410,11 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     dailyLogs.forEach(log => {
       const monthKey = getMonthKey(log.date);
       if (!grouped[monthKey]) {
-        grouped[monthKey] = {
-          monthLabel: formatMonth(monthKey),
-          logs: [],
-          totalHours: 0,
-          weeks: new Set()
+        grouped[monthKey] = { 
+          monthLabel: formatMonth(monthKey), 
+          logs: [], 
+          totalHours: 0, 
+          weeks: new Set() 
         };
       }
       grouped[monthKey].logs.push(log);
@@ -1429,13 +1429,13 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     return grouped;
   }, [dailyLogs]);
 
-  const sortedWeekKeys = useMemo(() =>
-    Object.keys(logsByWeek).sort((a, b) => new Date(b) - new Date(a)),
+  const sortedWeekKeys = useMemo(() => 
+    Object.keys(logsByWeek).sort((a, b) => new Date(b) - new Date(a)), 
     [logsByWeek]
   );
 
-  const sortedMonthKeys = useMemo(() =>
-    Object.keys(logsByMonth).sort((a, b) => b.localeCompare(a)),
+  const sortedMonthKeys = useMemo(() => 
+    Object.keys(logsByMonth).sort((a, b) => b.localeCompare(a)), 
     [logsByMonth]
   );
 
@@ -1444,9 +1444,9 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     let result = [...dailyLogs];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(log =>
-        log.tasks.toLowerCase().includes(q) ||
-        log.learnings.toLowerCase().includes(q) ||
+      result = result.filter(log => 
+        log.tasks.toLowerCase().includes(q) || 
+        log.learnings.toLowerCase().includes(q) || 
         (log.blockers && log.blockers.toLowerCase().includes(q))
       );
     }
@@ -1471,8 +1471,8 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     totalHours: dailyLogs.reduce((sum, log) => sum + (log.hoursWorked || 0), 0),
     totalWeeks: Object.keys(logsByWeek).length,
     totalMonths: Object.keys(logsByMonth).length,
-    avgHoursPerDay: dailyLogs.length > 0
-      ? (dailyLogs.reduce((sum, log) => sum + (log.hoursWorked || 0), 0) / dailyLogs.length).toFixed(1)
+    avgHoursPerDay: dailyLogs.length > 0 
+      ? (dailyLogs.reduce((sum, log) => sum + (log.hoursWorked || 0), 0) / dailyLogs.length).toFixed(1) 
       : 0,
     totalBlockers: dailyLogs.filter(log => log.blockers && log.blockers.toLowerCase() !== 'none').length
   }), [dailyLogs, logsByWeek, logsByMonth]);
@@ -1480,19 +1480,19 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
   // Handlers
   const handleSubmit = useCallback((formData) => {
     setDailyLogs(prev => [
-      { id: Date.now(), ...formData, hoursWorked: parseInt(formData.hoursWorked) || 0 },
+      { id: Date.now(), ...formData, hoursWorked: parseInt(formData.hoursWorked) || 0 }, 
       ...prev
     ]);
     setShowForm(false);
   }, []);
 
-  const toggleWeek = useCallback((weekKey) =>
-    setExpandedWeeks(prev => ({ ...prev, [weekKey]: !prev[weekKey] })),
+  const toggleWeek = useCallback((weekKey) => 
+    setExpandedWeeks(prev => ({ ...prev, [weekKey]: !prev[weekKey] })), 
     []
   );
 
-  const toggleMonth = useCallback((monthKey) =>
-    setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] })),
+  const toggleMonth = useCallback((monthKey) => 
+    setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] })), 
     []
   );
 
@@ -1525,10 +1525,10 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
   }, []);
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, #0a2e33 100%)`,
-      padding: 20
+    <div style={{ 
+      minHeight: "100vh", 
+      background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, #0a2e33 100%)`, 
+      padding: 20 
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -1554,11 +1554,11 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
 
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Stats Grid */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)",
-          gap: 12,
-          marginBottom: 24
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)", 
+          gap: 12, 
+          marginBottom: 24 
         }}>
           <StatMini icon={<FileText size={18} />} label="Total Logs" value={stats.totalLogs} color={COLORS.jungleTeal} />
           <StatMini icon={<Clock size={18} />} label="Total Hours" value={stats.totalHours} color={COLORS.peachGlow} />
@@ -1569,41 +1569,41 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         </div>
 
         {/* Controls Bar */}
-        <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 12
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center", 
+          marginBottom: 20, 
+          flexWrap: "wrap", 
+          gap: 12 
         }}>
           {/* View Mode Tabs */}
-          <div style={{
-            display: "flex",
-            background: "rgba(255,255,255,0.05)",
-            borderRadius: 12,
-            padding: 4,
-            border: "1px solid rgba(255,255,255,0.08)"
+          <div style={{ 
+            display: "flex", 
+            background: "rgba(255,255,255,0.05)", 
+            borderRadius: 12, 
+            padding: 4, 
+            border: "1px solid rgba(255,255,255,0.08)" 
           }}>
             {[
               { id: "daily", label: "Daily", icon: <FileText size={16} /> },
               { id: "weekly", label: "Weekly", icon: <CalendarDays size={16} /> },
               { id: "monthly", label: "Monthly", icon: <FolderOpen size={16} /> }
             ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setViewMode(tab.id)}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: viewMode === tab.id ? COLORS.deepOcean : "transparent",
-                  color: viewMode === tab.id ? "white" : "rgba(255,255,255,0.6)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
+              <button 
+                key={tab.id} 
+                onClick={() => setViewMode(tab.id)} 
+                style={{ 
+                  padding: "10px 18px", 
+                  borderRadius: 10, 
+                  border: "none", 
+                  background: viewMode === tab.id ? COLORS.deepOcean : "transparent", 
+                  color: viewMode === tab.id ? "white" : "rgba(255,255,255,0.6)", 
+                  cursor: "pointer", 
+                  fontSize: 13, 
+                  fontWeight: 600, 
+                  display: "flex", 
+                  alignItems: "center", 
                   gap: 8,
                   transition: "all 0.2s"
                 }}
@@ -1614,22 +1614,22 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
           </div>
 
           {/* New Entry Button */}
-          <button
-            onClick={() => setShowForm(!showForm)}
-            style={{
-              padding: "12px 24px",
-              background: showForm
-                ? "rgba(255,255,255,0.08)"
-                : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
+          <button 
+            onClick={() => setShowForm(!showForm)} 
+            style={{ 
+              padding: "12px 24px", 
+              background: showForm 
+                ? "rgba(255,255,255,0.08)" 
+                : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
+              color: "white", 
+              border: "none", 
+              borderRadius: 12, 
+              fontWeight: 600, 
+              cursor: "pointer", 
+              fontSize: 14, 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 8, 
               boxShadow: showForm ? "none" : `0 4px 20px ${COLORS.deepOcean}40`,
               transition: "all 0.2s"
             }}
@@ -1641,63 +1641,63 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
 
         {/* Entry Form */}
         {showForm && (
-          <LogEntryForm
-            onSubmit={handleSubmit}
-            onCancel={() => setShowForm(false)}
-            isMobile={isMobile}
+          <LogEntryForm 
+            onSubmit={handleSubmit} 
+            onCancel={() => setShowForm(false)} 
+            isMobile={isMobile} 
           />
         )}
 
         {/* Search & Filter (Daily view only) */}
         {viewMode === "daily" && (
-          <SearchFilterBar
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            activeFilter={activeFilter}
-            setActiveFilter={setActiveFilter}
-            filterCounts={filterCounts}
+          <SearchFilterBar 
+            searchQuery={searchQuery} 
+            setSearchQuery={setSearchQuery} 
+            activeFilter={activeFilter} 
+            setActiveFilter={setActiveFilter} 
+            filterCounts={filterCounts} 
           />
         )}
 
         {/* Views */}
         {viewMode === "daily" && <DailyView logs={filteredLogs} />}
         {viewMode === "weekly" && (
-          <WeeklyView
-            logsByWeek={logsByWeek}
-            sortedWeekKeys={sortedWeekKeys}
-            expandedWeeks={expandedWeeks}
-            toggleWeek={toggleWeek}
-            weeklySummaries={weeklySummaries}
-            openSummaryModal={openSummaryModal}
-            isMobile={isMobile}
+          <WeeklyView 
+            logsByWeek={logsByWeek} 
+            sortedWeekKeys={sortedWeekKeys} 
+            expandedWeeks={expandedWeeks} 
+            toggleWeek={toggleWeek} 
+            weeklySummaries={weeklySummaries} 
+            openSummaryModal={openSummaryModal} 
+            isMobile={isMobile} 
           />
         )}
         {viewMode === "monthly" && (
-          <MonthlyView
-            logsByMonth={logsByMonth}
-            sortedMonthKeys={sortedMonthKeys}
-            expandedMonths={expandedMonths}
-            toggleMonth={toggleMonth}
-            monthlySummaries={monthlySummaries}
-            openSummaryModal={openSummaryModal}
-            isMobile={isMobile}
+          <MonthlyView 
+            logsByMonth={logsByMonth} 
+            sortedMonthKeys={sortedMonthKeys} 
+            expandedMonths={expandedMonths} 
+            toggleMonth={toggleMonth} 
+            monthlySummaries={monthlySummaries} 
+            openSummaryModal={openSummaryModal} 
+            isMobile={isMobile} 
           />
         )}
 
         {/* Summary Modal */}
         {showSummaryModal && (
-          <SummaryModal
-            type={summaryType}
-            summary={summaryType === "weekly"
-              ? weeklySummaries[selectedWeekForSummary]
+          <SummaryModal 
+            type={summaryType} 
+            summary={summaryType === "weekly" 
+              ? weeklySummaries[selectedWeekForSummary] 
               : monthlySummaries[selectedMonthForSummary]
-            }
-            assignedPM={defaultPM}
-            onClose={() => setShowSummaryModal(false)}
-            onSend={sendReportToPM}
-            isSending={isSending}
-            sendSuccess={sendSuccess}
-            isMobile={isMobile}
+            } 
+            assignedPM={defaultPM} 
+            onClose={() => setShowSummaryModal(false)} 
+            onSend={sendReportToPM} 
+            isSending={isSending} 
+            sendSuccess={sendSuccess} 
+            isMobile={isMobile} 
           />
         )}
       </div>
