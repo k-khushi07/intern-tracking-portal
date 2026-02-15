@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+//frontend/src/pages/intern/MessagesPage.jsx
+>>>>>>> 0459e1788ddb5f149b97ab4468a9511b362ae99f
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   MessageCircle, Send, Search, Phone, Video, MoreVertical,

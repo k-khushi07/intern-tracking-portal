@@ -1,3 +1,4 @@
+//frontend/src/pages/intern/ProfileSetup.jsx
 import React, { useState, useEffect } from "react";
 import { User, MapPin, Phone, Heart, GraduationCap, Calendar, Briefcase, Upload, Image, FileText, CheckCircle } from "lucide-react";
 

@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+//frontend/src/pages/intern/ReportsPage.jsx
+>>>>>>> 0459e1788ddb5f149b97ab4468a9511b362ae99f
 import { useState } from "react";
 
 const COLORS = {
@@ -13,7 +17,11 @@ export default function ReportsPreview() {
 
   // Sample Google Docs/Sheets URLs - Replace with real ones
   const tnaSheetUrl = "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing";
+<<<<<<< HEAD
   const blueprintDocUrl = "https://docs.google.com/document/d/1234567890/edit?usp=sharing";
+=======
+  const blueprintDocUrl = "https://docs.google.com/document/d/1quncr9_h6VrzMM6lfslOosPCqBqI-cuK_sHgSLZCpZE/edit?usp=sharing";
+>>>>>>> 0459e1788ddb5f149b97ab4468a9511b362ae99f
 
   return (
     <div style={{
