@@ -8,8 +8,10 @@ dist-ssr/
 # Local env files (never commit secrets)
 .env
 .env.*
+my.env
 backend/.env
 frontend/.env
+!.env.example
 
 # Logs
 logs
