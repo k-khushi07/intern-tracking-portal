@@ -1,0 +1,4 @@
+Week,Task,Planned Date,Plan of Action,Executed Date,Status,Reason,Deliverable
+1,Setup development environment,2026-03-02,Install Node.js + clone repo + configure .env,2026-03-02,Completed,-,Working local setup
+1,Database schema design,2026-03-03,Create Supabase tables for users/logs/reports,2026-03-04,Completed,Took extra day for review,Schema SQL file
+2,Daily logs API,2026-03-10,Add GET/POST endpoints + validations,2026-03-10,In Progress,-,/api/intern/daily-logs

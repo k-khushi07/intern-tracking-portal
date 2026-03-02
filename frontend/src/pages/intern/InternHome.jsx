@@ -4,6 +4,8 @@ import DailyLogPage from './DailyLogPage';
 import ProfilePage from './ProfilePage';
 import MessagesPage from './MessagesPage';
 import ReportsPage from './ReportsPage';
+import { authApi, internApi, announcementsApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
 import { 
   User, Bell, MessageCircle, FileText, 
@@ -81,8 +83,13 @@ export default function InternDashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-
-  const [dailyLogs, setDailyLogs] = useState([]);
+  const [stats, setStats] = useState({
+    daysActive: 0,
+    totalHours: 0,
+    tasksCompleted: 0,
+    progressPercent: 0,
+    pendingReports: 0,
+  });
 
   // Responsive Handler
   useEffect(() => {
@@ -99,123 +106,124 @@ export default function InternDashboard() {
 
   useEffect(() => { 
     loadCurrentIntern(); 
-    loadDailyLogs(); 
+    loadStats();
     loadAnnouncements();
   }, []);
-  
-  useEffect(() => { 
-    if (currentIntern?.pmCode) { 
-      loadAssignedPM(); 
-      loadAssignedHR(); 
-    } 
-  }, [currentIntern]);
 
-  const loadCurrentIntern = () => {
-    setCurrentIntern({
-      fullName: "Alex Johnson", 
-      email: "alex.johnson@college.edu", 
-      phone: "+91 98765 43210",
-      dob: "2002-05-15", 
-      role: "intern", 
-      pmCode: "PM001", 
-      degree: "B.Tech Computer Science", 
-      avatar: "AJ",
-      profile: {
-        bloodGroup: "O+", 
-        address: "123 College Road, University Area", 
-        city: "Bangalore",
-        state: "Karnataka", 
-        pincode: "560001", 
-        emergencyContactName: "Sarah Johnson",
-        emergencyRelation: "Mother", 
-        emergencyContactPhone: "+91 98765 11111",
-        collegeName: "Tech University", 
-        department: "Computer Science", 
-        semester: "6th Semester",
-        guideName: "Dr. Rajesh Kumar", 
-        guideEmail: "rajesh@college.edu", 
-        guidePhone: "+91 98765 22222",
-        internshipDuration: "6 months", 
-        startDate: "2024-01-01", 
-        endDate: "2024-06-30",
-        workMode: "Hybrid", 
-        expectedOutcome: "Full Stack Development Skills", 
-        bio: "Passionate about web development and AI"
+  const loadCurrentIntern = async () => {
+    try {
+      const res = await internApi.me();
+      const profile = res?.profile;
+      if (!profile?.email) throw new Error("Unable to load intern profile");
+
+      const displayName = profile.full_name || profile.fullName || profile.email;
+      const avatar = String(displayName)
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase();
+
+      const profileData = profile.profile_data || profile.profileData || profile.profile || {};
+      const assignedPm = profile.pm
+        ? {
+            id: profile.pm.id,
+            fullName: profile.pm.full_name || profile.pm.fullName || "Project Manager",
+            email: profile.pm.email,
+            role: "pm",
+            pmCode: profile.pm.pm_code || profile.pm.pmCode || null,
+          }
+        : null;
+
+      const nextIntern = {
+        id: profile.id,
+        internId: profile.intern_id || null,
+        fullName: displayName,
+        email: profile.email,
+        phone: profileData.phone || profile.phone || "",
+        dob: profileData.dob || profile.dob || "",
+        role: "intern",
+        pmCode: assignedPm?.pmCode || null,
+        degree: profileData.degree || profileData.department || "",
+        avatar: avatar || "IN",
+        profile: profileData,
+        profileCompleted: !!profile.profile_completed,
+      };
+
+      setCurrentIntern(nextIntern);
+      setAssignedPM(assignedPm);
+      setAssignedHR(null);
+
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify({
+          role: "intern",
+          fullName: nextIntern.fullName,
+          email: nextIntern.email,
+          pmCode: nextIntern.pmCode,
+          internId: nextIntern.internId,
+          profileCompleted: nextIntern.profileCompleted,
+        })
+      );
+    } catch (err) {
+      console.error("Error loading intern (API):", err);
+      if (err?.status === 401 || err?.status === 403) {
+        window.location.href = "/";
+        return;
       }
-    });
-  };
 
-  const loadAssignedPM = () => setAssignedPM({ 
-    fullName: "Priya Sharma", 
-    email: "priya.sharma@company.com", 
-    phone: "+91 98765 33333", 
-    role: "pm", 
-    pmCode: "PM001" 
-  });
-  
-  const loadAssignedHR = () => setAssignedHR({ 
-    fullName: "Rahul Verma", 
-    email: "rahul.verma@company.com", 
-    phone: "+91 98765 44444", 
-    role: "hr" 
-  });
-
-  const loadDailyLogs = () => {
-    setDailyLogs([
-      { id: 1, date: "2024-01-15", tasks: "Completed React component development for the dashboard module", learnings: "Learned about React hooks, state management with Context API, and performance optimization", blockers: "None", hoursWorked: 8 },
-      { id: 2, date: "2024-01-14", tasks: "API integration with backend services and data fetching implementation", learnings: "REST API best practices, error handling, and async/await patterns", blockers: "CORS issues - resolved with proxy configuration", hoursWorked: 7 },
-      { id: 3, date: "2024-01-13", tasks: "Database schema design and MongoDB setup", learnings: "NoSQL database design patterns and indexing strategies", blockers: "None", hoursWorked: 6 }
-    ]);
-  };
-
-  const loadAnnouncements = () => {
-    // In real app, fetch from PM/HR
-    setAnnouncements([
-      { 
-        id: 1, 
-        title: "Welcome to the Team!", 
-        message: "We're excited to have you on board. Complete your profile and start your internship journey.", 
-        date: "2024-01-15", 
-        priority: "high", 
-        from: "HR Team" 
-      },
-      { 
-        id: 2, 
-        title: "Weekly Check-in Reminder", 
-        message: "Remember to submit your weekly progress report every Friday by 5 PM.", 
-        date: "2024-01-14", 
-        priority: "medium", 
-        from: "Your PM" 
-      },
-      { 
-        id: 3, 
-        title: "Learning Resources Available", 
-        message: "Check out our resource library for tutorials and documentation to help with your projects.", 
-        date: "2024-01-10", 
-        priority: "low", 
-        from: "HR Team" 
+      try {
+        const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
+        if (user.role === "intern") {
+          setCurrentIntern(user);
+        } else {
+          window.location.href = "/";
+        }
+      } catch (e) {
+        window.location.href = "/";
       }
-    ]);
+    }
   };
 
-  const getStats = () => {
-    const daysActive = currentIntern?.profile?.startDate 
-      ? Math.floor((new Date() - new Date(currentIntern.profile.startDate)) / (1000 * 60 * 60 * 24)) 
-      : 0;
-    const totalHours = dailyLogs.reduce((sum, log) => sum + (log.hoursWorked || 0), 0);
-    const progressPercent = currentIntern?.profile?.startDate && currentIntern?.profile?.endDate
-      ? Math.min(Math.round((daysActive / 180) * 100), 100)
-      : 0;
-    
-    return { 
-      daysActive, 
-      unreadMessages: 5, 
-      announcements: announcements.length, 
-      tasksCompleted: 12, 
-      totalHours, 
-      progressPercent 
-    };
+  const loadStats = async () => {
+    try {
+      const res = await internApi.stats();
+      if (res?.stats) {
+        setStats(res.stats);
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to load intern stats:", err);
+    }
+
+    setStats((prev) => ({
+      ...prev,
+      daysActive: currentIntern?.profile?.startDate
+        ? Math.max(0, Math.floor((new Date() - new Date(currentIntern.profile.startDate)) / (1000 * 60 * 60 * 24)))
+        : 0,
+    }));
   };
+
+  const loadAnnouncements = async () => {
+    try {
+      const res = await announcementsApi.list();
+      const rows = res?.announcements || [];
+      const mapped = rows.map((a) => ({
+        id: a.id,
+        title: a.title,
+        message: a.content,
+        date: a.created_at,
+        priority: a.priority || "medium",
+        from: a.created_by?.full_name || a.created_by?.email || "HR",
+      }));
+      setAnnouncements(mapped);
+    } catch (err) {
+      console.error("Failed to load announcements:", err);
+      setAnnouncements([]);
+    }
+  };
+
 
   const menuItems = [
     { id: "overview", label: "Overview", icon: Home },
@@ -226,8 +234,18 @@ export default function InternDashboard() {
     { id: "project-submission", label: "Submit Project", icon: Send },
   ];
 
-  const stats = getStats();
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = () => {
+      loadCurrentIntern();
+      loadStats();
+      loadAnnouncements();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, []);
 
   const markNotificationAsRead = (id) => {
     setNotifications(prev => 
@@ -387,9 +405,14 @@ export default function InternDashboard() {
             {/* Sidebar Footer */}
             <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  try {
+                    await authApi.logout();
+                  } catch {
+                    // ignore
+                  }
                   localStorage.removeItem("currentUser");
-                  window.location.href = "/login";
+                  window.location.href = "/";
                 }}
                 style={{
                   width: "100%",

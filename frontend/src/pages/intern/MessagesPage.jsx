@@ -1,5 +1,7 @@
 //frontend/src/pages/intern/MessagesPage.jsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { authApi, messagesApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 import {
   MessageCircle, Send, Search, Phone, Video, MoreVertical,
   Paperclip, Smile, Image, File, X, Check, CheckCheck,
@@ -181,6 +183,14 @@ const getStatusColor = (status) => {
     case "offline": return COLORS.offline;
     default: return COLORS.offline;
   }
+};
+
+const initials = (nameOrEmail) => {
+  const s = String(nameOrEmail || "").trim();
+  if (!s) return "U";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
 };
 
 const formatTime = (time) => time;
@@ -386,9 +396,17 @@ const ContactItem = ({ contact, isActive, onClick, isMobile }) => {
 };
 
 // ==================== MESSAGE BUBBLE ====================
-const MessageBubble = ({ message, isGroup, showAvatar = true }) => {
+const MessageBubble = ({ message, isGroup, showAvatar = true, onReport, onDelete }) => {
   const isMe = message.from === "me";
   const [showActions, setShowActions] = useState(false);
+
+  const canDeleteSelf = (() => {
+    if (!isMe) return false;
+    if (message.deleted) return false;
+    const createdAt = message.createdAt ? new Date(message.createdAt) : null;
+    if (!createdAt || Number.isNaN(createdAt.getTime())) return false;
+    return Date.now() - createdAt.getTime() <= 10 * 60 * 1000;
+  })();
   
   return (
     <div
@@ -489,11 +507,16 @@ const MessageBubble = ({ message, isGroup, showAvatar = true }) => {
             padding: 4,
             border: "1px solid rgba(255,255,255,0.1)",
           }}>
-            <button style={quickActionStyle} title="Reply">
+            <button style={quickActionStyle} title="Reply (coming soon)" disabled>
               <Reply size={14} />
             </button>
-            <button style={quickActionStyle} title="React">
-              <Heart size={14} />
+            {canDeleteSelf && (
+              <button style={quickActionStyle} title="Delete (10 min window)" onClick={() => onDelete && onDelete(message)}>
+                <Trash2 size={14} />
+              </button>
+            )}
+            <button style={quickActionStyle} title="Report message" onClick={() => onReport && onReport(message)}>
+              <AlertCircle size={14} />
             </button>
           </div>
         )}
@@ -657,7 +680,7 @@ const HeaderButton = ({ icon, onClick, badge }) => (
 );
 
 // ==================== MESSAGE INPUT ====================
-const MessageInput = ({ onSend, disabled }) => {
+const MessageInput = ({ onSend, disabled, readOnlyReason }) => {
   const [message, setMessage] = useState("");
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const inputRef = useRef(null);
@@ -683,6 +706,11 @@ const MessageInput = ({ onSend, disabled }) => {
       background: "rgba(7, 30, 34, 0.8)",
       backdropFilter: "blur(20px)",
     }}>
+      {disabled && (
+        <div style={{ marginBottom: 10, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+          {readOnlyReason ? `Read-only: ${readOnlyReason}` : "Read-only conversation"}
+        </div>
+      )}
       {/* Attachment Menu */}
       {showAttachMenu && (
         <div style={{
@@ -702,6 +730,7 @@ const MessageInput = ({ onSend, disabled }) => {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
         <button
           onClick={() => setShowAttachMenu(!showAttachMenu)}
+          disabled
           style={{
             width: 44,
             height: 44,
@@ -709,13 +738,14 @@ const MessageInput = ({ onSend, disabled }) => {
             background: showAttachMenu ? `${COLORS.jungleTeal}20` : "rgba(255,255,255,0.05)",
             border: `1px solid ${showAttachMenu ? COLORS.jungleTeal : "rgba(255,255,255,0.1)"}`,
             color: showAttachMenu ? COLORS.jungleTeal : "rgba(255,255,255,0.6)",
-            cursor: "pointer",
+            cursor: "not-allowed",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             transition: "all 0.2s",
             flexShrink: 0,
           }}
+          title="File sharing is disabled (text-only chat)"
         >
           {showAttachMenu ? <X size={20} /> : <Paperclip size={20} />}
         </button>
@@ -755,11 +785,13 @@ const MessageInput = ({ onSend, disabled }) => {
               background: "none",
               border: "none",
               color: "rgba(255,255,255,0.5)",
-              cursor: "pointer",
+              cursor: "not-allowed",
               padding: 10,
               display: "flex",
               alignItems: "center",
             }}
+            disabled
+            title="Reactions are not enabled yet"
           >
             <Smile size={20} />
           </button>
@@ -767,7 +799,7 @@ const MessageInput = ({ onSend, disabled }) => {
         
         <button
           onClick={handleSend}
-          disabled={!message.trim()}
+          disabled={disabled || !message.trim()}
           style={{
             width: 44,
             height: 44,
@@ -777,12 +809,13 @@ const MessageInput = ({ onSend, disabled }) => {
               : "rgba(255,255,255,0.05)",
             border: "none",
             color: message.trim() ? "white" : "rgba(255,255,255,0.3)",
-            cursor: message.trim() ? "pointer" : "not-allowed",
+            cursor: disabled ? "not-allowed" : message.trim() ? "pointer" : "not-allowed",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             transition: "all 0.2s",
             flexShrink: 0,
+            opacity: disabled ? 0.6 : 1,
           }}
         >
           <Send size={20} />
@@ -975,17 +1008,266 @@ const ActionButton = ({ icon, label, danger }) => (
 
 // ==================== MAIN COMPONENT ====================
 function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
-  const [contacts, setContacts] = useState(sampleContacts);
+  const [contacts, setContacts] = useState([]);
   const [activeContactId, setActiveContactId] = useState(null);
-  const [messages, setMessages] = useState(sampleMessages);
+  const [messagesByConvId, setMessagesByConvId] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all"); // all, unread, groups, direct
   const [showInfo, setShowInfo] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [me, setMe] = useState(null);
+  const [presence, setPresence] = useState({});
+  const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [newChatContacts, setNewChatContacts] = useState([]);
+  const [newChatSearch, setNewChatSearch] = useState("");
+  const socketRef = useRef(null);
+  const subscribedConvRef = useRef(null);
   const messagesEndRef = useRef(null);
   
   const activeContact = contacts.find(c => c.id === activeContactId);
-  const activeMessages = messages[activeContactId] || [];
+  const activeMessages = messagesByConvId[activeContactId] || [];
+
+  const formatDateLabel = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Unknown";
+    const today = new Date();
+    const sameDay = (a, b) => a.toDateString() === b.toDateString();
+    if (sameDay(d, today)) return "Today";
+    const y = new Date(today);
+    y.setDate(today.getDate() - 1);
+    if (sameDay(d, y)) return "Yesterday";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const formatTimeLabel = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
+  const mapConversationToContact = useCallback(
+    (c) => {
+      const isGroup = c.type === "group";
+      const peer = c.peer || null;
+      const name = isGroup ? c.title : peer?.name || "User";
+      const roleLabel = isGroup
+        ? "Group"
+        : peer?.role === "hr"
+          ? "HR"
+          : peer?.role === "pm"
+            ? "Project Manager"
+            : peer?.role === "intern"
+              ? "Intern"
+              : "User";
+
+      const online = peer?.id ? !!presence[peer.id] : false;
+      const status = isGroup ? null : online ? "online" : "offline";
+
+      const last = c.lastMessage;
+      const lastAt = last?.at || null;
+
+      return {
+        id: c.id,
+        type: isGroup ? "group" : "individual",
+        name,
+        role: roleLabel,
+        avatar: isGroup ? initials(name) : peer?.avatar || initials(name),
+        status,
+        lastSeen: null,
+        unread: c.unreadCount || 0,
+        pinned: false,
+        canSend: !!c.canSend,
+        readOnlyReason: c.readOnlyReason || null,
+        peer,
+        members: isGroup ? (c.members || []).map((m) => m?.name).filter(Boolean) : undefined,
+        memberCount: isGroup ? (c.members || []).length : undefined,
+        lastMessage: lastAt
+          ? {
+              text: last?.body || "",
+              time: formatTimeLabel(lastAt),
+              fromMe: String(last?.senderProfileId || "") === String(me?.id || ""),
+            }
+          : { text: "", time: "", fromMe: false },
+      };
+    },
+    [me?.id, presence]
+  );
+
+  const toMessageVm = useCallback(
+    (msg, contact) => {
+      const isGroup = contact?.type === "group";
+      const senderId = msg.senderProfileId;
+      const fromMe = String(senderId) === String(me?.id || "");
+      let from = fromMe ? "me" : "them";
+      if (isGroup && !fromMe) {
+        const member = (contact?.membersRaw || []).find((m) => String(m.id) === String(senderId));
+        from = member?.name || "Member";
+      }
+      const createdAt = msg.createdAt || new Date().toISOString();
+      return {
+        id: msg.id,
+        serverId: msg.id,
+        senderProfileId: senderId,
+        createdAt,
+        from,
+        text: msg.deleted ? "Message deleted" : msg.body,
+        time: formatTimeLabel(createdAt),
+        date: formatDateLabel(createdAt),
+        status: fromMe ? "sent" : undefined,
+        deleted: !!msg.deleted,
+      };
+    },
+    [formatDateLabel, formatTimeLabel, me?.id]
+  );
+
+  const loadConversations = useCallback(async () => {
+    setLoadingChats(true);
+    try {
+      const res = await messagesApi.conversations();
+      const rows = res?.conversations || [];
+      const mapped = rows.map((c) => {
+        const contact = mapConversationToContact(c);
+        // keep raw members for group sender name resolution
+        if (contact.type === "group") contact.membersRaw = (c.members || []).map((m) => ({ id: m.id, name: m.name }));
+        return contact;
+      });
+      setContacts(mapped);
+      if (!activeContactId && mapped.length) setActiveContactId(mapped[0].id);
+    } catch (e) {
+      setContacts([]);
+    } finally {
+      setLoadingChats(false);
+    }
+  }, [activeContactId, mapConversationToContact]);
+
+  const loadMessages = useCallback(
+    async (conversationId) => {
+      if (!conversationId) return;
+      setLoadingMessages(true);
+      try {
+        const res = await messagesApi.listMessages(conversationId, { limit: 100 });
+        const msgs = res?.messages || [];
+        const contact = contacts.find((c) => c.id === conversationId);
+        const vm = msgs.map((m) => toMessageVm(m, contact));
+        setMessagesByConvId((prev) => ({ ...prev, [conversationId]: vm }));
+      } catch (e) {
+        setMessagesByConvId((prev) => ({ ...prev, [conversationId]: prev[conversationId] || [] }));
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [contacts, toMessageVm]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authApi.me();
+        if (!cancelled) setMe(res?.profile || null);
+      } catch {
+        if (!cancelled) setMe(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!me?.id) return;
+    loadConversations();
+  }, [me?.id, loadConversations]);
+
+  useEffect(() => {
+    if (!me?.id) return;
+    const socket = getRealtimeSocket();
+    socketRef.current = socket;
+
+    const onPresence = (p) => {
+      const pid = p?.profileId;
+      if (!pid) return;
+      setPresence((prev) => ({ ...prev, [pid]: !!p?.online }));
+    };
+    const onPresenceList = (payload) => {
+      const ids = payload?.onlineProfileIds || [];
+      const next = {};
+      ids.forEach((id) => {
+        next[id] = true;
+      });
+      setPresence((prev) => ({ ...prev, ...next }));
+    };
+    const onConversationPing = () => {
+      loadConversations();
+    };
+    const onMessage = (m) => {
+      const convId = m?.conversationId;
+      if (!convId) return;
+
+      setContacts((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          const fromMe = String(m.senderProfileId || "") === String(me.id);
+          const nextLast = {
+            text: String(m.body || "").slice(0, 120),
+            time: formatTimeLabel(m.createdAt),
+            fromMe,
+          };
+          const bumpUnread = convId !== activeContactId && !fromMe;
+          return { ...c, lastMessage: nextLast, unread: bumpUnread ? (Number(c.unread) || 0) + 1 : c.unread };
+        })
+      );
+
+      setMessagesByConvId((prev) => {
+        const list = prev[convId];
+        if (!Array.isArray(list)) return prev;
+        if (list.some((x) => String(x.serverId || x.id) === String(m.id))) return prev;
+        const contact = contacts.find((c) => c.id === convId);
+        const vm = toMessageVm(
+          {
+            id: m.id,
+            senderProfileId: m.senderProfileId,
+            body: m.body,
+            createdAt: m.createdAt,
+            deleted: false,
+          },
+          contact
+        );
+        return { ...prev, [convId]: [...list, vm] };
+      });
+    };
+    const onMessageDeleted = (p) => {
+      const convId = p?.conversationId;
+      const msgId = p?.messageId;
+      if (!convId || !msgId) return;
+      setMessagesByConvId((prev) => {
+        const list = prev[convId];
+        if (!Array.isArray(list)) return prev;
+        return {
+          ...prev,
+          [convId]: list.map((m) => (String(m.serverId || m.id) === String(msgId) ? { ...m, deleted: true, text: "Message deleted" } : m)),
+        };
+      });
+    };
+
+    socket.on("chat:presence", onPresence);
+    socket.on("chat:presence:list", onPresenceList);
+    socket.on("chat:conversation", onConversationPing);
+    socket.on("chat:message", onMessage);
+    socket.on("chat:message_deleted", onMessageDeleted);
+
+    socket.emit("chat:presence:list");
+
+    return () => {
+      socket.off("chat:presence", onPresence);
+      socket.off("chat:presence:list", onPresenceList);
+      socket.off("chat:conversation", onConversationPing);
+      socket.off("chat:message", onMessage);
+      socket.off("chat:message_deleted", onMessageDeleted);
+    };
+  }, [activeContactId, contacts, formatTimeLabel, loadConversations, me?.id]);
   
   // Filter contacts
   const filteredContacts = contacts.filter(contact => {
@@ -1015,66 +1297,78 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
   }, [activeMessages]);
   
   // Send message
-  const handleSendMessage = useCallback((text) => {
+  const handleSendMessage = useCallback(async (text) => {
     if (!activeContactId || !text.trim()) return;
+    if (!activeContact?.canSend) {
+      alert(activeContact?.readOnlyReason || "This conversation is read-only.");
+      return;
+    }
     
-    const newMessage = {
-      id: Date.now(),
+    const now = new Date().toISOString();
+    const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const optimistic = {
+      id: tempId,
+      serverId: null,
+      senderProfileId: me?.id,
+      createdAt: now,
       from: "me",
       text: text.trim(),
-      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      date: "Today",
+      time: formatTimeLabel(now),
+      date: formatDateLabel(now),
       status: "sent",
+      deleted: false,
     };
     
-    setMessages(prev => ({
+    setMessagesByConvId((prev) => ({
       ...prev,
-      [activeContactId]: [...(prev[activeContactId] || []), newMessage],
+      [activeContactId]: [...(prev[activeContactId] || []), optimistic],
     }));
     
     // Update last message in contact
     setContacts(prev => prev.map(c => 
       c.id === activeContactId 
-        ? { ...c, lastMessage: { text: text.trim(), time: newMessage.time, fromMe: true } }
+        ? { ...c, lastMessage: { text: text.trim(), time: optimistic.time, fromMe: true }, unread: 0 }
         : c
     ));
-    
-    // Simulate typing response
-    setTimeout(() => setIsTyping(true), 1000);
-    setTimeout(() => {
-      setIsTyping(false);
-      // Simulate response
-      const responses = [
-        "Got it, thanks!",
-        "Sounds good!",
-        "I'll look into it.",
-        "Thanks for letting me know!",
-        "Perfect, will do!",
-      ];
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-      const responseMessage = {
-        id: Date.now(),
-        from: activeContact?.type === "group" ? activeContact.members[0] : "them",
-        text: randomResponse,
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        date: "Today",
-        status: "delivered",
-      };
-      setMessages(prev => ({
+
+    try {
+      const res = await messagesApi.sendMessage(activeContactId, text.trim());
+      const realId = res?.message?.id;
+      const realCreatedAt = res?.message?.createdAt || now;
+      if (realId) {
+        setMessagesByConvId((prev) => ({
+          ...prev,
+          [activeContactId]: (prev[activeContactId] || []).map((m) =>
+            m.id === tempId ? { ...m, id: realId, serverId: realId, createdAt: realCreatedAt } : m
+          ),
+        }));
+      }
+    } catch (e) {
+      alert(e?.message || "Failed to send message");
+      setMessagesByConvId((prev) => ({
         ...prev,
-        [activeContactId]: [...(prev[activeContactId] || []), responseMessage],
+        [activeContactId]: (prev[activeContactId] || []).filter((m) => m.id !== tempId),
       }));
-    }, 2500);
-  }, [activeContactId, activeContact]);
-  
-  // Mark as read when opening chat
-  useEffect(() => {
-    if (activeContactId) {
-      setContacts(prev => prev.map(c => 
-        c.id === activeContactId ? { ...c, unread: 0 } : c
-      ));
     }
-  }, [activeContactId]);
+  }, [activeContact?.canSend, activeContact?.readOnlyReason, activeContactId, formatDateLabel, formatTimeLabel, me?.id]);
+  
+  // Mark as read + subscribe when opening chat
+  useEffect(() => {
+    if (!activeContactId) return;
+    setContacts((prev) => prev.map((c) => (c.id === activeContactId ? { ...c, unread: 0 } : c)));
+    messagesApi.markRead(activeContactId).catch(() => {});
+
+    const socket = socketRef.current;
+    if (socket) {
+      if (subscribedConvRef.current && subscribedConvRef.current !== activeContactId) {
+        socket.emit("chat:unsubscribe", { conversationId: subscribedConvRef.current });
+      }
+      subscribedConvRef.current = activeContactId;
+      socket.emit("chat:subscribe", { conversationId: activeContactId });
+    }
+
+    loadMessages(activeContactId);
+  }, [activeContactId, loadMessages]);
   
   // Group messages by date
   const groupedMessages = activeMessages.reduce((groups, message) => {
@@ -1136,6 +1430,16 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                }}
+                onClick={async () => {
+                  setShowNewChat(true);
+                  setNewChatSearch("");
+                  try {
+                    const res = await messagesApi.contacts();
+                    setNewChatContacts(res?.contacts || []);
+                  } catch {
+                    setNewChatContacts([]);
+                  }
                 }}
               >
                 <Plus size={20} />
@@ -1260,6 +1564,27 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
                         key={message.id}
                         message={message}
                         isGroup={activeContact.type === "group"}
+                        onReport={async (m) => {
+                          const messageId = m?.serverId || m?.id;
+                          if (!messageId || String(messageId).startsWith("tmp_")) return;
+                          const reason = window.prompt("Why are you reporting this message? (optional)") || "";
+                          try {
+                            await messagesApi.reportMessage(messageId, { reason });
+                            alert("Reported. HR has been notified.");
+                          } catch (e) {
+                            alert(e?.message || "Failed to report message");
+                          }
+                        }}
+                        onDelete={async (m) => {
+                          const messageId = m?.serverId || m?.id;
+                          if (!messageId || String(messageId).startsWith("tmp_")) return;
+                          if (!window.confirm("Delete this message?")) return;
+                          try {
+                            await messagesApi.deleteMessage(messageId);
+                          } catch (e) {
+                            alert(e?.message || "Failed to delete message");
+                          }
+                        }}
                         showAvatar={
                           activeContact.type === "group" &&
                           message.from !== "me" &&
@@ -1279,7 +1604,7 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
                 <div ref={messagesEndRef} />
               </div>
               
-              <MessageInput onSend={handleSendMessage} />
+              <MessageInput onSend={handleSendMessage} disabled={!activeContact?.canSend} readOnlyReason={activeContact?.readOnlyReason} />
             </>
           ) : (
             <EmptyState
@@ -1288,6 +1613,140 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
               subtitle="Choose a contact from the list to start messaging"
             />
           )}
+        </div>
+      )}
+
+      {/* New chat modal */}
+      {showNewChat && (
+        <div
+          onClick={() => setShowNewChat(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 3000,
+            padding: 16,
+          }}
+        >
+          <div
+            className="glass"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 18,
+              padding: 16,
+              background: "rgba(7, 30, 34, 0.95)",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ fontWeight: 900, color: "white", fontSize: 16 }}>Start a new chat</div>
+              <button
+                onClick={() => setShowNewChat(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.08)",
+                  border: "none",
+                  color: "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12, position: "relative" }}>
+              <Search
+                size={16}
+                style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.4)" }}
+              />
+              <input
+                value={newChatSearch}
+                onChange={(e) => setNewChatSearch(e.target.value)}
+                placeholder="Search people..."
+                style={{
+                  width: "100%",
+                  padding: "10px 12px 10px 40px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  outline: "none",
+                  fontSize: 13,
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 12, maxHeight: 360, overflowY: "auto" }}>
+              {(newChatContacts || [])
+                .filter((c) => String(c.name || "").toLowerCase().includes(String(newChatSearch || "").toLowerCase()))
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={async () => {
+                      try {
+                        const created = await messagesApi.createDirect(c.id);
+                        const convId = created?.conversationId;
+                        await loadConversations();
+                        if (convId) setActiveContactId(convId);
+                        setShowNewChat(false);
+                      } catch (e) {
+                        alert(e?.message || "Failed to start chat");
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 12px",
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 14,
+                      color: "white",
+                      cursor: "pointer",
+                      marginBottom: 10,
+                      display: "flex",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {c.avatar || initials(c.name || c.email)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {c.name}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.6)" }}>{String(c.role || "").toUpperCase()}</div>
+                    </div>
+                  </button>
+                ))}
+              {(!newChatContacts || newChatContacts.length === 0) && (
+                <div style={{ padding: 16, color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
+                  No available contacts yet. Ask HR to assign your PM to chat with teammates.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
       

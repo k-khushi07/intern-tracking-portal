@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Search, Mail, Eye, MapPin, Calendar, Award, TrendingUp, Clock } from "lucide-react";
 import InternProfilePage from "./InternProfilePage";
+import { hrApi } from "../../../lib/apiClient";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -10,40 +11,95 @@ const COLORS = {
   racingRed: "#d90429",
 };
 
-const ActiveInternsPage = ({ onNavigateToMessages }) => {
+const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [allUsers, setAllUsers] = useState(usersProp || []);
   const [activeInterns, setActiveInterns] = useState([]);
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
 
+  const [pmSelections, setPmSelections] = useState({});
+  const [savingAssign, setSavingAssign] = useState({});
+  const [loadError, setLoadError] = useState("");
+
   useEffect(() => {
-    const loadActiveInterns = () => {
+    if (Array.isArray(usersProp) && usersProp.length) {
+      setAllUsers(usersProp);
+    }
+  }, [usersProp]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (Array.isArray(usersProp) && usersProp.length) return;
       try {
-        const usersData = localStorage.getItem("users");
-        if (usersData) {
-          const users = JSON.parse(usersData);
-          const interns = users.filter(
-            (user) => user.role === "intern" && user.status === "active"
-          );
-          
-          // Remove duplicates based on email (unique identifier)
-          const uniqueInterns = interns.reduce((acc, current) => {
-            const duplicate = acc.find(item => item.email === current.email);
-            if (!duplicate) {
-              return acc.concat([current]);
-            }
-            return acc;
-          }, []);
-          
-          setActiveInterns(uniqueInterns);
+        setLoadError("");
+        const res = await hrApi.users();
+        if (cancelled) return;
+        const users = res?.users || [];
+        setAllUsers(users);
+        localStorage.setItem("users", JSON.stringify(users));
+      } catch (err) {
+        console.error("Error loading users (API):", err);
+        if (cancelled) return;
+        setLoadError(err?.message || "Failed to load interns");
+
+        try {
+          const usersData = localStorage.getItem("users");
+          if (usersData) setAllUsers(JSON.parse(usersData));
+        } catch (e) {
+          setAllUsers([]);
         }
-      } catch (error) {
-        console.error("Error loading interns:", error);
       }
     };
 
-    loadActiveInterns();
-  }, []);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [usersProp]);
+
+  useEffect(() => {
+    const interns = (allUsers || []).filter((user) => user.role === "intern" && user.status === "active");
+    const uniqueInterns = interns.reduce((acc, current) => {
+      const duplicate = acc.find((item) => item.email === current.email);
+      if (!duplicate) return acc.concat([current]);
+      return acc;
+    }, []);
+    setActiveInterns(uniqueInterns);
+  }, [allUsers]);
+
+  const allPMs = (allUsers || [])
+    .filter((u) => u.role === "pm" && (u.pmCode || u.pm_code))
+    .map((u) => ({
+      id: u.id,
+      fullName: u.fullName || u.name || u.full_name || u.email,
+      email: u.email,
+      pmCode: u.pmCode || u.pm_code,
+    }));
+
+  const handleAssignPm = async (intern, pmCode) => {
+    if (!intern?.id || !pmCode) return;
+    try {
+      setSavingAssign((prev) => ({ ...prev, [intern.id]: true }));
+      await hrApi.assignPm(intern.id, pmCode);
+
+      const next = activeInterns.map((i) => (i.id === intern.id ? { ...i, pmCode } : i));
+      setActiveInterns(next);
+
+      const updatedAll = (allUsers || []).map((u) =>
+        u.id === intern.id ? { ...u, pmCode, pmId: allPMs.find((p) => p.pmCode === pmCode)?.id || u.pmId } : u
+      );
+      setAllUsers(updatedAll);
+      localStorage.setItem("users", JSON.stringify(updatedAll));
+    } catch (err) {
+      console.error("Error assigning PM:", err);
+      alert(err?.message || "Failed to assign PM");
+    } finally {
+      setSavingAssign((prev) => ({ ...prev, [intern.id]: false }));
+    }
+  };
 
   const filteredInterns = activeInterns.filter((intern) => {
     const searchLower = searchQuery.toLowerCase();
@@ -82,6 +138,20 @@ const ActiveInternsPage = ({ onNavigateToMessages }) => {
 
   return (
     <div className="animate-fadeIn">
+      {loadError && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderRadius: 12,
+            background: "rgba(217, 4, 41, 0.12)",
+            border: "1px solid rgba(217, 4, 41, 0.35)",
+            color: COLORS.peachGlow,
+          }}
+        >
+          {loadError}
+        </div>
+      )}
       {/* REDUCED Stats Cards - 1/3 size */}
       <div
         style={{
@@ -411,7 +481,75 @@ const ActiveInternsPage = ({ onNavigateToMessages }) => {
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: "flex", gap: "12px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 11, color: "rgba(255, 229, 217, 0.6)", marginBottom: 6 }}>
+                    PM Assignment
+                  </p>
+                  {intern.pmCode ? (
+                    <div
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        background: "rgba(103, 146, 137, 0.12)",
+                        border: "1px solid rgba(103, 146, 137, 0.3)",
+                        color: COLORS.peachGlow,
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {intern.pmCode}
+                    </div>
+                  ) : (
+                    <select
+                      value={pmSelections[intern.id] || ""}
+                      onChange={(e) => setPmSelections((prev) => ({ ...prev, [intern.id]: e.target.value }))}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(103, 146, 137, 0.35)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: COLORS.peachGlow,
+                        outline: "none",
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="" style={{ background: COLORS.inkBlack }}>
+                        Select PM code…
+                      </option>
+                      {allPMs.map((pm) => (
+                        <option key={pm.pmCode} value={pm.pmCode} style={{ background: COLORS.inkBlack }}>
+                          {pm.pmCode} — {pm.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {!intern.pmCode && (
+                  <button
+                    onClick={() => handleAssignPm(intern, pmSelections[intern.id])}
+                    disabled={!pmSelections[intern.id] || !!savingAssign[intern.id]}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      cursor: !pmSelections[intern.id] || savingAssign[intern.id] ? "not-allowed" : "pointer",
+                      background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                      color: COLORS.peachGlow,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      opacity: !pmSelections[intern.id] || savingAssign[intern.id] ? 0.6 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {savingAssign[intern.id] ? "Assigning…" : "Assign"}
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: "12px" }}>
               <button
                 onClick={() => handleViewProfile(intern)}
                 style={{
@@ -472,6 +610,7 @@ const ActiveInternsPage = ({ onNavigateToMessages }) => {
                 <Mail size={18} />
                 Send Message
               </button>
+            </div>
             </div>
           </div>
         ))}

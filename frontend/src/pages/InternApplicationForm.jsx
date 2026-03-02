@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { applicationsApi } from '../lib/apiClient';
 
 const InternApplicationForm = () => {
   const [step, setStep] = useState(1);
@@ -608,49 +609,18 @@ const InternApplicationForm = () => {
 
     try {
       const pdfBase64 = generateApplicationPDF();
-      
-      const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-      
-      const newIntern = {
-        email: formData.email,
-        fullName: formData.fullName,
-        name: formData.fullName, // Add name field
-        role: 'intern',
-        degree: formData.degree,
-        phone: formData.phone,
-        dateOfBirth: formData.dateOfBirth,
-        gender: formData.gender,
-        address: formData.address,
-        city: formData.city,
-        state: formData.state,
-        pincode: formData.pincode,
-        location: `${formData.city}, ${formData.state}`, // Add location field
-        collegeName: formData.collegeName,
-        branch: formData.branch,
-        yearOfStudy: formData.yearOfStudy,
-        cgpa: formData.cgpa,
-        graduationYear: formData.graduationYear,
-        internshipDomain: formData.internshipDomain,
-        preferredDuration: formData.preferredDuration,
-        availableFrom: formData.availableFrom,
-        technicalSkills: formData.technicalSkills,
-        programmingLanguages: formData.programmingLanguages,
-        projects: formData.projects,
-        previousInternships: formData.previousInternships,
-        linkedinUrl: formData.linkedinUrl,
-        githubUrl: formData.githubUrl,
-        portfolioUrl: formData.portfolioUrl,
-        whyEDCS: formData.whyEDCS,
-        resumeLink: formData.resumeLink,
-        registeredAt: new Date().toISOString(),
+
+      await applicationsApi.create({
+        formData: {
+          ...formData,
+          registeredAt: new Date().toISOString(),
+          location: `${formData.city}, ${formData.state}`,
+        },
         applicationPDF: {
           base64: pdfBase64,
-          filename: `Application_${formData.fullName.replace(/\s+/g, '_')}_${Date.now()}.pdf`
-        }
-      };
-      
-      existingUsers.push(newIntern);
-      localStorage.setItem('users', JSON.stringify(existingUsers));
+          filename: `Application_${formData.fullName.replace(/\s+/g, '_')}_${Date.now()}.pdf`,
+        },
+      });
 
       setSubmitted(true);
       setLoading(false);

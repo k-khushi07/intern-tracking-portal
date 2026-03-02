@@ -1,6 +1,7 @@
 //frontend/src/pages/intern/ProfileSetup.jsx
 import React, { useState, useEffect } from "react";
 import { User, MapPin, Phone, Heart, GraduationCap, Calendar, Briefcase, Upload, Image, FileText, CheckCircle } from "lucide-react";
+import { authApi, internApi } from "../../lib/apiClient";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -60,7 +61,29 @@ export default function InternProfileSetup() {
     loadCurrentUser();
   }, []);
 
-  const loadCurrentUser = () => {
+  const loadCurrentUser = async () => {
+    try {
+      const me = await authApi.me();
+      if (me?.profile?.role !== "intern") {
+        window.location.href = "/";
+        return;
+      }
+
+      const u = {
+        role: me.profile.role,
+        fullName: me.profile.full_name,
+        email: me.profile.email,
+        pmCode: me.profile.pm_code || null,
+        internId: me.profile.intern_id || null,
+        profileCompleted: !!me.profile.profile_completed,
+      };
+      localStorage.setItem("currentUser", JSON.stringify(u));
+      setCurrentUser(u);
+      return;
+    } catch (error) {
+      console.error("Error loading intern (API):", error);
+    }
+
     try {
       const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
       if (user.role === "intern") {
@@ -157,7 +180,7 @@ export default function InternProfileSetup() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateStep(4)) return;
 
     try {
@@ -173,14 +196,15 @@ export default function InternProfileSetup() {
       // Create a clean profile object without file data if too large
       const cleanProfile = { ...profile };
       
-      // Check if we need to remove large files
-      try {
-        JSON.stringify(cleanProfile);
-      } catch (e) {
-        console.warn("Profile too large, removing file data");
+      // Avoid persisting base64 blobs in DB/localStorage.
+      if (typeof cleanProfile.profilePicture === "string" && cleanProfile.profilePicture.startsWith("data:")) {
         cleanProfile.profilePicture = "uploaded";
+      }
+      if (typeof cleanProfile.resume === "string" && cleanProfile.resume.startsWith("data:")) {
         cleanProfile.resume = "uploaded";
       }
+
+      await internApi.updateMe({ profileData: cleanProfile, profileCompleted: true });
 
       const users = JSON.parse(localStorage.getItem("users") || "[]");
       console.log("Total users before update:", users.length);

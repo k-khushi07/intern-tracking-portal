@@ -6,6 +6,8 @@ import OverviewPage from "./OverviewPage";
 import MyInternsPage from './MyInternsPage';
 import InternProfilePage from './InternProfilePage';
 import ReviewLogsPage from './ReviewLogsPage';
+import { authApi, pmApi, announcementsApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
 const COLORS = {
   bgPrimary: "#020617",
@@ -60,6 +62,15 @@ const PMHome = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  const [pmInfo, setPmInfo] = useState(null);
+  const [interns, setInterns] = useState([]);
+  const [weeklyReports, setWeeklyReports] = useState([]);
+  const [monthlyReports, setMonthlyReports] = useState([]);
+  const [pmStats, setPmStats] = useState(null);
+  const [sharedAnnouncements, setSharedAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   
   // Responsive Handler
   useEffect(() => {
@@ -79,53 +90,152 @@ const PMHome = () => {
     { id: 3, title: "Project Milestone", message: "Mike Johnson completed UI mockups", time: "2h ago", read: true, type: "project", internEmail: "mike.johnson@company.com" },
   ]);
 
-  const pmInfo = {
-    name: "Sarah Johnson",
-    role: "Project Manager",
-    avatar: "SJ",
-    fullName: "Sarah Johnson",
-    pmCode: "PM001",
-    email: "sarah.johnson@company.com"
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const meRes = await pmApi.me();
+        const pm = meRes?.pm;
+        if (!pm?.email) throw new Error("Unable to load PM profile");
+
+        const displayName = pm.fullName || pm.email;
+        const avatar = String(displayName)
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase();
+
+        const nextPmInfo = {
+          id: pm.id,
+          name: displayName,
+          role: "Project Manager",
+          avatar: avatar || "PM",
+          fullName: pm.fullName || displayName,
+          pmCode: pm.pmCode || null,
+          email: pm.email,
+          status: pm.status,
+        };
+
+        if (!cancelled) {
+          setPmInfo(nextPmInfo);
+          localStorage.setItem(
+            "currentUser",
+            JSON.stringify({
+              role: "pm",
+              fullName: nextPmInfo.fullName,
+              email: nextPmInfo.email,
+              pmCode: nextPmInfo.pmCode,
+            })
+          );
+        }
+      } catch (err) {
+        console.error("Failed loading PM profile:", err);
+        if (!cancelled) {
+          setLoadError(err?.message || "Failed to load PM profile");
+        }
+      }
+
+      try {
+        const internsRes = await pmApi.interns();
+        const raw = internsRes?.interns || [];
+        const mapped = raw.map((p) => ({
+          ...p,
+          fullName: p.full_name || p.fullName || p.name,
+          name: p.full_name || p.fullName || p.name,
+          internId: p.intern_id || p.internId,
+          status: p.status || "active",
+        }));
+        if (!cancelled) setInterns(mapped);
+      } catch (err) {
+        console.error("Failed loading PM interns:", err);
+        if (!cancelled) setInterns([]);
+      }
+
+      try {
+        const statsRes = await pmApi.stats();
+        if (!cancelled) setPmStats(statsRes?.stats || null);
+      } catch (err) {
+        console.error("Failed loading PM stats:", err);
+        if (!cancelled) setPmStats(null);
+      }
+
+      try {
+        const reportsRes = await pmApi.reports();
+        const reports = reportsRes?.reports || [];
+        const weekly = reports.filter((r) => r.reportType === "weekly");
+        const monthly = reports.filter((r) => r.reportType === "monthly");
+        if (!cancelled) {
+          setWeeklyReports(weekly);
+          setMonthlyReports(monthly);
+        }
+      } catch (err) {
+        console.error("Failed loading PM reports:", err);
+        if (!cancelled) {
+          setWeeklyReports([]);
+          setMonthlyReports([]);
+        }
+      }
+
+      try {
+        const annRes = await announcementsApi.list();
+        if (!cancelled) setSharedAnnouncements(annRes?.announcements || []);
+      } catch (err) {
+        console.error("Failed loading announcements:", err);
+        if (!cancelled) setSharedAnnouncements([]);
+      }
+
+      if (!cancelled) setLoading(false);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const computedStats = {
+    activeInterns: interns.filter((i) => (i.status || "").toLowerCase() === "active").length,
+    totalHours: 0,
+    totalTasks: 0,
+    pendingReports: weeklyReports.filter((r) => (r.status || "").toLowerCase() === "pending").length +
+      monthlyReports.filter((r) => (r.status || "").toLowerCase() === "pending").length,
   };
 
-  // Mock data
-  const mockInterns = [
-    { id: 1, fullName: "John Doe", email: "john.doe@company.com", degree: "Computer Science", hoursLogged: 45, tasksCompleted: 12, status: "active" },
-    { id: 2, fullName: "Jane Smith", email: "jane.smith@company.com", degree: "Software Engineering", hoursLogged: 38, tasksCompleted: 10, status: "active" },
-    { id: 3, fullName: "Mike Johnson", email: "mike.johnson@company.com", degree: "Information Technology", hoursLogged: 42, tasksCompleted: 11, status: "active" }
-  ];
+  const stats = pmStats || computedStats;
 
-  const mockStats = {
-    activeInterns: 3,
-    totalHours: 125,
-    totalTasks: 33,
-    pendingReports: 5
-  };
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = () => {
+      pmApi.interns().then((r) => setInterns((r?.interns || []).map((p) => ({
+        ...p,
+        fullName: p.full_name || p.fullName || p.name,
+        name: p.full_name || p.fullName || p.name,
+        internId: p.intern_id || p.internId,
+        status: p.status || "active",
+      })))).catch(() => {});
 
-  const mockWeeklyReports = [
-    {
-      id: 1,
-      internName: "John Doe",
-      weekNumber: 1,
-      dateRange: "Jan 6 - Jan 12, 2025",
-      totalHours: 40,
-      daysWorked: 5,
-      summary: "Completed frontend components and integrated APIs. Made good progress on the dashboard redesign.",
-      status: "pending",
-      submittedAt: new Date().toISOString()
-    },
-    {
-      id: 2,
-      internName: "Jane Smith",
-      weekNumber: 1,
-      dateRange: "Jan 6 - Jan 12, 2025",
-      totalHours: 38,
-      daysWorked: 5,
-      summary: "Worked on backend API development and database optimization. Fixed several critical bugs.",
-      status: "approved",
-      submittedAt: new Date(Date.now() - 86400000).toISOString()
-    }
-  ];
+      pmApi.stats().then((r) => setPmStats(r?.stats || null)).catch(() => {});
+
+      pmApi.reports().then((r) => {
+        const reports = r?.reports || [];
+        setWeeklyReports(reports.filter((x) => x.reportType === "weekly"));
+        setMonthlyReports(reports.filter((x) => x.reportType === "monthly"));
+      }).catch(() => {});
+
+      announcementsApi.list().then((r) => setSharedAnnouncements(r?.announcements || [])).catch(() => {});
+    };
+
+    socket.on("itp:changed", onChanged);
+    return () => {
+      socket.off("itp:changed", onChanged);
+    };
+  }, []);
 
   // REMOVED ANALYTICS FROM MENU
   const menuItems = [
@@ -190,10 +300,11 @@ const PMHome = () => {
         return (
           <OverviewPage 
             pm={pmInfo} 
-            interns={mockInterns} 
-            stats={mockStats} 
+            interns={interns} 
+            stats={stats} 
             isMobile={isMobile} 
-            weeklyReports={mockWeeklyReports} 
+            weeklyReports={weeklyReports} 
+            sharedAnnouncements={sharedAnnouncements}
           />
         );
       case "interns":
@@ -201,6 +312,7 @@ const PMHome = () => {
           <MyInternsPage 
             onNavigateToMessages={handleNavigateToMessages}
             onViewProfile={handleViewProfile}
+            interns={interns}
           />
         );
       case "intern-profile":
@@ -215,10 +327,11 @@ const PMHome = () => {
       case "review-logs":
         return (
           <ReviewLogsPage 
-            weeklyReports={mockWeeklyReports} 
-            monthlyReports={[]} 
+            interns={interns}
+            weeklyReports={weeklyReports} 
+            monthlyReports={monthlyReports} 
             isMobile={isMobile}
-            pmEmail={pmInfo.email}
+            pmEmail={pmInfo?.email || ""}
             addNotification={addNotification}
           />
         );
@@ -226,10 +339,11 @@ const PMHome = () => {
         return (
           <OverviewPage 
             pm={pmInfo} 
-            interns={mockInterns} 
-            stats={mockStats} 
+            interns={interns} 
+            stats={stats} 
             isMobile={isMobile} 
-            weeklyReports={mockWeeklyReports} 
+            weeklyReports={weeklyReports} 
+            sharedAnnouncements={sharedAnnouncements}
           />
         );
     }
@@ -306,11 +420,11 @@ const PMHome = () => {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 18, fontWeight: 700, color: "white",
                 }}>
-                  {pmInfo.avatar}
+                  {pmInfo?.avatar || "PM"}
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
-                    {pmInfo.name}
+                    {pmInfo?.name || "Project Manager"}
                   </div>
                   <div style={{ fontSize: 12, color: COLORS.textMuted }}>Project Manager</div>
                 </div>
@@ -360,9 +474,14 @@ const PMHome = () => {
           {/* Sidebar Footer - Matching HR */}
           <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
             <button
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  await authApi.logout();
+                } catch {
+                  // ignore
+                }
                 localStorage.removeItem("currentUser");
-                window.location.href = "/login";
+                window.location.href = "/";
               }}
               style={{
                 width: "100%",
@@ -543,7 +662,7 @@ const PMHome = () => {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 700, color: "white", cursor: "pointer",
               }}>
-                {pmInfo.avatar}
+                {pmInfo?.avatar || "PM"}
               </div>
             </div>
           </header>
@@ -557,7 +676,17 @@ const PMHome = () => {
             background: COLORS.bgPrimary,
           }}>
             <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-              {renderPage()}
+              {loading && (
+                <div style={{ padding: 20, color: COLORS.textSecondary }}>
+                  Loading…
+                </div>
+              )}
+              {!loading && loadError && (
+                <div style={{ padding: 20, color: COLORS.red }}>
+                  {loadError}
+                </div>
+              )}
+              {!loading && !loadError && renderPage()}
             </div>
           </div>
         </main>

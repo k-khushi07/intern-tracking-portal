@@ -1,6 +1,7 @@
 // ReviewLogsPage.jsx - pm dashboard
 import React, { useState } from "react";
 import { FileText, Calendar, Clock, CheckCircle, XCircle, Eye, Download, ChevronDown, User, TrendingUp, Target, Layers, FileCode, Send, X, Loader, ArrowLeft } from "lucide-react";
+import { pmApi } from "../../lib/apiClient";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -14,9 +15,15 @@ const COLORS = {
 };
 
 // Backend API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
-export default function ReviewLogsPage({ pmEmail = "pm@company.com", addNotification }) {
+export default function ReviewLogsPage({
+  pmEmail = "pm@company.com",
+  addNotification,
+  interns: internProfiles = [],
+  weeklyReports = [],
+  monthlyReports = [],
+}) {
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [activeCategory, setActiveCategory] = useState("weekly");
   const [isLoading, setIsLoading] = useState(false);
@@ -24,162 +31,40 @@ export default function ReviewLogsPage({ pmEmail = "pm@company.com", addNotifica
   const [rejectReason, setRejectReason] = useState("");
   const [itemToReject, setItemToReject] = useState(null);
 
-  // Mock interns data with profile info
-  const interns = [
-    { 
-      id: 1, 
-      name: "Blessy sharon", 
-      email: "blessysharon.work@gmail.com",
-      avatar: "BS",
-      role: "Frontend Developer",
-      department: "Engineering",
-      joinDate: "2024-01-15",
-      totalReports: 8,
-      pendingReports: 2,
-      performance: 92,
-      tnaSheetUrl: "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing",
-      blueprintDocUrl: "https://docs.google.com/document/d/1quncr9_h6VrzMM6lfslOosPCqBqI-cuK_sHgSLZCpZE/edit?usp=sharing",
-    },
-    { 
-      id: 2, 
-      name: "Jane Smith", 
-      email: "jane.smith@company.com",
-      avatar: "JS",
-      role: "Backend Developer",
-      department: "Engineering",
-      joinDate: "2024-02-01",
-      totalReports: 6,
-      pendingReports: 1,
-      performance: 88,
-      tnaSheetUrl: "https://docs.google.com/spreadsheets/d/abc123/edit",
-      blueprintDocUrl: "https://docs.google.com/document/d/1quncr9_h6VrzMM6lfslOosPCqBqI-cuK_sHgSLZCpZE/edit?usp=sharing",
-    },
-    { 
-      id: 3, 
-      name: "Mike Johnson", 
-      email: "mike.johnson@company.com",
-      avatar: "MJ",
-      role: "UI/UX Designer",
-      department: "Design",
-      joinDate: "2024-01-20",
-      totalReports: 7,
-      pendingReports: 3,
-      performance: 85,
-      tnaSheetUrl: "https://docs.google.com/spreadsheets/d/ghi789/edit",
-      blueprintDocUrl: "https://docs.google.com/document/d/1quncr9_h6VrzMM6lfslOosPCqBqI-cuK_sHgSLZCpZE/edit?usp=sharing",
-    },
-  ];
+  const deriveAvatar = (nameOrEmail) =>
+    String(nameOrEmail || "")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase() || "IN";
 
-  // Mock Weekly Reports
-  const weeklyReports = [
-    {
-      id: 1,
-      internId: 1,
-      internName: "Blessy sharon",
-      internEmail: "blessysharon.work@gmail.com",
-      weekNumber: 2,
-      dateRange: "Jan 13 - Jan 19, 2025",
-      totalHours: 42,
-      daysWorked: 5,
-      summary: "Completed the chatbot UI design and integrated the backend API. Started working on the user authentication flow. Made significant progress on the React components library.",
-      status: "pending",
-      submittedAt: "2025-01-19T16:30:00Z",
-      tasks: [
-        "Designed chatbot interface with 5 different layouts",
-        "Integrated REST API endpoints for messaging",
-        "Created reusable React components",
-        "Set up authentication flow with JWT"
-      ]
-    },
-    {
-      id: 2,
-      internId: 2,
-      internName: "Jane Smith",
-      internEmail: "jane.smith@company.com",
-      weekNumber: 2,
-      dateRange: "Jan 13 - Jan 19, 2025",
-      totalHours: 38,
-      daysWorked: 5,
-      summary: "Focused on backend development, implemented new API endpoints for user management. Optimized database queries and improved response times by 40%.",
-      status: "approved",
-      submittedAt: "2025-01-19T14:20:00Z",
-      tasks: [
-        "Created 8 new API endpoints",
-        "Database query optimization",
-        "Implemented caching layer",
-        "Written unit tests for all endpoints"
-      ]
-    },
-    {
-      id: 3,
-      internId: 3,
-      internName: "Mike Johnson",
-      internEmail: "mike.johnson@company.com",
-      weekNumber: 2,
-      dateRange: "Jan 13 - Jan 19, 2025",
-      totalHours: 40,
-      daysWorked: 5,
-      summary: "Completed UI/UX design for the mobile app. Created wireframes and high-fidelity mockups. Conducted user testing sessions with 10 participants.",
-      status: "pending",
-      submittedAt: "2025-01-19T17:00:00Z",
-      tasks: [
-        "Mobile app wireframes (15 screens)",
-        "High-fidelity mockups in Figma",
-        "User testing with 10 participants",
-        "Design system documentation"
-      ]
-    }
-  ];
+  const interns = (internProfiles || []).map((p) => {
+    const name = p.fullName || p.name || p.full_name || p.email;
+    const totalReports =
+      weeklyReports.filter((r) => r.internId === p.id).length +
+      monthlyReports.filter((r) => r.internId === p.id).length;
+    const pendingReports =
+      weeklyReports.filter((r) => r.internId === p.id && r.status === "pending").length +
+      monthlyReports.filter((r) => r.internId === p.id && r.status === "pending").length;
 
-  // Mock Monthly Reports
-  const monthlyReports = [
-    {
-      id: 1,
-      internId: 1,
-      internName: "Blessy sharon",
-      internEmail: "blessysharon.work@gmail.com",
-      month: "December 2024",
-      totalHours: 168,
-      totalDays: 22,
-      avgHoursPerDay: "7.6",
-      summary: "Excellent month with consistent performance. Completed major milestones including the entire frontend architecture, component library, and responsive design implementation.",
-      status: "approved",
-      submittedAt: "2025-01-02T10:00:00Z",
-      achievements: [
-        "Built complete React component library (50+ components)",
-        "Implemented responsive design for all pages",
-        "Achieved 95% code coverage in tests",
-        "Mentored 2 junior interns"
-      ],
-      challenges: [
-        "Complex state management in nested components",
-        "Performance optimization for large data sets"
-      ]
-    },
-    {
-      id: 2,
-      internId: 2,
-      internName: "Jane Smith",
-      internEmail: "jane.smith@company.com",
-      month: "December 2024",
-      totalHours: 160,
-      totalDays: 21,
-      avgHoursPerDay: "7.6",
-      summary: "Strong performance throughout the month. Delivered all backend features on time.",
-      status: "approved",
-      submittedAt: "2025-01-02T11:30:00Z",
-      achievements: [
-        "Implemented 40+ API endpoints",
-        "Reduced API response time by 60%",
-        "Set up comprehensive logging system",
-        "Created API documentation"
-      ],
-      challenges: [
-        "Scaling database for high traffic",
-        "Integrating third-party payment gateway"
-      ]
-    }
-  ];
+    const pd = p.profile_data || p.profileData || {};
+    return {
+      id: p.id,
+      name,
+      email: p.email,
+      avatar: deriveAvatar(name),
+      role: pd.internshipDomain || pd.degree || "Intern",
+      department: pd.department || "—",
+      joinDate: p.created_at || p.registeredAt || null,
+      totalReports,
+      pendingReports,
+      performance: 0,
+      tnaSheetUrl: pd.tnaSheetUrl || "",
+      blueprintDocUrl: pd.blueprintDocUrl || "",
+    };
+  });
 
   // Mock Projects
   const projects = [
@@ -310,6 +195,7 @@ export default function ReviewLogsPage({ pmEmail = "pm@company.com", addNotifica
     try {
       const response = await fetch(`${API_BASE_URL}/emails/approve`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: item.internEmail,
@@ -349,6 +235,7 @@ export default function ReviewLogsPage({ pmEmail = "pm@company.com", addNotifica
     try {
       const response = await fetch(`${API_BASE_URL}/emails/reject`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: item.internEmail,
@@ -522,6 +409,15 @@ export default function ReviewLogsPage({ pmEmail = "pm@company.com", addNotifica
 
   const handleApprove = async (item, type) => {
     if (window.confirm(`Approve this ${type}?`)) {
+      try {
+        setIsLoading(true);
+        await pmApi.reviewReport(item.id, { status: "approved" });
+      } catch (err) {
+        alert(err?.message || "Failed to approve");
+        setIsLoading(false);
+        return;
+      }
+
       await sendApprovalEmail(item, type);
     }
   };
@@ -536,6 +432,15 @@ export default function ReviewLogsPage({ pmEmail = "pm@company.com", addNotifica
       alert("Please provide a reason");
       return;
     }
+    try {
+      setIsLoading(true);
+      await pmApi.reviewReport(itemToReject.item.id, { status: "rejected", reason: rejectReason });
+    } catch (err) {
+      alert(err?.message || "Failed to reject");
+      setIsLoading(false);
+      return;
+    }
+
     await sendRejectionEmail(itemToReject.item, itemToReject.type, rejectReason);
   };
 

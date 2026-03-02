@@ -18,6 +18,8 @@ import {
 } from "./HRComponents";
 
 import MessagesPage from './MessagesPage';
+import { authApi, hrApi, announcementsApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
 export default function HRHome() {
   // State Management
@@ -71,8 +73,43 @@ export default function HRHome() {
       document.removeEventListener("mousedown", handleClickOutside);
   }, [showNotifications]);
 
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = () => {
+      loadUsers();
+      loadAnnouncements();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, []);
+
   // Data Loading Functions
-  const loadCurrentHR = () => {
+  const loadCurrentHR = async () => {
+    try {
+      const me = await authApi.me();
+      if (me?.profile?.role === "hr") {
+        const hr = {
+          role: me.profile.role,
+          fullName: me.profile.full_name,
+          email: me.profile.email,
+        };
+        localStorage.setItem("currentUser", JSON.stringify(hr));
+        setCurrentHR(hr);
+        return;
+      }
+      // Authenticated but not HR
+      localStorage.removeItem("currentUser");
+      window.location.href = "/";
+      return;
+    } catch (e) {
+      console.error("Error loading HR (API):", e);
+      if (e?.status === 401 || e?.status === 403) {
+        localStorage.removeItem("currentUser");
+        window.location.href = "/";
+        return;
+      }
+    }
+
     try {
       const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
       if (user.role === "hr") {
@@ -83,7 +120,22 @@ export default function HRHome() {
     }
   };
 
-  const loadUsers = () => {
+  const loadUsers = async () => {
+    try {
+      const res = await hrApi.users();
+      const loadedUsers = res?.users || [];
+      localStorage.setItem("users", JSON.stringify(loadedUsers));
+      setUsers(loadedUsers);
+      return;
+    } catch (err) {
+      console.error("Error loading users (API):", err);
+      if (err?.status === 401 || err?.status === 403) {
+        localStorage.removeItem("currentUser");
+        window.location.href = "/";
+        return;
+      }
+    }
+
     try {
       const storedUsers = JSON.parse(localStorage.getItem("users") || "[]");
      
@@ -143,14 +195,28 @@ export default function HRHome() {
     }
   };
 
-  const loadAnnouncements = () => {
+  const loadAnnouncements = async () => {
     try {
-      const stored = JSON.parse(localStorage.getItem("announcements") || "[]");
-      setAnnouncements(stored.length ? stored : [
-        { id: 1, title: "Welcome to Q4", content: "New intern orientation begins next week.", pinned: true, date: new Date().toISOString() },
-        { id: 2, title: "Policy Update", content: "Updated remote work guidelines are now in effect.", pinned: false, date: new Date().toISOString() },
-      ]);
-    } catch {
+      const res = await announcementsApi.list();
+      const rows = res?.announcements || [];
+      const mapped = rows.map((a) => ({
+        id: a.id,
+        title: a.title,
+        content: a.content,
+        pinned: !!a.pinned,
+        priority: a.priority || "medium",
+        audienceRoles: a.audience_roles || [],
+        date: a.created_at,
+        createdBy: a.created_by,
+      }));
+      setAnnouncements(mapped);
+    } catch (err) {
+      console.error("Failed to load announcements:", err);
+      if (err?.status === 401 || err?.status === 403) {
+        localStorage.removeItem("currentUser");
+        window.location.href = "/";
+        return;
+      }
       setAnnouncements([]);
     }
   };
@@ -169,9 +235,9 @@ export default function HRHome() {
   // Data Loading
   useEffect(() => {
     const initializeData = async () => {
-      loadCurrentHR();
-      loadUsers();
-      loadAnnouncements();
+      await loadCurrentHR();
+      await loadUsers();
+      await loadAnnouncements();
       loadNotifications();
     };
     initializeData();
@@ -200,27 +266,52 @@ export default function HRHome() {
   const stats = getStats();
 
   // Handlers
-  const handleApprove = (updatedIntern) => {
+  const handleApprove = async (approval) => {
     try {
+      if (approval?.applicationId) {
+        const res = await hrApi.approveApplication(approval.applicationId, {
+          internId: approval.internId,
+          password: approval.password,
+          email: approval.email,
+        });
+        await loadUsers();
+        if (approval.showAlert !== false) {
+          alert(`✅ ${approval.fullName || "Intern"} has been approved and activated!`);
+        }
+        return res;
+      }
+
       const usersFromStorage = JSON.parse(localStorage.getItem("users") || "[]");
 
       const updatedUsers = usersFromStorage.map(u =>
-        u.email === updatedIntern.email ? updatedIntern : u
+        u.email === approval.email ? approval : u
       );
 
       localStorage.setItem("users", JSON.stringify(updatedUsers));
       setUsers(updatedUsers);
 
-      alert(`✅ ${updatedIntern.fullName} has been approved and activated!`);
+      alert(`✅ ${approval.fullName} has been approved and activated!`);
 
-      console.log("✅ Intern approved:", updatedIntern.email);
+      console.log("✅ Intern approved:", approval.email);
     } catch (err) {
       console.error("❌ Approval error:", err);
-      alert("❌ Something went wrong during approval. Please try again.");
+      alert(err.message || "❌ Something went wrong during approval. Please try again.");
     }
   };
 
-  const handleMoveToApproval = (intern) => {
+  const handleMoveToApproval = async (intern) => {
+    if (intern?.applicationId) {
+      try {
+        await hrApi.setApplicationStatus(intern.applicationId, INTERN_STATUS.PENDING);
+        await loadUsers();
+        alert(`✅ ${intern.fullName} moved to Approval Center!`);
+      } catch (err) {
+        console.error("Move to approval failed:", err);
+        alert(err.message || "❌ Failed to move intern to Approval Center.");
+      }
+      return;
+    }
+
     const updatedUsers = users.map(u => {
       if (u.email === intern.email && u.role === "intern") {
         return {
@@ -243,7 +334,20 @@ export default function HRHome() {
     alert(`✅ ${intern.fullName} moved to Approval Center!`);
   };
 
-  const handleRejectIntern = () => {
+  const handleRejectIntern = async () => {
+    if (selectedUser?.applicationId) {
+      try {
+        await hrApi.rejectApplication(selectedUser.applicationId, { reason: rejectReason });
+        await loadUsers();
+        setShowRejectModal(false);
+        alert(`⚠️ ${selectedUser.fullName} has been rejected.`);
+      } catch (err) {
+        console.error("Reject failed:", err);
+        alert(err.message || "❌ Failed to reject intern.");
+      }
+      return;
+    }
+
     const updatedUsers = users.filter(
       u => !(u.email === selectedUser.email && u.role === "intern")
     );
@@ -280,44 +384,50 @@ export default function HRHome() {
     setActiveSection("messages");
   };
 
-  const handleCreateAnnouncement = (announcement) => {
-    const newAnnouncement = {
-      ...announcement,
-      id: Date.now(),
-      date: new Date().toISOString(),
-    };
-
-    const updated = [newAnnouncement, ...announcements];
-    localStorage.setItem("announcements", JSON.stringify(updated));
-    setAnnouncements(updated);
-    setShowAnnouncementModal(false);
-
-    alert("✅ Announcement created successfully!");
+  const handleCreateAnnouncement = async (announcement) => {
+    try {
+      await hrApi.createAnnouncement({
+        title: announcement.title,
+        content: announcement.content,
+        priority: announcement.priority || "medium",
+        audienceRoles: announcement.audienceRoles,
+        pinned: announcement.pinned,
+      });
+      await loadAnnouncements();
+      setShowAnnouncementModal(false);
+      alert("✅ Announcement created successfully!");
+    } catch (err) {
+      console.error("Create announcement failed:", err);
+      alert(err.message || "❌ Failed to create announcement");
+    }
   };
 
-  const handleDeleteAnnouncement = (id) => {
-    const announcement = announcements.find(a => a.id === id);
-    const updated = announcements.filter(a => a.id !== id);
-
-    localStorage.setItem("announcements", JSON.stringify(updated));
-    setAnnouncements(updated);
-
-    alert(`ℹ️ "${announcement?.title}" has been deleted.`);
+  const handleDeleteAnnouncement = async (id) => {
+    try {
+      const announcement = announcements.find((a) => a.id === id);
+      await hrApi.deleteAnnouncement(id);
+      await loadAnnouncements();
+      alert(`ℹ️ "${announcement?.title || "Announcement"}" has been deleted.`);
+    } catch (err) {
+      console.error("Delete announcement failed:", err);
+      alert(err.message || "❌ Failed to delete announcement");
+    }
   };
 
-  const handlePinAnnouncement = (id) => {
-    const updated = announcements.map(a =>
-      a.id === id ? { ...a, pinned: !a.pinned } : a
-    );
-
-    const announcement = updated.find(a => a.id === id);
-    localStorage.setItem("announcements", JSON.stringify(updated));
-    setAnnouncements(updated);
-
-    if (announcement.pinned) {
-      alert(`ℹ️ "${announcement.title}" has been pinned.`);
-    } else {
-      alert(`ℹ️ "${announcement.title}" has been unpinned.`);
+  const handlePinAnnouncement = async (id) => {
+    try {
+      const announcement = announcements.find((a) => a.id === id);
+      const nextPinned = !announcement?.pinned;
+      await hrApi.updateAnnouncement(id, { pinned: nextPinned });
+      await loadAnnouncements();
+      if (nextPinned) {
+        alert(`ℹ️ "${announcement?.title}" has been pinned.`);
+      } else {
+        alert(`ℹ️ "${announcement?.title}" has been unpinned.`);
+      }
+    } catch (err) {
+      console.error("Pin announcement failed:", err);
+      alert(err.message || "❌ Failed to update announcement");
     }
   };
 
@@ -354,17 +464,7 @@ export default function HRHome() {
       });
   };
 
-  const allPMs = [
-    {
-      id: "1",
-      name: "Demo PM",
-      email: "demo@pm.com",
-      phone: "9999999999",
-      pmCode: "PM001",
-      status: "active",
-      role: "pm"
-    }
-  ];
+  const allPMs = users.filter(u => u.role === "pm");
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -504,9 +604,14 @@ export default function HRHome() {
           {/* Sidebar Footer */}
           <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
             <button
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  await authApi.logout();
+                } catch {
+                  // ignore
+                }
                 localStorage.removeItem("currentUser");
-                window.location.href = "/login";
+                window.location.href = "/";
               }}
               style={{
                 width: "100%",
@@ -813,7 +918,7 @@ export default function HRHome() {
             )}
 
             {activeSection === "active" && (
-              <ActiveInterns onNavigateToMessages={handleNavigateToMessages} />
+              <ActiveInterns onNavigateToMessages={handleNavigateToMessages} users={users} />
             )}
 
             {activeSection === "new" && (

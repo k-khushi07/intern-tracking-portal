@@ -1,0 +1,25 @@
+Objective:
+Describe what you will build during the internship (1–3 paragraphs).
+
+Scope:
+- What you will build
+- What you will not build
+- Key user flows (Intern, PM, HR)
+
+Tech Stack:
+React, Vite, TailwindCSS
+Node.js, Express
+Supabase (Postgres + Auth)
+Socket.IO (realtime)
+
+Milestones:
+- Week 1: Environment setup + schema + auth
+- Week 2: Intern dashboard + logs + reports
+- Week 3: PM review workflow + realtime updates
+- Week 4: Announcements + Google sync
+- Week 5: Testing + bugfix + deployment
+
+Notes:
+- All DB access goes through Node.js backend only
+- Google sync is read-only (public export; no credentials)
+- Sheet/Doc must be public or “Publish to web”

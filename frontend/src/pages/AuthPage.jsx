@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { authApi } from "../lib/apiClient";
 
 
 const COLORS = {
@@ -178,9 +179,40 @@ export default function AuthPage() {
   };
 
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+
+    try {
+      const res = await authApi.login({
+        email: loginData.email,
+        password: loginData.password,
+        expectedRole: role,
+        rememberMe,
+      });
+
+      const profile = res.profile;
+      const currentUser = {
+        role: profile.role,
+        fullName: profile.full_name,
+        email: profile.email,
+        pmCode: profile.pm_code || null,
+        internId: profile.intern_id || null,
+        profileCompleted: !!profile.profile_completed,
+      };
+
+      localStorage.setItem("currentUser", JSON.stringify(currentUser));
+
+      if (currentUser.role === "intern" && !currentUser.profileCompleted) {
+        navigate("/profile-setup");
+      } else {
+        navigate(`/dashboard/${currentUser.role}`);
+      }
+      return;
+    } catch (err) {
+      setError(err.message || "Login failed.");
+      return;
+    }
 
 
     const users = getUsers();
@@ -230,7 +262,7 @@ export default function AuthPage() {
       }}
     >
       {/* 🔧 TEST BUTTONS - FIXED TOP RIGHT */}
-      <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'none', flexDirection: 'column', gap: '12px' }}>
         <button
           onClick={createTestAdmin}
           style={{

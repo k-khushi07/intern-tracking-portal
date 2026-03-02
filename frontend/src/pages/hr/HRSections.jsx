@@ -18,6 +18,7 @@ import {
 
 import ReviewLogsPage from "./ReviewLogsPage";
 import ActiveInternsPage from "./ActiveInterns/ActiveInternsPage.jsx";
+import ReportsInbox from "./ReportsInbox";
 
 const inputStyle = {
   width: "100%",
@@ -605,7 +606,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
 
   // Get approval email template
   const getApprovalEmailTemplate = (intern, internId, password, pmCode) => {
-    const portalLink = `${window.location.origin}/login`;
+    const portalLink = `${window.location.origin}/`;
    
     return `Dear ${intern?.fullName || "[Name]"},
 
@@ -615,14 +616,15 @@ We are pleased to inform you that you have been selected for our internship prog
 
 YOUR CREDENTIALS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Intern ID: ${internId}
+Login Email: ${intern?.email || "[Email]"}
 Password: ${password}
-PM Code: ${pmCode}
+Intern ID (reference): ${internId}
+PM Assignment: Pending (HR will assign PM code later)
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
 NEXT STEPS:
 1. Visit the InternHub Portal: ${portalLink}
-2. Login with your Intern ID, Password, and PM Code
+2. Login with your Email and Password
 3. Complete your profile setup
 4. Review the attached Offer Letter carefully
 5. Your start date and further instructions will be shared soon
@@ -719,8 +721,9 @@ InternHub`;
           html: rejectionEmail.replace(/\n/g, '<br>'),
         };
 
-        const response = await fetch("http://localhost:5000/api/send-email", {
+        const response = await fetch("/api/send-email", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload),
         });
@@ -779,19 +782,7 @@ InternHub`;
       return;
     }
 
-    if (!pmCode || !pmCode.trim()) {
-      alert("⚠️ PM Code is required for approval");
-      return;
-    }
-
-    // Validate PM Code exists
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    const pmExists = users.find(u => u.role === "pm" && u.pmCode === pmCode);
-   
-    if (!pmExists) {
-      alert(`❌ Invalid PM Code: ${pmCode}\n\nPlease enter a valid PM Code from the list.`);
-      return;
-    }
+    // PM Code is assigned after approval (HR will assign it later)
 
     if (!emailContent.trim()) {
       alert("⚠️ Email content cannot be empty");
@@ -816,7 +807,6 @@ InternHub`;
       `${bcc ? `BCC: ${bcc}\n` : ''}` +
       `\nIntern ID: ${internId}\n` +
       `Password: ${password}\n` +
-      `PM Code: ${pmCode}\n` +
       `Attachment: ${offerLetterPDF ? 'Offer Letter PDF ✓' : 'No attachment'}\n\n` +
       `This will immediately activate the intern account.`
     );
@@ -826,6 +816,15 @@ InternHub`;
     setIsSending(true);
 
     try {
+      // First approve in backend (creates Supabase auth user + profile), then email credentials
+      await onApprove({
+        applicationId: selectedIntern.applicationId,
+        fullName: selectedIntern.fullName,
+        internId,
+        password,
+        showAlert: false,
+      });
+
       // Try to send email with offer letter attachment
       let emailSent = false;
       try {
@@ -857,8 +856,9 @@ InternHub`;
           hasAttachment: !!emailPayload.attachments
         });
 
-        const response = await fetch("http://localhost:5000/api/send-email", {
+        const response = await fetch("/api/send-email", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(emailPayload),
         });
@@ -879,7 +879,7 @@ InternHub`;
         ...selectedIntern,
         internId: internId,
         password: password,
-        pmCode: pmCode,
+        pmCode: pmCode || null,
         status: INTERN_STATUS.ACTIVE,
         approvedAt: new Date().toISOString(),
         approvedBy: currentHR?.email || "HR",
@@ -889,8 +889,7 @@ InternHub`;
         offerLetterPDF: offerLetterPDF || null,
       };
 
-      // Save and update
-      onApprove(updatedIntern);
+      // (Backend approval already done above)
 
       const emailStatus = emailSent
         ? "✅ Email with offer letter sent successfully!"
@@ -901,7 +900,7 @@ InternHub`;
         `${emailStatus}\n\n` +
         `Intern ID: ${internId}\n` +
         `Password: ${password}\n` +
-        `PM Code: ${pmCode}\n` +
+        `PM Assignment: Pending (HR will assign PM code later)\n` +
         `Offer Letter: ${offerLetterPDF ? 'Attached ✓' : 'Not attached'}\n\n` +
         `The intern can now login and complete their profile.`
       );
@@ -1063,7 +1062,7 @@ InternHub`;
                   {/* PM Code - ✅ FIXED: Controlled input */}
                   <div>
                     <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                      PM Code *
+                      PM Code (optional)
                     </label>
                     <div style={{ position: "relative" }}>
                       <Key size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: COLORS.jungleTeal }} />
@@ -1171,13 +1170,13 @@ InternHub`;
                 <div style={{ display: "flex", gap: 10 }}>
                   <button
                     onClick={handleFinalApprove}
-                    disabled={isSending || !pmCode}
+                    disabled={isSending}
                     style={{
                       ...primaryButtonStyle,
                       flex: 1,
                       background: GRADIENTS.emerald,
-                      opacity: (isSending || !pmCode) ? 0.6 : 1,
-                      cursor: (isSending || !pmCode) ? "not-allowed" : "pointer",
+                      opacity: isSending ? 0.6 : 1,
+                      cursor: isSending ? "not-allowed" : "pointer",
                     }}
                   >
                     <Send size={16} /> {isSending ? "Processing..." : "Approve & Activate"}
@@ -1426,8 +1425,9 @@ InternHub`;
 
     setIsSending(true);
     try {
-      const res = await fetch("http://localhost:5000/api/send-email", {
+      const res = await fetch("/api/send-email", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: selectedIntern.email,
@@ -2211,20 +2211,10 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
 
 // ==================== REPORTS SECTION ====================
 export function ReportsSection({ users, reportsTab, setReportsTab, currentHR }) {
-  const addNotification = (notification) => {
-    alert(`${notification.title}: ${notification.message}`);
-  };
-
-  // No tabs, no header - just directly render ReviewLogsPage
-  return (
-    <ReviewLogsPage
-      pmEmail={currentHR?.email || "hr@company.com"}
-      addNotification={addNotification}
-    />
-  );
+  return <ReportsInbox />;
 }
 
 // ==================== ACTIVE INTERNS FULL PAGE WRAPPER ====================
-export const ActiveInterns = ({ onNavigateToMessages }) => (
-  <ActiveInternsPage onNavigateToMessages={onNavigateToMessages} />
+export const ActiveInterns = ({ onNavigateToMessages, users }) => (
+  <ActiveInternsPage onNavigateToMessages={onNavigateToMessages} users={users} />
 );

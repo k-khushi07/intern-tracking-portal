@@ -1,6 +1,8 @@
 // InternProfilePage.jsx
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ArrowLeft, Mail, MapPin, Calendar, Award, TrendingUp, Clock, Phone, Briefcase, GraduationCap, Target, CheckCircle2, AlertCircle } from "lucide-react";
+import { pmApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -48,6 +50,51 @@ const InternProfilePage = ({ intern, onBack }) => {
       { id: 3, title: "Build 3 full-stack projects", progress: 66, deadline: "Apr 2025" },
     ],
   };
+
+  const [tnaItems, setTnaItems] = useState([]);
+  const [blueprint, setBlueprint] = useState(null);
+  const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
+  const [reportsError, setReportsError] = useState("");
+
+  const internId = intern?.id || null;
+
+  const loadReports = async () => {
+    if (!internId) return;
+    setReportsError("");
+    try {
+      const [tnaRes, blueprintRes, linksRes] = await Promise.all([
+        pmApi.internTna(internId),
+        pmApi.internBlueprint(internId),
+        pmApi.internReportLinks(internId),
+      ]);
+      setTnaItems(tnaRes?.items || []);
+      setBlueprint(blueprintRes?.blueprint || null);
+      setLinks({
+        tnaSheetUrl: linksRes?.links?.tnaSheetUrl || "",
+        blueprintDocUrl: linksRes?.links?.blueprintDocUrl || "",
+      });
+    } catch (e) {
+      setReportsError(e?.message || "Failed to load reports");
+      setTnaItems([]);
+      setBlueprint(null);
+    }
+  };
+
+  useEffect(() => {
+    loadReports();
+  }, [internId]);
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = (payload) => {
+      if (!payload) return;
+      if (payload.internId && internId && payload.internId !== internId) return;
+      if (!["tna", "blueprint", "report_links"].includes(payload.entity)) return;
+      loadReports();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, [internId]);
 
   return (
     <div className="animate-fadeIn">
@@ -607,6 +654,94 @@ const InternProfilePage = ({ intern, onBack }) => {
               })}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Reports (read-only) */}
+      <div
+        className="glass animate-fadeIn"
+        style={{
+          padding: "24px",
+          borderRadius: "16px",
+          background: "rgba(103, 146, 137, 0.08)",
+          border: `1px solid rgba(103, 146, 137, 0.25)`,
+          marginBottom: "24px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0, color: COLORS.peachGlow, fontSize: 18, fontWeight: 800 }}>
+            TNA & Blueprint
+          </h3>
+          <button
+            onClick={loadReports}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: `1px solid ${COLORS.jungleTeal}`,
+              background: "rgba(103, 146, 137, 0.18)",
+              color: "white",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            Refresh
+          </button>
+        </div>
+
+        {reportsError && (
+          <div style={{ marginTop: 12, color: "rgba(255,229,217,0.75)", fontSize: 13 }}>
+            {reportsError}
+          </div>
+        )}
+
+        <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 14, border: "1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ fontSize: 12, color: "rgba(255,229,217,0.6)", marginBottom: 8 }}>External links</div>
+            <div style={{ fontSize: 12, color: "rgba(255,229,217,0.8)" }}>
+              TNA Sheet: {links.tnaSheetUrl ? (
+                <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 700 }}>
+                  Open
+                </a>
+              ) : "—"}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,229,217,0.8)", marginTop: 8 }}>
+              Blueprint Doc: {links.blueprintDocUrl ? (
+                <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 700 }}>
+                  Open
+                </a>
+              ) : "—"}
+            </div>
+          </div>
+          <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 14, border: "1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ fontSize: 12, color: "rgba(255,229,217,0.6)", marginBottom: 8 }}>Blueprint (summary)</div>
+            <div style={{ fontSize: 12, color: "rgba(255,229,217,0.85)", lineHeight: 1.6 }}>
+              <div><strong>Objective:</strong> {blueprint?.data?.objective || "—"}</div>
+              <div style={{ marginTop: 8 }}><strong>Scope:</strong> {blueprint?.data?.scope || "—"}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, color: "rgba(255,229,217,0.6)", marginBottom: 10 }}>Latest TNA rows</div>
+          {(tnaItems || []).slice(0, 6).map((i) => (
+            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: "rgba(255,229,217,0.9)", fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {i.task || "—"}
+                </div>
+                <div style={{ color: "rgba(255,229,217,0.55)", fontSize: 11, marginTop: 4 }}>
+                  Week {i.week_number || "—"} • Planned {i.planned_date || "—"}
+                </div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: i.status === "completed" ? "#4ade80" : i.status === "blocked" ? "#f59e0b" : COLORS.jungleTeal }}>
+                {(i.status || "pending").replace("_", " ")}
+              </div>
+            </div>
+          ))}
+          {(tnaItems || []).length === 0 && (
+            <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 12 }}>No TNA rows yet.</div>
+          )}
         </div>
       </div>
     </div>

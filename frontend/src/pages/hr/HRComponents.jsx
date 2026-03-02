@@ -1,6 +1,6 @@
 // HRComponents.jsx - Reusable components for HR Dashboard
 // ✅ UPDATED WITH VIEW APPLICATION BUTTON
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import {
   Check, X, Eye, EyeOff, Key, Mail, Phone, MapPin, Users, MessageSquare,
@@ -8,6 +8,8 @@ import {
   Search
 } from "lucide-react";
 import { COLORS, GRADIENTS, glassCardStyle, inputStyle, primaryButtonStyle, secondaryButtonStyle, smallButtonStyle, actionButtonStyle, tinyButtonStyle } from "./HRConstants";
+import { hrApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
 // ==================== STAT COMPONENTS ====================
 export function StatCard({ icon, label, value, color, delay = 0 }) {
@@ -588,7 +590,7 @@ export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
           </div>
         )}
         {profileTab === "logs" && <LogsTable />}
-        {profileTab === "reports" && <ReportsTab />}
+        {profileTab === "reports" && <ReportsTab user={user} />}
         {profileTab === "performance" && <PerformanceTab />}
       </div>
     </>
@@ -635,22 +637,155 @@ function LogsTable() {
   );
 }
 
-function ReportsTab() {
+function ReportsTab({ user }) {
+  const internId = user?.id || null;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [tnaItems, setTnaItems] = useState([]);
+  const [blueprint, setBlueprint] = useState(null);
+  const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
+
+  const load = async () => {
+    if (!internId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const [tnaRes, blueprintRes, linksRes] = await Promise.all([
+        hrApi.internTna(internId),
+        hrApi.internBlueprint(internId),
+        hrApi.internReportLinks(internId),
+      ]);
+      setTnaItems(tnaRes?.items || []);
+      setBlueprint(blueprintRes?.blueprint || null);
+      setLinks({
+        tnaSheetUrl: linksRes?.links?.tnaSheetUrl || "",
+        blueprintDocUrl: linksRes?.links?.blueprintDocUrl || "",
+      });
+    } catch (e) {
+      setError(e?.message || "Failed to load intern reports");
+      setTnaItems([]);
+      setBlueprint(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, [internId]);
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = (payload) => {
+      if (!payload) return;
+      if (payload.internId && payload.internId !== internId) return;
+      if (!["tna", "blueprint", "report_links"].includes(payload.entity)) return;
+      load();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, [internId]);
+
+  const completed = (tnaItems || []).filter((i) => (i.status || "") === "completed").length;
+  const blocked = (tnaItems || []).filter((i) => (i.status || "") === "blocked").length;
+  const bpData = blueprint?.data || {};
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
-          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>Weekly Summary</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.emeraldGlow }}>38h</div>
-          <div style={{ fontSize: 12, color: COLORS.textMuted }}>Total hours this week</div>
+      {loading && (
+        <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}`, color: COLORS.textMuted }}>
+          Loading…
         </div>
-        <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
-          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>TNA Submissions</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.jungleTeal }}>12</div>
-          <div style={{ fontSize: 12, color: COLORS.textMuted }}>This month</div>
+      )}
+      {!loading && error && (
+        <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}`, borderLeft: `4px solid ${COLORS.orange}` }}>
+          <div style={{ fontWeight: 700, color: COLORS.textPrimary }}>Could not load reports</div>
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 6 }}>{error}</div>
         </div>
-      </div>
-      <button style={smallButtonStyle}><Download size={14} /> Download Reports</button>
+      )}
+      {!loading && !error && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>TNA Rows</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.textPrimary }}>{(tnaItems || []).length}</div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Total</div>
+            </div>
+            <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>Completed</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.emeraldGlow }}>{completed}</div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>TNA</div>
+            </div>
+            <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>Blocked</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.orange }}>{blocked}</div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>TNA</div>
+            </div>
+          </div>
+
+          <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+            <div style={{ fontWeight: 700, color: COLORS.textPrimary, marginBottom: 10 }}>External links (optional)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  TNA Sheet: {links.tnaSheetUrl || "—"}
+                </div>
+                {links.tnaSheetUrl && (
+                  <button onClick={() => window.open(links.tnaSheetUrl, "_blank", "noopener,noreferrer")} style={tinyButtonStyle}>
+                    <Eye size={14} /> Open
+                  </button>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Blueprint Doc: {links.blueprintDocUrl || "—"}
+                </div>
+                {links.blueprintDocUrl && (
+                  <button onClick={() => window.open(links.blueprintDocUrl, "_blank", "noopener,noreferrer")} style={tinyButtonStyle}>
+                    <Eye size={14} /> Open
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ ...glassCardStyle, padding: 16 }}>
+            <div style={{ fontWeight: 800, color: COLORS.textPrimary, marginBottom: 8 }}>Blueprint</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ background: COLORS.surfaceGlass, padding: 12, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 6 }}>Objective</div>
+                <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>{bpData.objective || "—"}</div>
+              </div>
+              <div style={{ background: COLORS.surfaceGlass, padding: 12, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 6 }}>Scope</div>
+                <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>{bpData.scope || "—"}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+            <div style={{ fontWeight: 800, color: COLORS.textPrimary, marginBottom: 10 }}>Latest TNA rows</div>
+            {(tnaItems || []).slice(0, 6).map((i) => (
+              <div key={i.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 0", borderBottom: `1px solid ${COLORS.borderGlass}` }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: COLORS.textPrimary, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {i.task || "—"}
+                  </div>
+                  <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
+                    Week {i.week_number || "—"} • Planned {i.planned_date || "—"}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: (i.status || "") === "completed" ? COLORS.emeraldGlow : (i.status || "") === "blocked" ? COLORS.orange : COLORS.jungleTeal }}>
+                  {(i.status || "pending").replace("_", " ")}
+                </div>
+              </div>
+            ))}
+            {(tnaItems || []).length === 0 && (
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>No TNA rows yet.</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -680,6 +815,8 @@ export function AnnouncementModal({ onSave, onClose }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(false);
+  const [targetInterns, setTargetInterns] = useState(true);
+  const [targetPMs, setTargetPMs] = useState(true);
 
   return (
     <>
@@ -695,13 +832,44 @@ export function AnnouncementModal({ onSave, onClose }) {
         <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Announcement content..." style={{ ...inputStyle, minHeight: 100 }} />
       </div>
       <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.textPrimary, marginBottom: 10 }}>
+          Audience
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input type="checkbox" checked={targetInterns} onChange={(e) => setTargetInterns(e.target.checked)} />
+            <span style={{ fontSize: 14, color: COLORS.textSecondary }}>Interns</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input type="checkbox" checked={targetPMs} onChange={(e) => setTargetPMs(e.target.checked)} />
+            <span style={{ fontSize: 14, color: COLORS.textSecondary }}>PMs</span>
+          </label>
+        </div>
+        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>
+          Select who should see this announcement.
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
           <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} />
           <span style={{ fontSize: 14, color: COLORS.textSecondary }}>Pin this announcement</span>
         </label>
       </div>
       <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={() => onSave({ title, content, pinned })} style={primaryButtonStyle}>
+        <button
+          onClick={() => {
+            const roles = [];
+            if (targetInterns) roles.push("intern");
+            if (targetPMs) roles.push("pm");
+            if (!roles.length) {
+              alert("Please select at least one audience (Interns and/or PMs).");
+              return;
+            }
+            onSave({ title, content, pinned, audienceRoles: roles });
+          }}
+          style={primaryButtonStyle}
+        >
           <Plus size={18} /> Create
         </button>
         <button onClick={onClose} style={secondaryButtonStyle}>Cancel</button>

@@ -12,92 +12,18 @@ const COLORS = {
 };
 
 
-const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
+const MyInternsPage = ({ onNavigateToMessages, onViewProfile, interns = [] }) => {
   const [searchQuery, setSearchQuery] = useState("");
 
 
-  // Mock data for assigned interns
-  const interns = [
-    {
-      id: 1,
-      name: "John Doe",
-      email: "john.doe@company.com",
-      avatar: "JD",
-      role: "Frontend Developer",
-      department: "Engineering",
-      status: "active",
-      joinDate: "2024-01-15",
-      location: "New York, USA",
-      tasksCompleted: 24,
-      tasksTotal: 30,
-      weeklyReports: 8,
-      monthlyReports: 2,
-      lastActive: "2 hours ago",
-      performance: 85,
-      skills: ["React", "JavaScript", "CSS"],
-    },
-    {
-      id: 2,
-      name: "Jane Smith",
-      email: "jane.smith@company.com",
-      avatar: "JS",
-      role: "Backend Developer",
-      department: "Engineering",
-      status: "active",
-      joinDate: "2024-02-01",
-      location: "San Francisco, USA",
-      tasksCompleted: 18,
-      tasksTotal: 25,
-      weeklyReports: 6,
-      monthlyReports: 1,
-      lastActive: "5 hours ago",
-      performance: 92,
-      skills: ["Node.js", "Python", "MongoDB"],
-    },
-    {
-      id: 3,
-      name: "Mike Johnson",
-      email: "mike.johnson@company.com",
-      avatar: "MJ",
-      role: "UI/UX Designer",
-      department: "Design",
-      status: "active",
-      joinDate: "2024-01-20",
-      location: "Austin, USA",
-      tasksCompleted: 21,
-      tasksTotal: 28,
-      weeklyReports: 7,
-      monthlyReports: 2,
-      lastActive: "1 hour ago",
-      performance: 88,
-      skills: ["Figma", "Adobe XD", "Prototyping"],
-    },
-    {
-      id: 4,
-      name: "Emily Davis",
-      email: "emily.davis@company.com",
-      avatar: "ED",
-      role: "Data Analyst",
-      department: "Analytics",
-      status: "inactive",
-      joinDate: "2024-03-10",
-      location: "Chicago, USA",
-      tasksCompleted: 15,
-      tasksTotal: 20,
-      weeklyReports: 5,
-      monthlyReports: 1,
-      lastActive: "2 days ago",
-      performance: 78,
-      skills: ["Python", "SQL", "Tableau"],
-    },
-  ];
-
-
   const filteredInterns = interns.filter((intern) => {
+    const internName = (intern.fullName || intern.name || "").toLowerCase();
+    const internEmail = (intern.email || "").toLowerCase();
+    const internRole = (intern.internshipDomain || intern.degree || intern.role || "").toLowerCase();
     const matchesSearch =
-      intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      intern.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      intern.role.toLowerCase().includes(searchQuery.toLowerCase());
+      internName.includes(searchQuery.toLowerCase()) ||
+      internEmail.includes(searchQuery.toLowerCase()) ||
+      internRole.includes(searchQuery.toLowerCase());
    
     return matchesSearch;
   });
@@ -106,9 +32,10 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
   const stats = {
     total: interns.length,
     active: interns.filter((i) => i.status === "active").length,
-    avgPerformance: Math.round(
-      interns.reduce((sum, i) => sum + i.performance, 0) / interns.length
-    ),
+    avgPerformance:
+      interns.length > 0
+        ? Math.round(interns.reduce((sum, i) => sum + (i.performance || 0), 0) / interns.length)
+        : 0,
   };
 
 
@@ -270,17 +197,35 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
           gap: "24px",
         }}
       >
-        {filteredInterns.map((intern, index) => (
-          <div
-            key={intern.id}
-            className={`glass hover-lift animate-fadeIn stagger-${(index % 5) + 1}`}
-            style={{
-              padding: "24px",
-              borderRadius: "16px",
-              background: "rgba(29, 120, 116, 0.1)",
-              border: `1px solid rgba(103, 146, 137, 0.3)`,
-            }}
-          >
+        {filteredInterns.map((intern, index) => {
+          const displayName = intern.fullName || intern.name || intern.full_name || "Intern";
+          const avatar = displayName
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((w) => w[0])
+            .join("")
+            .toUpperCase();
+          const roleLabel = intern.internshipDomain || intern.degree || intern.role || "Intern";
+          const locationLabel = intern.location || "-";
+          const joinDateValue = intern.joinDate || intern.created_at || intern.registeredAt || null;
+          const performance = intern.performance || 0;
+          const tasksCompleted = intern.tasksCompleted || 0;
+          const tasksTotal = intern.tasksTotal || 0;
+          const weeklyReports = intern.weeklyReports || 0;
+          const monthlyReports = intern.monthlyReports || 0;
+
+          return (
+            <div
+              key={intern.id}
+              className={`glass hover-lift animate-fadeIn stagger-${(index % 5) + 1}`}
+              style={{
+                padding: "24px",
+                borderRadius: "16px",
+                background: "rgba(29, 120, 116, 0.1)",
+                border: `1px solid rgba(103, 146, 137, 0.3)`,
+              }}
+            >
             {/* Intern Header */}
             <div style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px" }}>
               <div
@@ -299,7 +244,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                   flexShrink: 0,
                 }}
               >
-                {intern.avatar}
+                {avatar || "IN"}
               </div>
               <div style={{ flex: 1 }}>
                 <h3
@@ -310,10 +255,10 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                     marginBottom: "4px",
                   }}
                 >
-                  {intern.name}
+                  {displayName}
                 </h3>
                 <p style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>
-                  {intern.role}
+                  {roleLabel}
                 </p>
               </div>
             </div>
@@ -345,7 +290,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                 }}
               >
                 <MapPin size={16} color={COLORS.jungleTeal} />
-                <span>{intern.location}</span>
+                <span>{locationLabel}</span>
               </div>
               <div
                 style={{
@@ -357,7 +302,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                 }}
               >
                 <Calendar size={16} color={COLORS.jungleTeal} />
-                <span>Joined: {new Date(intern.joinDate).toLocaleDateString()}</span>
+                <span>Joined: {joinDateValue ? new Date(joinDateValue).toLocaleDateString() : "—"}</span>
               </div>
             </div>
 
@@ -376,7 +321,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                   Performance
                 </span>
                 <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.peachGlow }}>
-                  {intern.performance}%
+                  {performance}%
                 </span>
               </div>
               <div
@@ -390,7 +335,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
               >
                 <div
                   style={{
-                    width: `${intern.performance}%`,
+                    width: `${performance}%`,
                     height: "100%",
                     background: `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
                     borderRadius: "10px",
@@ -422,7 +367,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                   Tasks Progress
                 </p>
                 <p style={{ fontSize: "16px", fontWeight: "700", color: COLORS.peachGlow }}>
-                  {intern.tasksCompleted}/{intern.tasksTotal}
+                  {tasksCompleted}/{tasksTotal}
                 </p>
               </div>
               <div
@@ -437,7 +382,7 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                   Reports
                 </p>
                 <p style={{ fontSize: "16px", fontWeight: "700", color: COLORS.peachGlow }}>
-                  {intern.weeklyReports + intern.monthlyReports}
+                  {weeklyReports + monthlyReports}
                 </p>
               </div>
             </div>
@@ -506,8 +451,9 @@ const MyInternsPage = ({ onNavigateToMessages, onViewProfile }) => {
                 Send Message
               </button>
             </div>
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
 
 

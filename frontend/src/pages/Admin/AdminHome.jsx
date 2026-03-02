@@ -1,6 +1,7 @@
 // frontend/src/pages/Admin/AdminHome.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { adminApi, authApi } from "../../lib/apiClient";
 import { 
   Users, UserCheck, UserX, LayoutDashboard, Activity, Shield, 
   Plus, Trash2, Search, Eye, LogOut, Bell, X, Check, 
@@ -165,7 +166,12 @@ export default function AdminHome() {
     setArchivedInterns(getArchivedInterns());
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // ignore
+    }
     localStorage.removeItem("currentUser");
     navigate("/");
   };
@@ -181,7 +187,7 @@ export default function AdminHome() {
 
   const stats = getStats();
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUser.fullName || !newUser.email || !newUser.phone) {
       alert("Please fill all required fields");
       return;
@@ -201,6 +207,20 @@ export default function AdminHome() {
     }
 
     const autoPassword = generatePassword();
+
+    try {
+      await adminApi.createUser({
+        email: newUser.email.toLowerCase(),
+        password: autoPassword,
+        role: modalRole,
+        fullName: newUser.fullName,
+        pmCode: modalRole === "pm" ? newUser.pmCode : null,
+      });
+    } catch (err) {
+      console.error("Backend user creation failed:", err);
+      alert(err.message || "Failed to create user in backend.");
+      return;
+    }
 
     const user = {
       id: Date.now().toString(),

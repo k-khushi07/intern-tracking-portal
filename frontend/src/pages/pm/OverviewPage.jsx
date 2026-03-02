@@ -55,7 +55,7 @@ const keyframes = `
   }
 `;
 
-export default function OverviewPage({ pm, interns, stats, isMobile, weeklyReports }) {
+export default function OverviewPage({ pm, interns, stats, isMobile, weeklyReports, sharedAnnouncements = [] }) {
   const [announcements, setAnnouncements] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
@@ -103,6 +103,20 @@ export default function OverviewPage({ pm, interns, stats, isMobile, weeklyRepor
       setAnnouncements([]);
     }
   };
+
+  const mappedSharedAnnouncements = (sharedAnnouncements || []).map((a) => ({
+    id: a.id,
+    title: a.title,
+    message: a.content,
+    date: a.created_at || a.createdAt,
+    priority: a.priority || "medium",
+    pinned: !!a.pinned,
+    pmCode: pm?.pmCode,
+    readOnly: true,
+    from: a.created_by?.full_name || a.created_by?.email || "HR",
+  }));
+
+  const displayAnnouncements = [...mappedSharedAnnouncements, ...announcements];
 
   const handleAddAnnouncement = () => {
     if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) {
@@ -291,14 +305,14 @@ export default function OverviewPage({ pm, interns, stats, isMobile, weeklyRepor
         </div>
         
         <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 600, overflowY: "auto" }}>
-          {announcements.length > 0 ? (
-            announcements.map((ann) => (
+          {displayAnnouncements.length > 0 ? (
+            displayAnnouncements.map((ann) => (
               <AnnouncementCard 
                 key={ann.id} 
                 announcement={ann} 
-                onDelete={() => handleDeleteAnnouncement(ann.id)}
-                onEdit={() => handleEditAnnouncement(ann)}
-                onPin={() => handlePinAnnouncement(ann.id)}
+                onDelete={ann.readOnly ? null : () => handleDeleteAnnouncement(ann.id)}
+                onEdit={ann.readOnly ? null : () => handleEditAnnouncement(ann)}
+                onPin={ann.readOnly ? null : () => handlePinAnnouncement(ann.id)}
               />
             ))
           ) : (
@@ -546,7 +560,25 @@ function AnnouncementCard({ announcement, onDelete, onEdit, onPin }) {
           <span style={{ background: config.bg, color: config.color, padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", border: `1px solid ${config.border}`, fontFamily: "'Inter', system-ui, sans-serif" }}>
             {announcement.priority}
           </span>
+          {announcement.readOnly && (
+            <span
+              style={{
+                marginLeft: 8,
+                background: `${COLORS.jungleTeal}10`,
+                color: COLORS.jungleTeal,
+                padding: "3px 10px",
+                borderRadius: 20,
+                fontSize: 10,
+                fontWeight: 700,
+                border: `1px solid ${COLORS.jungleTeal}30`,
+                fontFamily: "'Inter', system-ui, sans-serif",
+              }}
+            >
+              HR
+            </span>
+          )}
         </div>
+        {!announcement.readOnly && (
         <div style={{ display: "flex", gap: 8 }}>
           <button 
             onClick={(e) => {
@@ -624,6 +656,7 @@ function AnnouncementCard({ announcement, onDelete, onEdit, onPin }) {
             <Trash2 size={14} />
           </button>
         </div>
+        )}
       </div>
       <p style={{ fontSize: 14, color: COLORS.textSecondary, marginBottom: 10, lineHeight: 1.6 }}>
         {announcement.message}

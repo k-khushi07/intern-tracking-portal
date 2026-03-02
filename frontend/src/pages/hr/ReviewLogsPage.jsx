@@ -14,7 +14,7 @@ const COLORS = {
 };
 
 // Backend API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotification }) {
   const [selectedIntern, setSelectedIntern] = useState(null);
@@ -477,6 +477,7 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
     try {
       const response = await fetch(`${API_BASE_URL}/emails/approve`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: item.internEmail,
@@ -516,6 +517,7 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
     try {
       const response = await fetch(`${API_BASE_URL}/emails/reject`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: item.internEmail,

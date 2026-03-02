@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Mail } from 'lucide-react';
+import { authApi } from '../../lib/apiClient';
 
 const COLORS = {
   inkBlack: "#020617",
@@ -18,26 +19,29 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
 
     try {
-      const users = JSON.parse(localStorage.getItem("users") || "[]");
-      const admin = users.find(
-        (u) => u.role === "admin" && 
-              u.email.toLowerCase() === email.toLowerCase() && 
-              u.password === password
-      );
+      const res = await authApi.login({
+        email,
+        password,
+        expectedRole: "admin",
+        rememberMe: false,
+      });
 
-      if (admin) {
-        localStorage.setItem("currentUser", JSON.stringify(admin));
-        navigate("/admin");
-      } else {
-        setError("Invalid credentials");
-      }
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify({
+          role: res.profile.role,
+          fullName: res.profile.full_name,
+          email: res.profile.email,
+        })
+      );
+      navigate("/admin");
     } catch (err) {
-      setError("Error. Please try again.");
+      setError(err.message || "Error. Please try again.");
     }
   };
 

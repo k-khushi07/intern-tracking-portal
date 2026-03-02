@@ -1,11 +1,12 @@
 //intern/DailyLogPage.jsx
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   BookOpen, X, Clock, CheckCircle, Star, AlertCircle,
   Calendar, ChevronDown, ChevronRight, FileText, Send,
   TrendingUp, BarChart3, Mail, Loader, Filter, Download,
   CalendarDays, FolderOpen, PieChart, Search, Lightbulb, Target
 } from "lucide-react";
+import { internApi } from "../../lib/apiClient";
 
 // ==================== CONSTANTS ====================
 const COLORS = {
@@ -63,6 +64,126 @@ const getMonthKey = (date) => {
 const formatMonth = (monthKey) => {
   const [year, month] = monthKey.split('-');
   return new Date(year, parseInt(month) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+};
+
+// ==================== IMPORT HELPERS ====================
+const toIsoDate = (value) => {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return null;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = Math.round((value - 25569) * 86400 * 1000);
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  return null;
+};
+
+const normalizeHeader = (h) =>
+  String(h || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w]/g, "");
+
+const pick = (obj, keys) => {
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
+  }
+  return undefined;
+};
+
+const parseCsv = (text) => {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+
+  const pushCell = () => {
+    row.push(cell);
+    cell = "";
+  };
+  const pushRow = () => {
+    if (row.some((c) => String(c || "").trim() !== "")) rows.push(row);
+    row = [];
+  };
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (ch === '"' && inQuotes && next === '"') {
+      cell += '"';
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (!inQuotes && ch === ",") {
+      pushCell();
+      continue;
+    }
+    if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      if (ch === "\r" && next === "\n") i += 1;
+      pushCell();
+      pushRow();
+      continue;
+    }
+    cell += ch;
+  }
+
+  pushCell();
+  pushRow();
+  return rows;
+};
+
+const mapImportedRows = (rawRows) => {
+  if (!rawRows?.length) return [];
+  const header = rawRows[0].map(normalizeHeader);
+  const dataRows = rawRows.slice(1);
+
+  const mapped = dataRows
+    .map((cells) => {
+      const obj = {};
+      header.forEach((h, idx) => {
+        obj[h] = cells[idx];
+      });
+
+      const logDate = toIsoDate(pick(obj, ["log_date", "date", "day"]));
+      const hoursWorkedRaw = pick(obj, ["hours_worked", "hours", "hoursworked"]);
+      const tasks = String(pick(obj, ["tasks", "task", "work_done", "workdone", "accomplishments"]) || "").trim();
+      const learnings = String(pick(obj, ["learnings", "learning", "what_i_learned", "whatilearned"]) || "").trim();
+      const blockers = String(pick(obj, ["blockers", "blocker", "challenges"]) || "").trim();
+
+      const hoursWorked = Number.isFinite(Number(hoursWorkedRaw)) ? Number(hoursWorkedRaw) : 0;
+      if (!logDate) return null;
+      if (!tasks || !learnings) return null;
+
+      return { logDate, hoursWorked, tasks, learnings, blockers };
+    })
+    .filter(Boolean);
+
+  const byDate = new Map();
+  mapped.forEach((r) => byDate.set(r.logDate, r));
+  return Array.from(byDate.values()).sort((a, b) => (a.logDate < b.logDate ? -1 : 1));
+};
+
+const extractTableFromHtml = (html) => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const table = doc.querySelector("table");
+  if (!table) return null;
+  const tableRows = Array.from(table.querySelectorAll("tr")).map((tr) =>
+    Array.from(tr.querySelectorAll("th,td")).map((td) => (td.textContent || "").trim())
+  );
+  return tableRows.filter((r) => r.some((c) => c));
 };
 
 // ==================== SUMMARY GENERATORS ====================
@@ -994,9 +1115,11 @@ const ConsistencyBadge = ({ rating, score }) => {
 };
 
 // ==================== SUMMARY MODAL ====================
-const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, sendSuccess, isMobile }) => {
+const SummaryModal = ({ type, summary, assignedPM, pmAssigned, onClose, onSend, isSending, sendSuccess, isMobile }) => {
   if (!summary) return null;
   const isWeekly = type === "weekly";
+  const [sendToPM, setSendToPM] = useState(!!pmAssigned);
+  const [sendToHR, setSendToHR] = useState(true);
 
   const handleExport = () => {
     const text = isWeekly 
@@ -1294,15 +1417,22 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
                 <div style={{ fontSize: 14, fontWeight: 600, color: "white", marginBottom: 4 }}>
                   Share this report
                 </div>
-                <div style={{ 
-                  fontSize: 13, 
-                  color: "rgba(255,255,255,0.5)", 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: 6 
-                }}>
-                  <Mail size={14} />
-                  {assignedPM?.fullName || "Project Manager"}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: pmAssigned ? "pointer" : "not-allowed" }}>
+                    <input
+                      type="checkbox"
+                      checked={sendToPM}
+                      disabled={!pmAssigned}
+                      onChange={(e) => setSendToPM(e.target.checked)}
+                    />
+                    <span style={{ fontSize: 13, color: pmAssigned ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.35)" }}>
+                      PM {pmAssigned ? `(${assignedPM?.fullName || assignedPM?.email || "PM"})` : "(not assigned yet)"}
+                    </span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                    <input type="checkbox" checked={sendToHR} onChange={(e) => setSendToHR(e.target.checked)} />
+                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>HR</span>
+                  </label>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -1325,7 +1455,20 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
                   <Download size={18} />Export
                 </button>
                 <button 
-                  onClick={onSend} 
+                  onClick={() => {
+                    const roles = [];
+                    if (sendToPM) roles.push("pm");
+                    if (sendToHR) roles.push("hr");
+                    if (!roles.length) {
+                      alert("Please select at least one recipient (HR and/or PM).");
+                      return;
+                    }
+                    if (roles.includes("pm") && !pmAssigned) {
+                      alert("Your PM is not assigned yet. Uncheck PM or ask HR to assign your PM first.");
+                      return;
+                    }
+                    onSend(roles);
+                  }} 
                   disabled={isSending || sendSuccess} 
                   style={{ 
                     padding: "12px 24px", 
@@ -1361,9 +1504,300 @@ const SummaryModal = ({ type, summary, assignedPM, onClose, onSend, isSending, s
   );
 };
 
+// ==================== IMPORT MODAL ====================
+const ImportLogsModal = ({ onClose, onImported }) => {
+  const [fileName, setFileName] = useState("");
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+  const [failures, setFailures] = useState([]);
+
+  const parseFile = async (file) => {
+    setError("");
+    setRows([]);
+    setFailures([]);
+    setProgress({ done: 0, total: 0, failed: 0 });
+    setFileName(file?.name || "");
+
+    if (!file) return;
+    const ext = String(file.name || "").split(".").pop().toLowerCase();
+
+    try {
+      if (ext === "csv") {
+        const text = await file.text();
+        const raw = parseCsv(text);
+        const mapped = mapImportedRows(raw);
+        if (!mapped.length) throw new Error("No valid rows found. Expected columns like: date, hours, tasks, learnings, blockers.");
+        setRows(mapped);
+        return;
+      }
+
+      if (ext === "xlsx" || ext === "xls") {
+        const buf = await file.arrayBuffer();
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(buf, { type: "array", cellDates: true });
+        const sheetName = wb.SheetNames?.[0];
+        const ws = wb.Sheets?.[sheetName];
+        if (!ws) throw new Error("No worksheet found in Excel file.");
+
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
+        const mapped = mapImportedRows(json);
+        if (!mapped.length) throw new Error("No valid rows found in the first sheet. Make sure headers include date, tasks, learnings.");
+        setRows(mapped);
+        return;
+      }
+
+      if (ext === "docx") {
+        const buf = await file.arrayBuffer();
+        const mammoth = await import("mammoth/mammoth.browser");
+        const htmlRes = await mammoth.convertToHtml({ arrayBuffer: buf });
+        const tableRows = extractTableFromHtml(htmlRes?.value || "");
+        if (!tableRows?.length) {
+          throw new Error("No table found in DOCX. Please use a table with headers like date, hours, tasks, learnings, blockers.");
+        }
+        const mapped = mapImportedRows(tableRows);
+        if (!mapped.length) throw new Error("No valid rows found in the DOCX table.");
+        setRows(mapped);
+        return;
+      }
+
+      throw new Error("Unsupported file type. Please upload .csv, .xlsx/.xls, or .docx");
+    } catch (e) {
+      setError(e?.message || "Failed to parse file");
+      setRows([]);
+    }
+  };
+
+  const runImport = async () => {
+    if (!rows.length) return;
+    setImporting(true);
+    setProgress({ done: 0, total: rows.length, failed: 0 });
+    setFailures([]);
+
+    let failed = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      const r = rows[i];
+      try {
+        await internApi.createDailyLog(r);
+      } catch (e) {
+        if (e?.status === 401 || e?.status === 403) {
+          const msg =
+            e?.message ||
+            "Not authorized. Please logout and login again as an Intern, then retry the import.";
+          setError(msg);
+          setFailures((prev) => [...prev, { logDate: r.logDate, message: `${e?.status || ""} ${msg}`.trim() }]);
+          failed += 1;
+          setProgress({ done: i + 1, total: rows.length, failed });
+          break;
+        }
+        failed += 1;
+        const message = e?.message || "Failed";
+        const statusPrefix = e?.status ? `${e.status} ` : "";
+        setFailures((prev) => [...prev, { logDate: r.logDate, message: `${statusPrefix}${message}`.trim() }]);
+      } finally {
+        setProgress({ done: i + 1, total: rows.length, failed });
+      }
+    }
+
+    setImporting(false);
+    if (onImported) onImported();
+    if (failed === 0) {
+      alert("✅ Import complete!");
+      onClose();
+    } else {
+      alert(`⚠️ Import finished with ${failed} failed row(s).`);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.8)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 2500,
+        padding: 18,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="glass"
+        style={{ width: "100%", maxWidth: 720, borderRadius: 18, padding: 18, maxHeight: "90vh", overflowY: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "white" }}>Import Daily Logs</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+              Upload Excel/CSV/DOCX with columns: date, hours, tasks, learnings, blockers. Imports upsert by date.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "none",
+              borderRadius: 10,
+              width: 40,
+              height: 40,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "white",
+            }}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls,.docx"
+            onChange={(e) => parseFile(e.target.files?.[0])}
+            disabled={importing}
+            style={{ color: "white" }}
+          />
+          {fileName && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Selected: {fileName}</div>
+          )}
+          {error && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 12,
+                border: `1px solid ${COLORS.racingRed}40`,
+                background: `${COLORS.racingRed}10`,
+                color: "rgba(255,255,255,0.8)",
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </div>
+          )}
+        </div>
+
+        {rows.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)" }}>
+              Preview ({rows.length} row{rows.length === 1 ? "" : "s"})
+            </div>
+            <div style={{ marginTop: 10, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead style={{ position: "sticky", top: 0, background: "rgba(7, 30, 34, 0.95)" }}>
+                    <tr>
+                      {["Date", "Hours", "Tasks", "Learnings", "Blockers"].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            color: "rgba(255,255,255,0.8)",
+                            borderBottom: "1px solid rgba(255,255,255,0.1)",
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice(0, 25).map((r) => (
+                      <tr key={r.logDate}>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {r.logDate}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {r.hoursWorked}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {String(r.tasks).slice(0, 40)}
+                          {String(r.tasks).length > 40 ? "…" : ""}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {String(r.learnings).slice(0, 40)}
+                          {String(r.learnings).length > 40 ? "…" : ""}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {String(r.blockers || "").slice(0, 40)}
+                          {String(r.blockers || "").length > 40 ? "…" : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {failures.length > 0 && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${COLORS.racingRed}40`,
+                  background: `${COLORS.racingRed}10`,
+                  color: "rgba(255,255,255,0.85)",
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>Failed rows</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {failures.slice(0, 4).map((f) => (
+                    <div key={`${f.logDate}:${f.message}`} style={{ color: "rgba(255,255,255,0.8)" }}>
+                      <span style={{ fontWeight: 800 }}>{f.logDate}</span>: {f.message}
+                    </div>
+                  ))}
+                </div>
+                {failures.some((f) => /integer/i.test(f.message)) && (
+                  <div style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
+                    Hint: your database likely still stores `hours_worked` as an integer. Run Supabase migration `005_change_hours_to_numeric.sql` (or use whole-number hours).
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+                {importing ? `Importing… ${progress.done}/${progress.total} (failed: ${progress.failed})` : "Ready to import."}
+              </div>
+              <button
+                onClick={runImport}
+                disabled={importing}
+                style={{
+                  padding: "12px 18px",
+                  borderRadius: 12,
+                  border: "none",
+                  cursor: importing ? "default" : "pointer",
+                  background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
+                  color: "white",
+                  fontWeight: 700,
+                  opacity: importing ? 0.7 : 1,
+                }}
+              >
+                Import
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ==================== MAIN COMPONENT ====================
 function DailyLogPage({ isMobile = false, assignedPM }) {
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [viewMode, setViewMode] = useState("weekly");
   const [expandedWeeks, setExpandedWeeks] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
@@ -1375,11 +1809,56 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
   const [monthlySummaries, setMonthlySummaries] = useState({});
   const [isSending, setIsSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
-  const [dailyLogs, setDailyLogs] = useState(sampleLogs);
+  const [dailyLogs, setDailyLogs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
 
-  const defaultPM = assignedPM || { fullName: "Sarah Johnson", email: "sarah.johnson@company.com" };
+  const pmAssigned = !!assignedPM?.id;
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await internApi.dailyLogs();
+        const logs = (res?.logs || []).map((l) => ({
+          id: l.id,
+          date: l.log_date,
+          tasks: l.tasks,
+          learnings: l.learnings,
+          blockers: l.blockers,
+          hoursWorked: Number(l.hours_worked) || 0,
+          status: l.status,
+        }));
+        if (!cancelled) setDailyLogs(logs);
+      } catch (err) {
+        console.error("Failed to load daily logs:", err);
+        if (!cancelled) setDailyLogs([]);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const reloadLogs = useCallback(async () => {
+    try {
+      const res = await internApi.dailyLogs();
+      const logs = (res?.logs || []).map((l) => ({
+        id: l.id,
+        date: l.log_date,
+        tasks: l.tasks,
+        learnings: l.learnings,
+        blockers: l.blockers,
+        hoursWorked: Number(l.hours_worked) || 0,
+        status: l.status,
+      }));
+      setDailyLogs(logs);
+    } catch (err) {
+      console.error("Failed to load daily logs:", err);
+      setDailyLogs([]);
+    }
+  }, []);
 
   // Group logs by week
   const logsByWeek = useMemo(() => {
@@ -1478,12 +1957,35 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
   }), [dailyLogs, logsByWeek, logsByMonth]);
 
   // Handlers
-  const handleSubmit = useCallback((formData) => {
-    setDailyLogs(prev => [
-      { id: Date.now(), ...formData, hoursWorked: parseInt(formData.hoursWorked) || 0 }, 
-      ...prev
-    ]);
-    setShowForm(false);
+  const handleSubmit = useCallback(async (formData) => {
+    try {
+      const created = await internApi.createDailyLog({
+        logDate: formData.date,
+        hoursWorked: formData.hoursWorked,
+        tasks: formData.tasks,
+        learnings: formData.learnings,
+        blockers: formData.blockers,
+      });
+      const l = created?.log;
+      if (l?.id) {
+        setDailyLogs((prev) => [
+          {
+            id: l.id,
+            date: l.log_date,
+            tasks: l.tasks,
+            learnings: l.learnings,
+            blockers: l.blockers,
+            hoursWorked: Number(l.hours_worked) || 0,
+            status: l.status,
+          },
+          ...prev,
+        ]);
+      }
+      setShowForm(false);
+    } catch (err) {
+      console.error("Failed to create daily log:", err);
+      alert(err?.message || "Failed to save daily log");
+    }
   }, []);
 
   const toggleWeek = useCallback((weekKey) => 
@@ -1513,16 +2015,75 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     setShowSummaryModal(true);
   }, [logsByWeek, logsByMonth, weeklySummaries, monthlySummaries]);
 
-  const sendReportToPM = useCallback(async () => {
+  const sendReport = useCallback(async (recipientRoles) => {
+    const summary =
+      summaryType === "weekly"
+        ? weeklySummaries[selectedWeekForSummary]
+        : monthlySummaries[selectedMonthForSummary];
+    if (!summaryType || !summary) return;
+
+    const reportType = summaryType;
+    const text =
+      reportType === "weekly"
+        ? `WEEKLY SUMMARY\n${summary.dateRange}\n\nHours: ${summary.totalHours}\nDays: ${summary.daysWorked}\n\nAccomplishments:\n${(summary.accomplishments || [])
+            .map((a) => `• ${a}`)
+            .join("\n")}\n\nLearnings:\n${(summary.learnings || []).map((l) => `• ${l}`).join("\n")}`
+        : `MONTHLY REPORT\n${summary.monthLabel}\n\nHours: ${summary.totalHours}\nDays: ${summary.totalDays}\nTrend: ${summary.productivityTrend}\n\nAccomplishments:\n${(summary.accomplishments || [])
+            .map((a) => `• ${a}`)
+            .join("\n")}\n\nRecommendations:\n${(summary.recommendations || []).map((r) => `→ ${r}`).join("\n")}`;
+
+    const periodFromWeekKey = (weekKey) => {
+      const start = new Date(weekKey);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return {
+        periodStart: start.toISOString().split("T")[0],
+        periodEnd: end.toISOString().split("T")[0],
+      };
+    };
+
+    const periodFromMonthKey = (monthKey) => {
+      const [y, m] = String(monthKey).split("-");
+      const start = new Date(Number(y), Number(m) - 1, 1);
+      const end = new Date(Number(y), Number(m), 0);
+      return {
+        periodStart: start.toISOString().split("T")[0],
+        periodEnd: end.toISOString().split("T")[0],
+      };
+    };
+
+    const period =
+      reportType === "weekly"
+        ? periodFromWeekKey(selectedWeekForSummary)
+        : periodFromMonthKey(selectedMonthForSummary);
+
     setIsSending(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsSending(false);
-    setSendSuccess(true);
-    setTimeout(() => {
-      setSendSuccess(false);
-      setShowSummaryModal(false);
-    }, 2500);
-  }, []);
+    try {
+      await internApi.createReport({
+        reportType,
+        weekNumber: reportType === "weekly" ? summary.weekNumber : undefined,
+        month: reportType === "monthly" ? summary.monthLabel : undefined,
+        periodStart: period.periodStart,
+        periodEnd: period.periodEnd,
+        totalHours: summary.totalHours,
+        daysWorked: reportType === "weekly" ? summary.daysWorked : summary.totalDays,
+        summary: text,
+        data: summary,
+        recipientRoles: recipientRoles || ["pm"],
+      });
+
+      setSendSuccess(true);
+      setTimeout(() => {
+        setSendSuccess(false);
+        setShowSummaryModal(false);
+      }, 2500);
+    } catch (err) {
+      console.error("Failed to submit report:", err);
+      alert(err?.message || "Failed to submit report");
+    } finally {
+      setIsSending(false);
+    }
+  }, [monthlySummaries, selectedMonthForSummary, selectedWeekForSummary, summaryType, weeklySummaries]);
 
   return (
     <div style={{ 
@@ -1613,30 +2174,53 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
             ))}
           </div>
 
-          {/* New Entry Button */}
-          <button 
-            onClick={() => setShowForm(!showForm)} 
-            style={{ 
-              padding: "12px 24px", 
-              background: showForm 
-                ? "rgba(255,255,255,0.08)" 
-                : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
-              color: "white", 
-              border: "none", 
-              borderRadius: 12, 
-              fontWeight: 600, 
-              cursor: "pointer", 
-              fontSize: 14, 
-              display: "flex", 
-              alignItems: "center", 
-              gap: 8, 
-              boxShadow: showForm ? "none" : `0 4px 20px ${COLORS.deepOcean}40`,
-              transition: "all 0.2s"
-            }}
-          >
-            {showForm ? <X size={18} /> : <BookOpen size={18} />}
-            {showForm ? "Cancel" : "New Entry"}
-          </button>
+          {/* New Entry / Import */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setShowImport(true)}
+              style={{
+                padding: "12px 18px",
+                background: "rgba(255,255,255,0.08)",
+                color: "white",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                transition: "all 0.2s",
+              }}
+            >
+              <Download size={18} />
+              Import
+            </button>
+
+            <button 
+              onClick={() => setShowForm(!showForm)} 
+              style={{ 
+                padding: "12px 24px", 
+                background: showForm 
+                  ? "rgba(255,255,255,0.08)" 
+                  : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
+                color: "white", 
+                border: "none", 
+                borderRadius: 12, 
+                fontWeight: 600, 
+                cursor: "pointer", 
+                fontSize: 14, 
+                display: "flex", 
+                alignItems: "center", 
+                gap: 8, 
+                boxShadow: showForm ? "none" : `0 4px 20px ${COLORS.deepOcean}40`,
+                transition: "all 0.2s"
+              }}
+            >
+              {showForm ? <X size={18} /> : <BookOpen size={18} />}
+              {showForm ? "Cancel" : "New Entry"}
+            </button>
+          </div>
         </div>
 
         {/* Entry Form */}
@@ -1692,12 +2276,20 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
               ? weeklySummaries[selectedWeekForSummary] 
               : monthlySummaries[selectedMonthForSummary]
             } 
-            assignedPM={defaultPM} 
+            assignedPM={assignedPM} 
+            pmAssigned={pmAssigned}
             onClose={() => setShowSummaryModal(false)} 
-            onSend={sendReportToPM} 
+            onSend={sendReport} 
             isSending={isSending} 
             sendSuccess={sendSuccess} 
             isMobile={isMobile} 
+          />
+        )}
+
+        {showImport && (
+          <ImportLogsModal
+            onClose={() => setShowImport(false)}
+            onImported={() => reloadLogs()}
           />
         )}
       </div>
