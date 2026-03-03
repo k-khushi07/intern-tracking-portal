@@ -6,15 +6,42 @@ function requireEnv(name) {
   return String(value).trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const payload = String(token || "").split(".")[1];
+    if (!payload) return null;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function getProjectRefFromUrl(url) {
+  const match = String(url || "").match(/^https?:\/\/([^.]+)\.supabase\.co\/?$/i);
+  return match?.[1] || null;
+}
+
 function getSupabaseConfig() {
-  return {
-    url: requireEnv("SUPABASE_URL").replace(/\/$/, ""),
-    anonKey: requireEnv("SUPABASE_ANON_KEY"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  };
+  const url = requireEnv("SUPABASE_URL").replace(/\/$/, "");
+  const anonKey = requireEnv("SUPABASE_ANON_KEY");
+  const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+  const urlRef = getProjectRefFromUrl(url);
+  const anonRef = decodeJwtPayload(anonKey)?.ref || null;
+  const serviceRef = decodeJwtPayload(serviceRoleKey)?.ref || null;
+
+  if (urlRef && anonRef && urlRef !== anonRef) {
+    throw httpError(500, "SUPABASE_URL and SUPABASE_ANON_KEY belong to different projects", true);
+  }
+  if (urlRef && serviceRef && urlRef !== serviceRef) {
+    throw httpError(500, "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY belong to different projects", true);
+  }
+
+  return { url, anonKey, serviceRoleKey };
 }
 
 function normalizeUpstreamStatus(status) {
+  if (status === 525) return 503;
   // Cloudflare uses 52x codes for upstream handshake/availability problems.
   // Map to a more standard "bad gateway" so browsers + clients behave predictably.
   if (status >= 520 && status <= 529) return 502;
@@ -74,10 +101,14 @@ async function requestJson(url, { method, headers, body }) {
           (payload && payload.error_description) ||
           (payload && payload.message) ||
           (payload && payload.error) ||
+          (res.status === 525
+            ? "Supabase upstream SSL handshake failed (Cloudflare 525). Verify SUPABASE_URL is your active project URL and check Supabase project status."
+            : null) ||
           `Supabase request failed (${status})${cloudflareHint}`;
 
         const err = httpError(status, message, true);
         err.supabase = payload;
+        err.upstreamStatus = res.status;
 
         // Retry transient upstream failures (and 429 rate limits).
         if (attempt < maxAttempts && (res.status >= 500 || res.status === 429 || (res.status >= 520 && res.status <= 529))) {

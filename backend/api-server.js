@@ -54,12 +54,14 @@ app.get("/api/health/supabase", async (req, res) => {
     });
     res.status(200).json({ success: true, ok: true });
   } catch (err) {
+    const cloudflare525 = Number(err?.upstreamStatus || 0) === 525;
     res.status(200).json({
       success: true,
       ok: false,
       message: err?.message || "Supabase check failed",
-      hint:
-        "If this mentions missing tables/columns, run `supabase/schema.sql` (or migrations) in the Supabase SQL editor.",
+      hint: cloudflare525
+        ? "Supabase edge returned Cloudflare 525 (SSL handshake). Confirm SUPABASE_URL is your active project API URL and check Supabase project status in the dashboard."
+        : "If this mentions missing tables/columns, run `supabase/schema.sql` (or migrations) in the Supabase SQL editor.",
     });
   }
 });
