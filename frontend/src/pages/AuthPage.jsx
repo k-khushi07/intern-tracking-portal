@@ -1,34 +1,43 @@
+//AuthPage.jsx
 import React, { useState, useEffect } from "react";
-import { Eye, EyeOff, Mail, Lock, Key, User } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { authApi } from "../lib/apiClient";
+
 
 const COLORS = {
-  inkBlack: "#071e22",
-  deepOcean: "#1d7874",
-  jungleTeal: "#679289",
+  inkBlack: "#020617",
+  backgroundSecondary: "#0a2528",
+  deepOcean: "#0f766e",
+  jungleTeal: "#14b8a6",
+  emeraldGlow: "#10b981",
   peachGlow: "#ffe5d9",
   racingRed: "#d90429",
+  surfaceGlass: "rgba(255, 255, 255, 0.06)",
+  borderGlass: "rgba(255, 255, 255, 0.12)",
 };
+
 
 export default function AuthPage() {
   const [role, setRole] = useState("intern");
   const [isMobile, setIsMobile] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [loginData, setLoginData] = useState({ email: "", password: "", pmCode: "" });
+  const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const navigate = useNavigate();
+
 
   // 🔧 TEST ADMIN FUNCTION
   const createTestAdmin = () => {
     const users = JSON.parse(localStorage.getItem("users") || "[]");
-    
+   
     const adminExists = users.some(u => u.email === "admin@test.com");
     if (adminExists) {
       alert("⚠️ Admin user already exists!\n\nLogin with:\nEmail: admin@test.com\nPassword: 12345678");
       return;
     }
-    
+   
     users.push({
       role: "admin",
       fullName: "Admin User",
@@ -41,16 +50,17 @@ export default function AuthPage() {
     alert("✅ Admin user created successfully!\n\nLogin with:\nEmail: admin@test.com\nPassword: 12345678\n\nThen go to: /dashboard/admin");
   };
 
+
   // 👨‍💼 TEST PM FUNCTION
   const createTestPM = () => {
     const users = JSON.parse(localStorage.getItem("users") || "[]");
-    
+   
     const pmExists = users.some(u => u.email === "pm@test.com");
     if (pmExists) {
-      alert("⚠️ PM user already exists!\n\nLogin with:\nEmail: pm@test.com\nPassword: 12345678\nPM Code: PM001");
+      alert("⚠️ PM user already exists!\n\nLogin with:\nEmail: pm@test.com\nPassword: 12345678");
       return;
     }
-    
+   
     users.push({
       role: "pm",
       fullName: "Test Project Manager",
@@ -61,13 +71,14 @@ export default function AuthPage() {
       createdAt: new Date().toISOString()
     });
     localStorage.setItem("users", JSON.stringify(users));
-    alert("✅ PM user created successfully!\n\nLogin with:\nEmail: pm@test.com\nPassword: 12345678\nPM Code: PM001\n\nThen go to: /dashboard/pm");
+    alert("✅ PM user created successfully!\n\nLogin with:\nEmail: pm@test.com\nPassword: 12345678\n\nThen go to: /dashboard/pm");
   };
+
 
   // 🎓 TEST INTERNS FUNCTION
   const createTestInterns = () => {
     const users = JSON.parse(localStorage.getItem("users") || "[]");
-    
+   
     const testInterns = [
       {
         role: "intern",
@@ -103,7 +114,7 @@ export default function AuthPage() {
         createdAt: new Date().toISOString()
       }
     ];
-    
+   
     let addedCount = 0;
     testInterns.forEach(intern => {
       const exists = users.some(u => u.email === intern.email);
@@ -112,9 +123,9 @@ export default function AuthPage() {
         addedCount++;
       }
     });
-    
+   
     localStorage.setItem("users", JSON.stringify(users));
-    
+   
     if (addedCount > 0) {
       alert(`✅ ${addedCount} test intern(s) created and assigned to PM001!\n\nAll interns have password: 12345678`);
     } else {
@@ -122,16 +133,17 @@ export default function AuthPage() {
     }
   };
 
+
   // 👔 TEST HR FUNCTION
   const createTestHR = () => {
     const users = JSON.parse(localStorage.getItem("users") || "[]");
-    
+   
     const hrExists = users.some(u => u.email === "hr@test.com");
     if (hrExists) {
       alert("⚠️ HR user already exists!\n\nLogin with:\nEmail: hr@test.com\nPassword: 12345678");
       return;
     }
-    
+   
     users.push({
       role: "hr",
       fullName: "Test HR Manager",
@@ -144,6 +156,7 @@ export default function AuthPage() {
     alert("✅ HR user created successfully!\n\nLogin with:\nEmail: hr@test.com\nPassword: 12345678\n\nThen go to: /dashboard/hr");
   };
 
+
   // responsiveness
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 900);
@@ -152,8 +165,10 @@ export default function AuthPage() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+
   const handleInput = (e) =>
     setLoginData((s) => ({ ...s, [e.target.name]: e.target.value }));
+
 
   const getUsers = () => {
     try {
@@ -163,35 +178,60 @@ export default function AuthPage() {
     }
   };
 
-  const handleLogin = (e) => {
+
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+
+    try {
+      const res = await authApi.login({
+        email: loginData.email,
+        password: loginData.password,
+        expectedRole: role,
+        rememberMe,
+      });
+
+      const profile = res.profile;
+      const currentUser = {
+        role: profile.role,
+        fullName: profile.full_name,
+        email: profile.email,
+        pmCode: profile.pm_code || null,
+        internId: profile.intern_id || null,
+        profileCompleted: !!profile.profile_completed,
+      };
+
+      localStorage.setItem("currentUser", JSON.stringify(currentUser));
+
+      if (currentUser.role === "intern" && !currentUser.profileCompleted) {
+        navigate("/profile-setup");
+      } else {
+        navigate(`/dashboard/${currentUser.role}`);
+      }
+      return;
+    } catch (err) {
+      setError(err.message || "Login failed.");
+      return;
+    }
+
 
     const users = getUsers();
     const user = users.find(
       (u) => u.role === role && u.email.toLowerCase() === loginData.email.toLowerCase()
     );
 
+
     if (!user) {
-      setError("No account found for this role and email. Register first.");
+      setError("No account found for this role and email. Contact your administrator.");
       return;
     }
+
 
     if (user.password !== loginData.password) {
       setError("Incorrect password.");
       return;
     }
 
-    if ((role === "pm" || role === "intern") && user.pmCode) {
-      if (!loginData.pmCode) {
-        setError("PM Code required for this account.");
-        return;
-      }
-      if (user.pmCode !== loginData.pmCode) {
-        setError("Invalid PM Code.");
-        return;
-      }
-    }
 
     // Save current user
     localStorage.setItem("currentUser", JSON.stringify(user));
@@ -201,6 +241,7 @@ export default function AuthPage() {
       localStorage.removeItem("remember");
     }
 
+
     // ✅ CHECK IF INTERN NEEDS PROFILE SETUP
     if (role === "intern" && !user.profileCompleted) {
       navigate("/profile-setup");
@@ -209,23 +250,24 @@ export default function AuthPage() {
     }
   };
 
+
   return (
     <div
       style={{
         minHeight: "100vh",
         position: "relative",
         overflow: "hidden",
-        background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, ${COLORS.deepOcean} 50%, ${COLORS.jungleTeal} 100%)`,
+        background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, ${COLORS.backgroundSecondary} 40%, ${COLORS.deepOcean} 100%)`,
         color: "white",
       }}
     >
       {/* 🔧 TEST BUTTONS - FIXED TOP RIGHT */}
-      <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <button 
+      <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'none', flexDirection: 'column', gap: '12px' }}>
+        <button
           onClick={createTestAdmin}
           style={{
             padding: '12px 24px',
-            background: '#10b981',
+            background: COLORS.emeraldGlow,
             color: 'white',
             border: 'none',
             borderRadius: '999px',
@@ -247,7 +289,8 @@ export default function AuthPage() {
           🔧 Create Test Admin
         </button>
 
-        <button 
+
+        <button
           onClick={createTestPM}
           style={{
             padding: '12px 24px',
@@ -273,7 +316,8 @@ export default function AuthPage() {
           👨‍💼 Create Test PM
         </button>
 
-        <button 
+
+        <button
           onClick={createTestInterns}
           style={{
             padding: '12px 24px',
@@ -299,7 +343,8 @@ export default function AuthPage() {
           🎓 Create Test Interns
         </button>
 
-        <button 
+
+        <button
           onClick={createTestHR}
           style={{
             padding: '12px 24px',
@@ -326,6 +371,7 @@ export default function AuthPage() {
         </button>
       </div>
 
+
       {/* animated orb */}
       <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
         <div
@@ -337,13 +383,14 @@ export default function AuthPage() {
             width: 800,
             height: 800,
             borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal}, ${COLORS.peachGlow})`,
+            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal}, ${COLORS.emeraldGlow})`,
             opacity: 0.35,
             filter: "blur(120px)",
             animation: "pulse 3s ease-in-out infinite",
           }}
         />
       </div>
+
 
       <style>{`
         @keyframes pulse {
@@ -352,6 +399,7 @@ export default function AuthPage() {
         }
         input::placeholder { color: rgba(255,255,255,0.7); opacity:1; }
       `}</style>
+
 
       <div
         style={{
@@ -386,15 +434,16 @@ export default function AuthPage() {
             </p>
           </div>
 
+
           {/* right card */}
           <div style={{ width: "100%", maxWidth: 480 }}>
             <div
               style={{
                 backdropFilter: "blur(20px)",
-                background: "rgba(255,255,255,0.06)",
+                background: COLORS.surfaceGlass,
                 borderRadius: 28,
                 padding: isMobile ? 20 : 36,
-                border: "1px solid rgba(255,255,255,0.12)",
+                border: `1px solid ${COLORS.borderGlass}`,
                 boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
               }}
             >
@@ -415,6 +464,7 @@ export default function AuthPage() {
                 </div>
               </div>
 
+
               {/* Role Tabs */}
               <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
                 {["intern", "hr", "pm"].map((r) => (
@@ -432,16 +482,18 @@ export default function AuthPage() {
                       border: "none",
                       cursor: "pointer",
                       fontWeight: 700,
-                      background: role === r ? "white" : "transparent",
-                      color: role === r ? COLORS.inkBlack : "white",
-                      boxShadow: role === r ? "0 6px 18px rgba(0,0,0,0.25)" : "none",
+                      background: role === r ? COLORS.jungleTeal : "transparent",
+                      color: "white",
+                      boxShadow: role === r ? "0 6px 18px rgba(20, 184, 166, 0.4)" : "none",
                       textTransform: "capitalize",
+                      transition: "all 0.2s",
                     }}
                   >
                     {r === "pm" ? "PM" : r}
                   </button>
                 ))}
               </div>
+
 
               {/* Form */}
               <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -467,6 +519,7 @@ export default function AuthPage() {
                   />
                 </div>
 
+
                 <div style={{ position: "relative" }}>
                   <Lock
                     style={{
@@ -483,7 +536,7 @@ export default function AuthPage() {
                     value={loginData.password}
                     onChange={handleInput}
                     type={showPassword ? "text" : "password"}
-                    placeholder="PASSWORD (8-digit numeric)"
+                    placeholder="PASSWORD"
                     style={inputStyle}
                     required
                     autoComplete="current-password"
@@ -498,50 +551,21 @@ export default function AuthPage() {
                   </button>
                 </div>
 
-                {(role === "pm" || role === "intern") && (
-                  <div style={{ position: "relative" }}>
-                    <Key
-                      style={{
-                        position: "absolute",
-                        left: 14,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        color: "rgba(255,255,255,0.7)",
-                      }}
-                      size={18}
-                    />
-                    <input
-                      name="pmCode"
-                      value={loginData.pmCode}
-                      onChange={handleInput}
-                      placeholder="PM CODE (if required)"
-                      style={inputStyle}
-                    />
-                  </div>
-                )}
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14 }}>
                   <label style={{ display: "flex", gap: 8, alignItems: "center", color: "rgba(255,255,255,0.9)" }}>
                     <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
                     Remember me
                   </label>
-
-                  <Link to="/register" style={{ color: COLORS.peachGlow, textDecoration: "none", fontStyle: "italic" }}>
-                    Not yet Registered? Register here
-                  </Link>
                 </div>
 
+
                 {error && <div style={{ color: COLORS.racingRed, fontWeight: 700 }}>{error}</div>}
+
 
                 <button type="submit" style={submitStyle}>
                   Login
                 </button>
-
-                <div style={{ textAlign: "center", marginTop: 6 }}>
-                  <Link to="/register" style={{ color: COLORS.peachGlow, textDecoration: "none", fontWeight: 700 }}>
-                    Not yet Registered? Register here
-                  </Link>
-                </div>
               </form>
             </div>
           </div>
@@ -550,6 +574,7 @@ export default function AuthPage() {
     </div>
   );
 }
+
 
 // styles
 const inputStyle = {
@@ -564,6 +589,7 @@ const inputStyle = {
   fontWeight: 600,
 };
 
+
 const eyeBtnStyle = {
   position: "absolute",
   right: 12,
@@ -575,6 +601,7 @@ const eyeBtnStyle = {
   cursor: "pointer",
 };
 
+
 const submitStyle = {
   width: "100%",
   padding: "14px",
@@ -582,6 +609,8 @@ const submitStyle = {
   border: "none",
   fontWeight: 800,
   cursor: "pointer",
-  background: "white",
-  color: "#071e22",
+  background: "linear-gradient(135deg, #14b8a6, #10b981)",
+  color: "white",
+  boxShadow: "0 4px 14px rgba(20, 184, 166, 0.4)",
+  transition: "all 0.2s",
 };

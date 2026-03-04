@@ -1,656 +1,712 @@
+// PMHome.jsx - pm dashboard
 import React, { useState, useEffect } from "react";
-import { Users, MessageCircle, Bell, User, Search, Eye, Calendar, Award, Phone, Mail, GraduationCap, MapPin } from "lucide-react";
-import ChatSystem from "../../components/ChatSystem";
+import { Menu, Bell, LogOut, Sparkles, X, Users, Home, BookOpen, MessageCircle } from "lucide-react";
+import MessagesPage from './MessagesPage';
+import OverviewPage from "./OverviewPage";
+import MyInternsPage from './MyInternsPage';
+import InternProfilePage from './InternProfilePage';
+import ReviewLogsPage from './ReviewLogsPage';
+import { authApi, pmApi, announcementsApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
 const COLORS = {
-  inkBlack: "#071e22",
-  deepOcean: "#1d7874",
-  jungleTeal: "#679289",
-  peachGlow: "#ffe5d9",
-  racingRed: "#d90429",
+  bgPrimary: "#020617",
+  bgSecondary: "#0a2528",
+  surfaceGlass: "rgba(255, 255, 255, 0.06)",
+  borderGlass: "rgba(255, 255, 255, 0.12)",
+  deepOcean: "#0f766e",
+  jungleTeal: "#14b8a6",
+  emeraldGlow: "#10b981",
+  cyanHighlight: "#22d3ee",
+  textPrimary: "#f8fafc",
+  textSecondary: "rgba(248, 250, 252, 0.7)",
+  textMuted: "rgba(248, 250, 252, 0.5)",
+  orange: "#f59e0b",
+  red: "#ef4444",
+  purple: "#a78bfa",
 };
 
-export default function PMHome() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [currentPM, setCurrentPM] = useState(null);
-  const [assignedInterns, setAssignedInterns] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
+const GRADIENTS = {
+  primary: `linear-gradient(135deg, ${COLORS.bgPrimary} 0%, ${COLORS.bgSecondary} 50%, ${COLORS.bgPrimary} 100%)`,
+  accent: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
+};
+
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: ${COLORS.bgPrimary}; color: white; overflow-x: hidden; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
+    .animate-slideIn { animation: slideIn 0.4s ease-out forwards; }
+    .stagger-1 { animation-delay: 0.05s; opacity: 0; }
+    .stagger-2 { animation-delay: 0.1s; opacity: 0; }
+    .stagger-3 { animation-delay: 0.15s; opacity: 0; }
+    .stagger-4 { animation-delay: 0.2s; opacity: 0; }
+    .stagger-5 { animation-delay: 0.25s; opacity: 0; }
+    input::placeholder, textarea::placeholder { color: rgba(248, 250, 252, 0.4); }
+    input:focus, textarea:focus { outline: none; border-color: ${COLORS.jungleTeal}; box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: ${COLORS.bgPrimary}; }
+    ::-webkit-scrollbar-thumb { background: ${COLORS.deepOcean}; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: ${COLORS.jungleTeal}; }
+  `}</style>
+);
+
+const PMHome = () => {
+  const [currentPage, setCurrentPage] = useState("overview");
   const [selectedIntern, setSelectedIntern] = useState(null);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const [announcements] = useState([
-    {
-      id: 1,
-      title: "Weekly Team Meeting",
-      message: "Join us every Monday at 10 AM for team sync-up.",
-      date: "2024-01-15",
-      priority: "high"
-    },
-    {
-      id: 2,
-      title: "Project Deadline Update",
-      message: "Phase 1 deliverables are due by end of this week.",
-      date: "2024-01-14",
-      priority: "medium"
-    },
-    {
-      id: 3,
-      title: "New Resources Available",
-      message: "Check the shared drive for updated documentation.",
-      date: "2024-01-10",
-      priority: "low"
-    }
-  ]);
-
+  const [pmInfo, setPmInfo] = useState(null);
+  const [interns, setInterns] = useState([]);
+  const [weeklyReports, setWeeklyReports] = useState([]);
+  const [monthlyReports, setMonthlyReports] = useState([]);
+  const [pmStats, setPmStats] = useState(null);
+  const [sharedAnnouncements, setSharedAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  
+  // Responsive Handler
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+      if (window.innerWidth < 1024) setSidebarOpen(false);
+    };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Notifications State
+  const [notifications, setNotifications] = useState([
+    { id: 1, title: "New Weekly Report", message: "John Doe submitted Week 2 report", time: "5m ago", read: false, type: "report", internEmail: "john.doe@company.com" },
+    { id: 2, title: "TNA Tracker Updated", message: "Jane Smith updated TNA progress", time: "1h ago", read: false, type: "tna", internEmail: "jane.smith@company.com" },
+    { id: 3, title: "Project Milestone", message: "Mike Johnson completed UI mockups", time: "2h ago", read: true, type: "project", internEmail: "mike.johnson@company.com" },
+  ]);
+
   useEffect(() => {
-    loadCurrentPM();
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const meRes = await pmApi.me();
+        const pm = meRes?.pm;
+        if (!pm?.email) throw new Error("Unable to load PM profile");
+
+        const displayName = pm.fullName || pm.email;
+        const avatar = String(displayName)
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase();
+
+        const nextPmInfo = {
+          id: pm.id,
+          name: displayName,
+          role: "Project Manager",
+          avatar: avatar || "PM",
+          fullName: pm.fullName || displayName,
+          pmCode: pm.pmCode || null,
+          email: pm.email,
+          status: pm.status,
+        };
+
+        if (!cancelled) {
+          setPmInfo(nextPmInfo);
+          localStorage.setItem(
+            "currentUser",
+            JSON.stringify({
+              role: "pm",
+              fullName: nextPmInfo.fullName,
+              email: nextPmInfo.email,
+              pmCode: nextPmInfo.pmCode,
+            })
+          );
+        }
+      } catch (err) {
+        console.error("Failed loading PM profile:", err);
+        if (!cancelled) {
+          setLoadError(err?.message || "Failed to load PM profile");
+        }
+      }
+
+      try {
+        const internsRes = await pmApi.interns();
+        const raw = internsRes?.interns || [];
+        const mapped = raw.map((p) => ({
+          ...p,
+          fullName: p.full_name || p.fullName || p.name,
+          name: p.full_name || p.fullName || p.name,
+          internId: p.intern_id || p.internId,
+          status: p.status || "active",
+        }));
+        if (!cancelled) setInterns(mapped);
+      } catch (err) {
+        console.error("Failed loading PM interns:", err);
+        if (!cancelled) setInterns([]);
+      }
+
+      try {
+        const statsRes = await pmApi.stats();
+        if (!cancelled) setPmStats(statsRes?.stats || null);
+      } catch (err) {
+        console.error("Failed loading PM stats:", err);
+        if (!cancelled) setPmStats(null);
+      }
+
+      try {
+        const reportsRes = await pmApi.reports();
+        const reports = reportsRes?.reports || [];
+        const weekly = reports.filter((r) => r.reportType === "weekly");
+        const monthly = reports.filter((r) => r.reportType === "monthly");
+        if (!cancelled) {
+          setWeeklyReports(weekly);
+          setMonthlyReports(monthly);
+        }
+      } catch (err) {
+        console.error("Failed loading PM reports:", err);
+        if (!cancelled) {
+          setWeeklyReports([]);
+          setMonthlyReports([]);
+        }
+      }
+
+      try {
+        const annRes = await announcementsApi.list();
+        if (!cancelled) setSharedAnnouncements(annRes?.announcements || []);
+      } catch (err) {
+        console.error("Failed loading announcements:", err);
+        if (!cancelled) setSharedAnnouncements([]);
+      }
+
+      if (!cancelled) setLoading(false);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  const computedStats = {
+    activeInterns: interns.filter((i) => (i.status || "").toLowerCase() === "active").length,
+    totalHours: 0,
+    totalTasks: 0,
+    pendingReports: weeklyReports.filter((r) => (r.status || "").toLowerCase() === "pending").length +
+      monthlyReports.filter((r) => (r.status || "").toLowerCase() === "pending").length,
+  };
+
+  const stats = pmStats || computedStats;
+
   useEffect(() => {
-    if (currentPM) {
-      loadAssignedInterns();
-    }
-  }, [currentPM]);
+    const socket = getRealtimeSocket();
+    const onChanged = () => {
+      pmApi.interns().then((r) => setInterns((r?.interns || []).map((p) => ({
+        ...p,
+        fullName: p.full_name || p.fullName || p.name,
+        name: p.full_name || p.fullName || p.name,
+        internId: p.intern_id || p.internId,
+        status: p.status || "active",
+      })))).catch(() => {});
 
-  const loadCurrentPM = () => {
-    try {
-      const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-      if (user.role === "pm") {
-        setCurrentPM(user);
-      }
-    } catch (error) {
-      console.error("Error loading PM:", error);
-    }
+      pmApi.stats().then((r) => setPmStats(r?.stats || null)).catch(() => {});
+
+      pmApi.reports().then((r) => {
+        const reports = r?.reports || [];
+        setWeeklyReports(reports.filter((x) => x.reportType === "weekly"));
+        setMonthlyReports(reports.filter((x) => x.reportType === "monthly"));
+      }).catch(() => {});
+
+      announcementsApi.list().then((r) => setSharedAnnouncements(r?.announcements || [])).catch(() => {});
+    };
+
+    socket.on("itp:changed", onChanged);
+    return () => {
+      socket.off("itp:changed", onChanged);
+    };
+  }, []);
+
+  // REMOVED ANALYTICS FROM MENU
+  const menuItems = [
+    { id: "overview", label: "PM Dashboard", icon: Home },
+    { id: "interns", label: "My Interns", icon: Users },
+    { id: "messages", label: "Messages", icon: MessageCircle },
+    { id: "review-logs", label: "Review Reports", icon: BookOpen },
+  ];
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === id ? { ...notif, read: true } : notif
+      )
+    );
   };
 
-  const loadAssignedInterns = () => {
-    try {
-      const allUsers = JSON.parse(localStorage.getItem("users") || "[]");
-      const interns = allUsers.filter(
-        (u) => u.role === "intern" && u.pmCode === currentPM?.pmCode && !u.disabled
-      );
-      setAssignedInterns(interns);
-    } catch (error) {
-      console.error("Error loading interns:", error);
-      setAssignedInterns([]);
-    }
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
   };
 
-  const filteredInterns = assignedInterns.filter(
-    (intern) =>
-      intern.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      intern.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const addNotification = (notification) => {
+    const newNotif = {
+      id: Date.now(),
+      ...notification,
+      time: "Just now",
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  const handleNavigateToMessages = (intern) => {
+    setSelectedIntern(intern);
+    setCurrentPage("messages");
+  };
 
   const handleViewProfile = (intern) => {
     setSelectedIntern(intern);
-    setShowProfileModal(true);
+    setCurrentPage("intern-profile");
+  };
+
+  const handleBackToInterns = () => {
+    setSelectedIntern(null);
+    setCurrentPage("interns");
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showNotifications && !e.target.closest('.notifications-container')) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifications]);
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case "overview":
+        return (
+          <OverviewPage 
+            pm={pmInfo} 
+            interns={interns} 
+            stats={stats} 
+            isMobile={isMobile} 
+            weeklyReports={weeklyReports} 
+            sharedAnnouncements={sharedAnnouncements}
+          />
+        );
+      case "interns":
+        return (
+          <MyInternsPage 
+            onNavigateToMessages={handleNavigateToMessages}
+            onViewProfile={handleViewProfile}
+            interns={interns}
+          />
+        );
+      case "intern-profile":
+        return (
+          <InternProfilePage 
+            intern={selectedIntern}
+            onBack={handleBackToInterns}
+          />
+        );
+      case "messages":
+        return <MessagesPage selectedIntern={selectedIntern} />;
+      case "review-logs":
+        return (
+          <ReviewLogsPage 
+            interns={interns}
+            weeklyReports={weeklyReports} 
+            monthlyReports={monthlyReports} 
+            isMobile={isMobile}
+            pmEmail={pmInfo?.email || ""}
+            addNotification={addNotification}
+          />
+        );
+      default:
+        return (
+          <OverviewPage 
+            pm={pmInfo} 
+            interns={interns} 
+            stats={stats} 
+            isMobile={isMobile} 
+            weeklyReports={weeklyReports} 
+            sharedAnnouncements={sharedAnnouncements}
+          />
+        );
+    }
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, ${COLORS.deepOcean} 50%, ${COLORS.jungleTeal} 100%)`,
-        color: "white",
-        padding: isMobile ? 16 : 32,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div
+    <>
+      <GlobalStyles />
+      <div style={{ display: "flex", minHeight: "100vh", background: GRADIENTS.primary, fontFamily: "'Inter', system-ui, sans-serif" }}>
+        
+        {/* SIDEBAR - Fixed Position */}
+        <aside
           style={{
-            position: "absolute",
-            top: "20%",
-            left: "-5%",
-            width: 500,
-            height: 500,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-            opacity: 0.3,
-            filter: "blur(100px)",
-            animation: "pulse 4s ease-in-out infinite",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: "10%",
-            right: "-5%",
-            width: 400,
-            height: 400,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.peachGlow})`,
-            opacity: 0.2,
-            filter: "blur(100px)",
-            animation: "pulse 5s ease-in-out infinite",
-          }}
-        />
-      </div>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.25; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.08); }
-        }
-      `}</style>
-
-      <div style={{ position: "relative", zIndex: 10, maxWidth: 1400, margin: "0 auto" }}>
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <Award size={isMobile ? 32 : 40} color={COLORS.peachGlow} />
-            <h1 style={{ fontSize: isMobile ? 28 : 42, margin: 0, fontWeight: 800 }}>
-              PM Dashboard
-            </h1>
-          </div>
-          <p style={{ color: "rgba(255,255,255,0.75)", fontSize: isMobile ? 14 : 16 }}>
-            Welcome back, {currentPM?.fullName || "Project Manager"} • PM Code: {currentPM?.pmCode || "N/A"}
-          </p>
-        </div>
-
-        {activeTab === "overview" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-              marginBottom: 32,
-            }}
-          >
-            <StatCard icon={<Users size={28} />} label="Assigned Interns" value={assignedInterns.length} color={COLORS.peachGlow} />
-            <StatCard icon={<MessageCircle size={28} />} label="Unread Messages" value={0} color={COLORS.jungleTeal} />
-            <StatCard icon={<Bell size={28} />} label="Announcements" value={announcements.length} color="#a78bfa" />
-            <StatCard icon={<Award size={28} />} label="Active Projects" value={assignedInterns.length} color="#4ade80" />
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-            background: "rgba(255,255,255,0.04)",
-            padding: 8,
-            borderRadius: 16,
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          {[
-            { id: "overview", label: "Overview" },
-            { id: "interns", label: "My Interns" },
-            { id: "announcements", label: "Announcements" },
-            { id: "chat", label: "Messages" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                flex: isMobile ? "1 1 45%" : "0 0 auto",
-                padding: "12px 24px",
-                borderRadius: 12,
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 700,
-                background: activeTab === tab.id ? "white" : "transparent",
-                color: activeTab === tab.id ? COLORS.inkBlack : "white",
-                transition: "all 0.2s",
-                fontSize: isMobile ? 13 : 15,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div
-          style={{
-            background: "rgba(255,255,255,0.06)",
+            width: sidebarOpen ? 280 : 0,
+            height: "100vh",
+            background: COLORS.surfaceGlass,
             backdropFilter: "blur(20px)",
-            borderRadius: 24,
-            padding: isMobile ? 16 : 32,
-            border: "1px solid rgba(255,255,255,0.12)",
-            minHeight: 400,
-          }}
-        >
-          {activeTab === "overview" && (
-            <OverviewContent
-              interns={assignedInterns}
-              announcements={announcements}
-              isMobile={isMobile}
-              onViewProfile={handleViewProfile}
-            />
-          )}
-
-          {activeTab === "interns" && (
-            <InternsManagement
-              interns={filteredInterns}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              onViewProfile={handleViewProfile}
-              isMobile={isMobile}
-            />
-          )}
-
-          {activeTab === "announcements" && (
-            <AnnouncementsView announcements={announcements} isMobile={isMobile} />
-          )}
-
-          {activeTab === "chat" && <ChatSystem userRole="pm" currentUser={currentPM} />}
-        </div>
-      </div>
-
-      {showProfileModal && selectedIntern && (
-        <Modal onClose={() => setShowProfileModal(false)} isMobile={isMobile}>
-          <InternProfileView intern={selectedIntern} isMobile={isMobile} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value, color }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.08)", backdropFilter: "blur(10px)", padding: 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 16 }}>
-      <div style={{ color }}>{icon}</div>
-      <div>
-        <div style={{ fontSize: 32, fontWeight: 800, color }}>{value}</div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{label}</div>
-      </div>
-    </div>
-  );
-}
-
-function OverviewContent({ interns, announcements, isMobile, onViewProfile }) {
-  const recentInterns = interns.slice(0, 3);
-  const recentAnnouncements = announcements.slice(0, 2);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      <div>
-        <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22, display: "flex", alignItems: "center", gap: 8 }}>
-          <Users size={22} /> Your Team Overview
-        </h3>
-        <p style={{ color: "rgba(255,255,255,0.7)", marginBottom: 16 }}>
-          You are currently managing {interns.length} intern{interns.length !== 1 ? "s" : ""}.
-        </p>
-      </div>
-
-      <div>
-        <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22 }}>Recently Active Interns</h3>
-        {recentInterns.length === 0 ? (
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>No interns assigned yet.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {recentInterns.map((intern, idx) => (
-              <div
-                key={idx}
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  padding: 16,
-                  borderRadius: 12,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: "50%",
-                      background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 800,
-                      fontSize: 18,
-                    }}
-                  >
-                    {intern.fullName?.charAt(0) || "I"}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16 }}>{intern.fullName}</div>
-                    <div style={{ fontSize: isMobile ? 12 : 14, color: "rgba(255,255,255,0.6)" }}>{intern.email}</div>
-                  </div>
-                </div>
-                <button onClick={() => onViewProfile(intern)} style={buttonStyle}>
-                  <Eye size={16} /> View Profile
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22 }}>Latest Announcements</h3>
-        {recentAnnouncements.length === 0 ? (
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>No announcements yet.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {recentAnnouncements.map((ann) => (
-              <div
-                key={ann.id}
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  padding: 16,
-                  borderRadius: 12,
-                  borderLeft: `4px solid ${getPriorityColor(ann.priority)}`,
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16, marginBottom: 4 }}>{ann.title}</div>
-                <div style={{ fontSize: isMobile ? 12 : 14, color: "rgba(255,255,255,0.7)" }}>{ann.message}</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 8 }}>
-                  {new Date(ann.date).toLocaleDateString()}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InternsManagement({ interns, searchTerm, setSearchTerm, onViewProfile, isMobile }) {
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <h3 style={{ margin: 0, fontSize: isMobile ? 18 : 22 }}>My Interns ({interns.length})</h3>
-      </div>
-
-      <div style={{ position: "relative", marginBottom: 20 }}>
-        <Search
-          size={18}
-          style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.5)" }}
-        />
-        <input
-          placeholder="Search interns by name or email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ ...inputStyle, paddingLeft: 44 }}
-        />
-      </div>
-
-      {interns.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <Users size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 16 }} />
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>
-            {searchTerm ? "No interns found matching your search." : "No interns assigned to you yet."}
-          </p>
-        </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {interns.map((intern, idx) => (
-            <InternCard key={idx} intern={intern} onViewProfile={onViewProfile} isMobile={isMobile} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InternCard({ intern, onViewProfile, isMobile }) {
-  return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        padding: 20,
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,0.08)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        transition: "all 0.3s",
-        cursor: "pointer",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-        e.currentTarget.style.transform = "translateY(-4px)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-        e.currentTarget.style.transform = "translateY(0)";
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
+            borderRight: `1px solid ${COLORS.borderGlass}`,
+            transition: "width 0.3s ease",
+            overflow: "hidden",
+            position: "fixed",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: isMobile ? 1000 : 100,
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 22,
+            flexDirection: "column",
           }}
         >
-          {intern.fullName?.charAt(0) || "I"}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{intern.fullName}</div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>{intern.degree || "Intern"}</div>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.7)" }}>
-          <Mail size={14} />
-          {intern.email}
-        </div>
-        {intern.phone && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.7)" }}>
-            <Phone size={14} />
-            {intern.phone}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={() => onViewProfile(intern)} style={{ ...buttonStyle, flex: 1 }}>
-          <Eye size={16} /> View Profile
-        </button>
-        <button style={{ ...buttonStyle, flex: 1, background: COLORS.jungleTeal }}>
-          <MessageCircle size={16} /> Chat
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AnnouncementsView({ announcements, isMobile }) {
-  return (
-    <div>
-      <h3 style={{ marginBottom: 20, fontSize: isMobile ? 18 : 22 }}>All Announcements ({announcements.length})</h3>
-      {announcements.length === 0 ? (
-        <p style={{ color: "rgba(255,255,255,0.6)" }}>No announcements yet.</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {announcements.map((ann) => (
-            <div
-              key={ann.id}
-              style={{
-                background: "rgba(255,255,255,0.04)",
-                padding: 20,
-                borderRadius: 12,
-                borderLeft: `4px solid ${getPriorityColor(ann.priority)}`,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: isMobile ? 16 : 18 }}>{ann.title}</div>
-                <div
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            height: "100%", 
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}>
+          {/* Logo - Matching HR */}
+          <div style={{ padding: 24, borderBottom: `1px solid ${COLORS.borderGlass}` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, background: GRADIENTS.accent,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Sparkles size={20} color="white" />
+                </div>
+                <span style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary }}>InternHub</span>
+              </div>
+              {isMobile && (
+                <button 
+                  onClick={() => setSidebarOpen(false)} 
                   style={{
-                    background: getPriorityColor(ann.priority),
-                    color: "white",
-                    padding: "4px 12px",
-                    borderRadius: 999,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
+                    width: 40, height: 40, borderRadius: 10,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    background: "transparent", color: COLORS.textSecondary,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  {ann.priority}
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* User Card - Matching HR */}
+          <div style={{ padding: 20 }}>
+            <div style={{
+              background: COLORS.surfaceGlass, borderRadius: 16, padding: 16,
+              border: `1px solid ${COLORS.borderGlass}`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18, fontWeight: 700, color: "white",
+                }}>
+                  {pmInfo?.avatar || "PM"}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
+                    {pmInfo?.name || "Project Manager"}
+                  </div>
+                  <div style={{ fontSize: 12, color: COLORS.textMuted }}>Project Manager</div>
                 </div>
               </div>
-              <div style={{ fontSize: isMobile ? 13 : 14, color: "rgba(255,255,255,0.7)", marginBottom: 12 }}>{ann.message}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-                <Calendar size={14} />
-                {new Date(ann.date).toLocaleDateString()}
-              </div>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+          </div>
 
-function InternProfileView({ intern, isMobile }) {
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-        <div
-          style={{
-            width: 80,
-            height: 80,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
+          {/* Navigation - Matching HR */}
+          <nav style={{ 
+            flex: 1, 
+            padding: "0 12px", 
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}>
+            {menuItems.map((item, idx) => {
+              const Icon = item.icon;
+              const isActive = currentPage === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentPage(item.id)}
+                  className={`animate-slideIn stagger-${idx + 1}`}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "14px 16px",
+                    marginBottom: 4,
+                    borderRadius: 12,
+                    border: "none",
+                    cursor: "pointer",
+                    background: isActive ? GRADIENTS.accent : "transparent",
+                    color: isActive ? "white" : COLORS.textSecondary,
+                    fontWeight: isActive ? 600 : 400,
+                    fontSize: 14,
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <Icon size={20} />
+                  <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Sidebar Footer - Matching HR */}
+          <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
+            <button
+              onClick={async () => {
+                try {
+                  await authApi.logout();
+                } catch {
+                  // ignore
+                }
+                localStorage.removeItem("currentUser");
+                window.location.href = "/";
+              }}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: `1px solid ${COLORS.borderGlass}`,
+                background: "transparent",
+                color: COLORS.textSecondary,
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              <LogOut size={18} />
+              Logout
+            </button>
+          </div>
+          </div>
+        </aside>
+
+        {/* MAIN CONTENT AREA - With margin for fixed sidebar */}
+        <main style={{ 
+          flex: 1, 
+          display: "flex", 
+          flexDirection: "column", 
+          minWidth: 0,
+          marginLeft: isMobile ? 0 : (sidebarOpen ? 280 : 0),
+          transition: "margin-left 0.3s ease",
+          height: "100vh",
+          overflow: "hidden",
+        }}>
+          {/* HEADER - Fixed at top */}
+          <header style={{
+            height: 72,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 32,
-          }}
-        >
-          {intern.fullName?.charAt(0) || "I"}
-        </div>
-        <div>
-          <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 26 }}>{intern.fullName}</h2>
-          <p style={{ color: "rgba(255,255,255,0.7)", margin: "4px 0 0 0" }}>{intern.degree || "Intern"}</p>
-        </div>
-      </div>
+            justifyContent: "space-between",
+            padding: "0 24px",
+            background: COLORS.surfaceGlass,
+            backdropFilter: "blur(20px)",
+            borderBottom: `1px solid ${COLORS.borderGlass}`,
+            position: "sticky",
+            top: 0,
+            zIndex: 50,
+            flexShrink: 0,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {(!sidebarOpen || isMobile) && (
+                <button 
+                  onClick={() => setSidebarOpen(true)} 
+                  style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    background: "transparent", color: COLORS.textSecondary,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Menu size={22} />
+                </button>
+              )}
+              <div>
+                <h1 style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
+                  {menuItems.find((item) => item.id === currentPage)?.label || "Dashboard"}
+                </h1>
+                <p style={{ fontSize: 13, color: COLORS.textMuted, margin: 0 }}>
+                  Manage your intern workforce
+                </p>
+              </div>
+            </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <ProfileField icon={<Mail size={18} />} label="Email" value={intern.email} />
-        <ProfileField icon={<Phone size={18} />} label="Phone" value={intern.phone || "Not provided"} />
-        <ProfileField icon={<Calendar size={18} />} label="Date of Birth" value={intern.dob || "Not provided"} />
-        <ProfileField icon={<GraduationCap size={18} />} label="Degree" value={intern.degree || "Not provided"} />
-        <ProfileField icon={<MapPin size={18} />} label="PM Code" value={intern.pmCode || "Not assigned"} />
-        <ProfileField
-          icon={<Calendar size={18} />}
-          label="Joined"
-          value={intern.createdAt ? new Date(intern.createdAt).toLocaleDateString() : "Unknown"}
-        />
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Notifications */}
+              <div style={{ position: "relative" }} className="notifications-container">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    background: "transparent", color: COLORS.textSecondary,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                    position: "relative", transition: "all 0.2s",
+                  }}
+                >
+                  <Bell size={20} />
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position: "absolute", top: -4, right: -4,
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: COLORS.red, color: "white",
+                      fontSize: 10, fontWeight: 700,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notifications Dropdown */}
+                {showNotifications && (
+                  <div style={{
+                    position: "absolute", top: "56px", right: 0,
+                    width: "360px", maxHeight: "480px",
+                    background: GRADIENTS.primary,
+                    borderRadius: 20, padding: 0,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.5)",
+                    overflow: "hidden", zIndex: 1000,
+                    animation: "fadeIn 0.2s ease",
+                  }}>
+                    <div style={{ padding: "16px 20px", borderBottom: `1px solid ${COLORS.borderGlass}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ fontSize: 16, fontWeight: 600, color: COLORS.textPrimary, margin: 0 }}>
+                        Notifications
+                      </h3>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={markAllAsRead}
+                          style={{
+                            background: "none", border: "none",
+                            color: COLORS.jungleTeal, fontSize: 12,
+                            cursor: "pointer", fontWeight: 600,
+                            padding: "4px 8px", borderRadius: 6,
+                          }}
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ maxHeight: "400px", overflowY: "auto", padding: "8px" }}>
+                      {notifications.length === 0 ? (
+                        <div style={{ padding: "40px 20px", textAlign: "center" }}>
+                          <Bell size={40} color={COLORS.textMuted} style={{ marginBottom: 12 }} />
+                          <p style={{ color: COLORS.textMuted, fontSize: 14 }}>No notifications</p>
+                        </div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <div
+                            key={notif.id}
+                            onClick={() => markNotificationAsRead(notif.id)}
+                            style={{
+                              padding: 12,
+                              background: notif.read ? COLORS.surfaceGlass : `${COLORS.jungleTeal}15`,
+                              borderRadius: 12,
+                              cursor: "pointer",
+                              border: `1px solid ${notif.read ? COLORS.borderGlass : `${COLORS.jungleTeal}40`}`,
+                              transition: "all 0.2s",
+                              marginBottom: 8
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 4 }}>
+                              <span style={{ fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+                                {notif.title}
+                              </span>
+                              {!notif.read && (
+                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS.red, flexShrink: 0, marginLeft: 8 }} />
+                              )}
+                            </div>
+                            <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: 0, marginBottom: 4 }}>
+                              {notif.message}
+                            </p>
+                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                              {notif.time}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* User Avatar */}
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%", background: GRADIENTS.accent,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, color: "white", cursor: "pointer",
+              }}>
+                {pmInfo?.avatar || "PM"}
+              </div>
+            </div>
+          </header>
+
+          {/* PAGE CONTENT - SCROLLABLE */}
+          <div style={{ 
+            flex: 1, 
+            padding: 24, 
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: COLORS.bgPrimary,
+          }}>
+            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+              {loading && (
+                <div style={{ padding: 20, color: COLORS.textSecondary }}>
+                  Loading…
+                </div>
+              )}
+              {!loading && loadError && (
+                <div style={{ padding: 20, color: COLORS.red }}>
+                  {loadError}
+                </div>
+              )}
+              {!loading && !loadError && renderPage()}
+            </div>
+          </div>
+        </main>
+
+        {/* Mobile Overlay */}
+        {isMobile && sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{
+              position: "fixed", 
+              inset: 0, 
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999, 
+              backdropFilter: "blur(4px)",
+            }}
+          />
+        )}
       </div>
-    </div>
+    </>
   );
-}
-
-function ProfileField({ icon, label, value }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", padding: 16, borderRadius: 12, display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ color: COLORS.peachGlow }}>{icon}</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 2 }}>{label}</div>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>{value}</div>
-      </div>
-    </div>
-  );
-}
-
-function Modal({ children, onClose, isMobile }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.7)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: 20,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: `linear-gradient(135deg, ${COLORS.inkBlack}, ${COLORS.deepOcean})`,
-          borderRadius: 20,
-          padding: isMobile ? 24 : 32,
-          maxWidth: 600,
-          width: "100%",
-          border: "1px solid rgba(255,255,255,0.12)",
-          color: "white",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function getPriorityColor(priority) {
-  switch (priority) {
-    case "high":
-      return COLORS.racingRed;
-    case "medium":
-      return "#f59e0b";
-    case "low":
-      return "#4ade80";
-    default:
-      return COLORS.jungleTeal;
-  }
-}
-
-const inputStyle = {
-  width: "100%",
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.2)",
-  background: "rgba(255,255,255,0.08)",
-  color: "white",
-  outline: "none",
-  fontSize: 14,
 };
 
-const buttonStyle = {
-  padding: "10px 16px",
-  borderRadius: 999,
-  border: "none",
-  background: "white",
-  color: COLORS.inkBlack,
-  fontWeight: 700,
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  fontSize: 13,
-  transition: "all 0.2s",
-};
+export default PMHome;

@@ -1,496 +1,1142 @@
+//frontend/src/pages/intern/InternHome.jsx
 import React, { useState, useEffect } from "react";
-import { User, Bell, MessageCircle, FileText, Award, Calendar, MapPin, Briefcase, Mail, Phone, Heart, GraduationCap, Eye } from "lucide-react";
-import ChatSystem from "../../components/ChatSystem";
+import DailyLogPage from './DailyLogPage';
+import ProfilePage from './ProfilePage';
+import MessagesPage from './MessagesPage';
+import ReportsPage from './ReportsPage';
+import { authApi, internApi, announcementsApi } from "../../lib/apiClient";
+import { getRealtimeSocket } from "../../lib/realtime";
 
+import { 
+  User, Bell, MessageCircle, FileText, 
+  Home, BookOpen, Send, Menu, X, Sparkles,
+  ClipboardList, LogOut
+} from "lucide-react";
+
+// ==================== COLORS MATCHING PM DASHBOARD ====================
 const COLORS = {
-  inkBlack: "#071e22",
-  deepOcean: "#1d7874",
-  jungleTeal: "#679289",
-  peachGlow: "#ffe5d9",
-  racingRed: "#d90429",
+  bgPrimary: "#020617",
+  bgSecondary: "#0a2528",
+  surfaceGlass: "rgba(255, 255, 255, 0.06)",
+  borderGlass: "rgba(255, 255, 255, 0.12)",
+  deepOcean: "#0f766e",
+  jungleTeal: "#14b8a6",
+  emeraldGlow: "#10b981",
+  cyanHighlight: "#22d3ee",
+  textPrimary: "#f8fafc",
+  textSecondary: "rgba(248, 250, 252, 0.7)",
+  textMuted: "rgba(248, 250, 252, 0.5)",
+  orange: "#f59e0b",
+  red: "#ef4444",
+  purple: "#a78bfa",
 };
 
-export default function InternHome() {
-  const [activeTab, setActiveTab] = useState("overview");
+const GRADIENTS = {
+  primary: `linear-gradient(135deg, ${COLORS.bgPrimary} 0%, ${COLORS.bgSecondary} 50%, ${COLORS.bgPrimary} 100%)`,
+  accent: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
+};
+
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: 'Inter', system-ui, sans-serif; 
+      background: ${COLORS.bgPrimary}; 
+      color: white; 
+      overflow-x: hidden; 
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes pulse { 
+      0%, 100% { opacity: 1; transform: scale(1); } 
+      50% { opacity: 0.6; transform: scale(1.1); } 
+    }
+    .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
+    .animate-slideIn { animation: slideIn 0.4s ease-out forwards; }
+    .stagger-1 { animation-delay: 0.05s; opacity: 0; }
+    .stagger-2 { animation-delay: 0.1s; opacity: 0; }
+    .stagger-3 { animation-delay: 0.15s; opacity: 0; }
+    .stagger-4 { animation-delay: 0.2s; opacity: 0; }
+    .stagger-5 { animation-delay: 0.25s; opacity: 0; }
+    input::placeholder, textarea::placeholder { color: rgba(248, 250, 252, 0.4); }
+    input:focus, textarea:focus { 
+      outline: none; 
+      border-color: ${COLORS.jungleTeal}; 
+      box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2); 
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: ${COLORS.bgPrimary}; }
+    ::-webkit-scrollbar-thumb { background: ${COLORS.deepOcean}; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: ${COLORS.jungleTeal}; }
+  `}</style>
+);
+
+export default function InternDashboard() {
+  const [activePage, setActivePage] = useState("overview");
   const [currentIntern, setCurrentIntern] = useState(null);
   const [assignedPM, setAssignedPM] = useState(null);
+  const [assignedHR, setAssignedHR] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [stats, setStats] = useState({
+    daysActive: 0,
+    totalHours: 0,
+    tasksCompleted: 0,
+    progressPercent: 0,
+    pendingReports: 0,
+  });
 
-  const [announcements] = useState([
-    {
-      id: 1,
-      title: "Welcome to the Team!",
-      message: "We're excited to have you on board. Complete your profile and start your internship journey.",
-      date: "2024-01-15",
-      priority: "high",
-      from: "HR Team"
-    },
-    {
-      id: 2,
-      title: "Weekly Check-in Reminder",
-      message: "Remember to submit your weekly progress report every Friday by 5 PM.",
-      date: "2024-01-14",
-      priority: "medium",
-      from: "Your PM"
-    },
-    {
-      id: 3,
-      title: "Learning Resources Available",
-      message: "Check out our resource library for tutorials and documentation to help with your projects.",
-      date: "2024-01-10",
-      priority: "low",
-      from: "HR Team"
-    }
-  ]);
-
+  // Responsive Handler
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  useEffect(() => {
-    loadCurrentIntern();
+  useEffect(() => { 
+    loadCurrentIntern(); 
+    loadStats();
+    loadAnnouncements();
   }, []);
 
-  useEffect(() => {
-    if (currentIntern?.pmCode) {
-      loadAssignedPM();
-    }
-  }, [currentIntern]);
-
-  const loadCurrentIntern = () => {
+  const loadCurrentIntern = async () => {
     try {
-      const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-      if (user.role === "intern") {
-        setCurrentIntern(user);
+      const res = await internApi.me();
+      const profile = res?.profile;
+      if (!profile?.email) throw new Error("Unable to load intern profile");
+
+      const displayName = profile.full_name || profile.fullName || profile.email;
+      const avatar = String(displayName)
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase();
+
+      const profileData = profile.profile_data || profile.profileData || profile.profile || {};
+      const assignedPm = profile.pm
+        ? {
+            id: profile.pm.id,
+            fullName: profile.pm.full_name || profile.pm.fullName || "Project Manager",
+            email: profile.pm.email,
+            role: "pm",
+            pmCode: profile.pm.pm_code || profile.pm.pmCode || null,
+          }
+        : null;
+
+      const nextIntern = {
+        id: profile.id,
+        internId: profile.intern_id || null,
+        fullName: displayName,
+        email: profile.email,
+        phone: profileData.phone || profile.phone || "",
+        dob: profileData.dob || profile.dob || "",
+        role: "intern",
+        pmCode: assignedPm?.pmCode || null,
+        degree: profileData.degree || profileData.department || "",
+        avatar: avatar || "IN",
+        profile: profileData,
+        profileCompleted: !!profile.profile_completed,
+      };
+
+      setCurrentIntern(nextIntern);
+      setAssignedPM(assignedPm);
+      setAssignedHR(null);
+
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify({
+          role: "intern",
+          fullName: nextIntern.fullName,
+          email: nextIntern.email,
+          pmCode: nextIntern.pmCode,
+          internId: nextIntern.internId,
+          profileCompleted: nextIntern.profileCompleted,
+        })
+      );
+    } catch (err) {
+      console.error("Error loading intern (API):", err);
+      if (err?.status === 401 || err?.status === 403) {
+        window.location.href = "/";
+        return;
       }
-    } catch (error) {
-      console.error("Error loading intern:", error);
-    }
-  };
 
-  const loadAssignedPM = () => {
-    try {
-      const users = JSON.parse(localStorage.getItem("users") || "[]");
-      const pm = users.find((u) => u.role === "pm" && u.pmCode === currentIntern?.pmCode);
-      setAssignedPM(pm);
-    } catch (error) {
-      console.error("Error loading PM:", error);
-    }
-  };
-
-  const getStats = () => {
-    const daysActive = currentIntern?.profileCompletedAt
-      ? Math.floor((new Date() - new Date(currentIntern.profileCompletedAt)) / (1000 * 60 * 60 * 24))
-      : 0;
-    
-    return {
-      daysActive,
-      unreadMessages: 0,
-      announcements: announcements.length,
-      tasksCompleted: 0,
-    };
-  };
-
-  const stats = getStats();
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: `linear-gradient(135deg, ${COLORS.inkBlack} 0%, ${COLORS.deepOcean} 50%, ${COLORS.jungleTeal} 100%)`,
-        color: "white",
-        padding: isMobile ? 16 : 32,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-        <div
-          style={{
-            position: "absolute",
-            top: "25%",
-            left: "-8%",
-            width: 500,
-            height: 500,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-            opacity: 0.3,
-            filter: "blur(100px)",
-            animation: "pulse 4s ease-in-out infinite",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: "20%",
-            right: "-5%",
-            width: 450,
-            height: 450,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.peachGlow})`,
-            opacity: 0.25,
-            filter: "blur(100px)",
-            animation: "pulse 5s ease-in-out infinite",
-          }}
-        />
-      </div>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.25; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.08); }
+      try {
+        const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
+        if (user.role === "intern") {
+          setCurrentIntern(user);
+        } else {
+          window.location.href = "/";
         }
-      `}</style>
+      } catch (e) {
+        window.location.href = "/";
+      }
+    }
+  };
 
-      <div style={{ position: "relative", zIndex: 10, maxWidth: 1400, margin: "0 auto" }}>
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <div
-              style={{
-                width: isMobile ? 48 : 64,
-                height: isMobile ? 48 : 64,
-                borderRadius: "50%",
-                background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 800,
-                fontSize: isMobile ? 20 : 28,
-                border: "3px solid rgba(255,255,255,0.2)",
-              }}
-            >
-              {currentIntern?.fullName?.charAt(0) || "I"}
-            </div>
-            <div>
-              <h1 style={{ fontSize: isMobile ? 28 : 42, margin: 0, fontWeight: 800 }}>
-                Welcome, {currentIntern?.fullName?.split(" ")[0] || "Intern"}!
-              </h1>
-              <p style={{ color: "rgba(255,255,255,0.75)", fontSize: isMobile ? 13 : 15, marginTop: 4 }}>
-                {currentIntern?.degree || "Intern"} • PM Code: {currentIntern?.pmCode || "Not assigned"}
-              </p>
-            </div>
-          </div>
-        </div>
+  const loadStats = async () => {
+    try {
+      const res = await internApi.stats();
+      if (res?.stats) {
+        setStats(res.stats);
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to load intern stats:", err);
+    }
 
-        {activeTab === "overview" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-              marginBottom: 32,
-            }}
-          >
-            <StatCard icon={<Calendar size={28} />} label="Days Active" value={stats.daysActive} color={COLORS.peachGlow} />
-            <StatCard icon={<MessageCircle size={28} />} label="Unread Messages" value={stats.unreadMessages} color={COLORS.jungleTeal} />
-            <StatCard icon={<Bell size={28} />} label="Announcements" value={stats.announcements} color="#f59e0b" />
-            <StatCard icon={<Award size={28} />} label="Tasks Completed" value={stats.tasksCompleted} color="#a78bfa" />
-          </div>
-        )}
+    setStats((prev) => ({
+      ...prev,
+      daysActive: currentIntern?.profile?.startDate
+        ? Math.max(0, Math.floor((new Date() - new Date(currentIntern.profile.startDate)) / (1000 * 60 * 60 * 24)))
+        : 0,
+    }));
+  };
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-            background: "rgba(255,255,255,0.04)",
-            padding: 8,
-            borderRadius: 16,
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          {[
-            { id: "overview", label: "Overview" },
-            { id: "profile", label: "My Profile" },
-            { id: "announcements", label: "Announcements" },
-            { id: "documents", label: "Documents" },
-            { id: "chat", label: "Messages" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                flex: isMobile ? "1 1 45%" : "0 0 auto",
-                padding: "12px 20px",
-                borderRadius: 12,
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 700,
-                background: activeTab === tab.id ? "white" : "transparent",
-                color: activeTab === tab.id ? COLORS.inkBlack : "white",
-                transition: "all 0.2s",
-                fontSize: isMobile ? 13 : 15,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+  const loadAnnouncements = async () => {
+    try {
+      const res = await announcementsApi.list();
+      const rows = res?.announcements || [];
+      const mapped = rows.map((a) => ({
+        id: a.id,
+        title: a.title,
+        message: a.content,
+        date: a.created_at,
+        priority: a.priority || "medium",
+        from: a.created_by?.full_name || a.created_by?.email || "HR",
+      }));
+      setAnnouncements(mapped);
+    } catch (err) {
+      console.error("Failed to load announcements:", err);
+      setAnnouncements([]);
+    }
+  };
 
-        <div
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            backdropFilter: "blur(20px)",
-            borderRadius: 24,
-            padding: isMobile ? 16 : 32,
-            border: "1px solid rgba(255,255,255,0.12)",
-            minHeight: 400,
-          }}
-        >
-          {activeTab === "overview" && (
-            <OverviewContent intern={currentIntern} pm={assignedPM} announcements={announcements} isMobile={isMobile} />
-          )}
-          {activeTab === "profile" && <ProfileView intern={currentIntern} isMobile={isMobile} />}
-          {activeTab === "announcements" && <AnnouncementsView announcements={announcements} isMobile={isMobile} />}
-          {activeTab === "documents" && <DocumentsView intern={currentIntern} isMobile={isMobile} />}
-          {activeTab === "chat" && <ChatSystem userRole="intern" currentUser={currentIntern} />}
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function StatCard({ icon, label, value, color }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.08)", backdropFilter: "blur(10px)", padding: 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 16 }}>
-      <div style={{ color }}>{icon}</div>
-      <div>
-        <div style={{ fontSize: 32, fontWeight: 800, color }}>{value}</div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{label}</div>
-      </div>
-    </div>
-  );
-}
+  const menuItems = [
+    { id: "overview", label: "Overview", icon: Home },
+    { id: "daily-log", label: "Daily Log", icon: BookOpen },
+    { id: "reports", label: "Reports", icon: ClipboardList },
+    { id: "chat", label: "Messages", icon: MessageCircle, badge: 5 },
+    { id: "profile", label: "My Profile", icon: User },
+    { id: "project-submission", label: "Submit Project", icon: Send },
+  ];
 
-function OverviewContent({ intern, pm, announcements, isMobile }) {
-  const recentAnnouncements = announcements.slice(0, 2);
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = () => {
+      loadCurrentIntern();
+      loadStats();
+      loadAnnouncements();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, []);
+
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === id ? { ...notif, read: true } : notif
+      )
+    );
+  };
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      <div style={{ background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`, padding: isMobile ? 20 : 28, borderRadius: 16, border: "1px solid rgba(255,255,255,0.1)" }}>
-        <h3 style={{ fontSize: isMobile ? 18 : 22, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-          🎉 Your Internship Journey
-        </h3>
-        <p style={{ color: "rgba(255,255,255,0.9)", lineHeight: 1.6, marginBottom: 12 }}>
-          You're making great progress! Keep up the excellent work and don't hesitate to reach out to your PM or HR if you need any support.
-        </p>
-        {intern?.profile?.startDate && intern?.profile?.endDate && (
-          <div style={{ display: "flex", gap: 16, fontSize: 13, flexWrap: "wrap" }}>
-            <div><span style={{ color: "rgba(255,255,255,0.7)" }}>Start:</span> <strong>{new Date(intern.profile.startDate).toLocaleDateString()}</strong></div>
-            <div><span style={{ color: "rgba(255,255,255,0.7)" }}>End:</span> <strong>{new Date(intern.profile.endDate).toLocaleDateString()}</strong></div>
-            <div><span style={{ color: "rgba(255,255,255,0.7)" }}>Mode:</span> <strong>{intern.profile.workMode}</strong></div>
-          </div>
-        )}
-      </div>
-
-      {pm && (
-        <div>
-          <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22, display: "flex", alignItems: "center", gap: 8 }}>
-            <Award size={22} /> Your Project Manager
-          </h3>
-          <div style={{ background: "rgba(255,255,255,0.04)", padding: 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: `linear-gradient(135deg, #a78bfa, ${COLORS.jungleTeal})`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 24 }}>
-                {pm.fullName?.charAt(0) || "P"}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 18 }}>{pm.fullName}</div>
-                <div style={{ fontSize: 13, color: COLORS.peachGlow, fontWeight: 600 }}>PM Code: {pm.pmCode}</div>
-              </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,0.8)" }}>
-                <Mail size={16} />
-                <a href={`mailto:${pm.email}`} style={{ color: "inherit", textDecoration: "none" }}>{pm.email}</a>
-              </div>
-              {pm.phone && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,0.8)" }}>
-                  <Phone size={16} /> {pm.phone}
+    <>
+      <GlobalStyles />
+      <div style={{ 
+        display: "flex", 
+        minHeight: "100vh", 
+        background: GRADIENTS.primary,
+        fontFamily: "'Inter', system-ui, sans-serif"
+      }}>
+        {/* SIDEBAR - Fixed Position */}
+        <aside style={{
+          width: sidebarOpen ? 280 : 0,
+          height: "100vh",
+          background: COLORS.surfaceGlass,
+          backdropFilter: "blur(20px)",
+          borderRight: `1px solid ${COLORS.borderGlass}`,
+          transition: "width 0.3s ease",
+          overflow: "hidden",
+          position: "fixed",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: isMobile ? 1000 : 100,
+          display: "flex",
+          flexDirection: "column",
+        }}>
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            height: "100%", 
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}>
+            {/* Logo */}
+            <div style={{ padding: 24, borderBottom: `1px solid ${COLORS.borderGlass}` }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, background: GRADIENTS.accent,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Sparkles size={20} color="white" />
+                  </div>
+                  <span style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary }}>
+                    InternHub
+                  </span>
                 </div>
+                {isMobile && (
+                  <button 
+                    onClick={() => setSidebarOpen(false)} 
+                    style={{
+                      width: 40, height: 40, borderRadius: 10,
+                      border: `1px solid ${COLORS.borderGlass}`,
+                      background: "transparent", color: COLORS.textSecondary,
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* User Card */}
+            <div style={{ padding: 20 }}>
+              <div style={{
+                background: COLORS.surfaceGlass, borderRadius: 16, padding: 16,
+                border: `1px solid ${COLORS.borderGlass}`,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18, fontWeight: 700, color: "white",
+                  }}>
+                    {currentIntern?.avatar || "IN"}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
+                      {currentIntern?.fullName || "Intern"}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+                      {currentIntern?.degree || "Student"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Navigation */}
+            <nav style={{ 
+              flex: 1, 
+              padding: "0 12px", 
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}>
+              {menuItems.map((item, idx) => {
+                const Icon = item.icon;
+                const isActive = activePage === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActivePage(item.id)}
+                    className={`animate-slideIn stagger-${idx + 1}`}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "14px 16px",
+                      marginBottom: 4,
+                      borderRadius: 12,
+                      border: "none",
+                      cursor: "pointer",
+                      background: isActive ? GRADIENTS.accent : "transparent",
+                      color: isActive ? "white" : COLORS.textSecondary,
+                      fontWeight: isActive ? 600 : 400,
+                      fontSize: 14,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <Icon size={20} />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span style={{
+                        background: COLORS.red,
+                        color: "white",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: 20,
+                      }}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Sidebar Footer */}
+            <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
+              <button
+                onClick={async () => {
+                  try {
+                    await authApi.logout();
+                  } catch {
+                    // ignore
+                  }
+                  localStorage.removeItem("currentUser");
+                  window.location.href = "/";
+                }}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  border: `1px solid ${COLORS.borderGlass}`,
+                  background: "transparent",
+                  color: COLORS.textSecondary,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                <LogOut size={18} />
+                Logout
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        {/* MAIN CONTENT AREA */}
+        <main style={{ 
+          flex: 1, 
+          display: "flex", 
+          flexDirection: "column", 
+          minWidth: 0,
+          marginLeft: isMobile ? 0 : (sidebarOpen ? 280 : 0),
+          transition: "margin-left 0.3s ease",
+          height: "100vh",
+          overflow: "hidden",
+        }}>
+          {/* HEADER - Fixed at top */}
+          <header style={{
+            height: 72,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 24px",
+            background: COLORS.surfaceGlass,
+            backdropFilter: "blur(20px)",
+            borderBottom: `1px solid ${COLORS.borderGlass}`,
+            position: "sticky",
+            top: 0,
+            zIndex: 50,
+            flexShrink: 0,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {(!sidebarOpen || isMobile) && (
+                <button 
+                  onClick={() => setSidebarOpen(true)} 
+                  style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    background: "transparent", color: COLORS.textSecondary,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Menu size={22} />
+                </button>
+              )}
+              <div>
+                <h1 style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
+                  {getPageTitle(activePage)}
+                </h1>
+                <p style={{ fontSize: 13, color: COLORS.textMuted, margin: 0 }}>
+                  {getPageSubtitle(activePage, currentIntern)}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Notifications */}
+              <div style={{ position: "relative" }} className="notifications-container">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    background: "transparent", color: COLORS.textSecondary,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                    position: "relative", transition: "all 0.2s",
+                  }}
+                >
+                  <Bell size={20} />
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position: "absolute", top: -4, right: -4,
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: COLORS.red, color: "white",
+                      fontSize: 10, fontWeight: 700,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notifications Dropdown */}
+                {showNotifications && (
+                  <div style={{
+                    position: "absolute", top: "56px", right: 0,
+                    width: "360px", maxHeight: "480px",
+                    background: GRADIENTS.primary,
+                    borderRadius: 20, padding: 0,
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.5)",
+                    overflow: "hidden", zIndex: 1000,
+                    animation: "fadeIn 0.2s ease",
+                  }}>
+                    <div style={{ 
+                      padding: "16px 20px", 
+                      borderBottom: `1px solid ${COLORS.borderGlass}`, 
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      alignItems: "center" 
+                    }}>
+                      <h3 style={{ fontSize: 16, fontWeight: 600, color: COLORS.textPrimary, margin: 0 }}>
+                        Notifications
+                      </h3>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={markAllAsRead}
+                          style={{
+                            background: "none", border: "none",
+                            color: COLORS.jungleTeal, fontSize: 12,
+                            cursor: "pointer", fontWeight: 600,
+                            padding: "4px 8px", borderRadius: 6,
+                          }}
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ maxHeight: "400px", overflowY: "auto", padding: "8px" }}>
+                      {notifications.length === 0 ? (
+                        <div style={{ padding: "40px 20px", textAlign: "center" }}>
+                          <Bell size={40} color={COLORS.textMuted} style={{ marginBottom: 12 }} />
+                          <p style={{ color: COLORS.textMuted, fontSize: 14 }}>No notifications</p>
+                        </div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <div
+                            key={notif.id}
+                            onClick={() => markNotificationAsRead(notif.id)}
+                            style={{
+                              padding: 12,
+                              background: notif.read ? COLORS.surfaceGlass : `${COLORS.jungleTeal}15`,
+                              borderRadius: 12,
+                              cursor: "pointer",
+                              border: `1px solid ${notif.read ? COLORS.borderGlass : `${COLORS.jungleTeal}40`}`,
+                              transition: "all 0.2s",
+                              marginBottom: 8
+                            }}
+                          >
+                            <div style={{ 
+                              display: "flex", 
+                              justifyContent: "space-between", 
+                              alignItems: "start", 
+                              marginBottom: 4 
+                            }}>
+                              <span style={{ fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+                                {notif.title}
+                              </span>
+                              {!notif.read && (
+                                <div style={{ 
+                                  width: 8, 
+                                  height: 8, 
+                                  borderRadius: "50%", 
+                                  background: COLORS.red, 
+                                  flexShrink: 0, 
+                                  marginLeft: 8 
+                                }} />
+                              )}
+                            </div>
+                            <p style={{ 
+                              fontSize: 13, 
+                              color: COLORS.textSecondary, 
+                              margin: 0, 
+                              marginBottom: 4 
+                            }}>
+                              {notif.message}
+                            </p>
+                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                              {notif.time}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* User Avatar */}
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%", background: GRADIENTS.accent,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, color: "white", cursor: "pointer",
+              }}>
+                {currentIntern?.avatar || "IN"}
+              </div>
+            </div>
+          </header>
+
+          {/* PAGE CONTENT - SCROLLABLE */}
+          <div style={{ 
+            flex: 1, 
+            padding: 24, 
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: COLORS.bgPrimary,
+          }}>
+            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+              {activePage === "overview" && (
+                <OverviewPage 
+                  intern={currentIntern} 
+                  pm={assignedPM} 
+                  hr={assignedHR} 
+                  announcements={announcements} 
+                  stats={stats} 
+                  isMobile={isMobile} 
+                />
+              )}
+              {activePage === "daily-log" && (
+                <DailyLogPage isMobile={isMobile} assignedPM={assignedPM} />
+              )}
+              {activePage === "reports" && <ReportsPage isMobile={isMobile} />}
+              {activePage === "chat" && (
+                <MessagesPage 
+                  isMobile={isMobile} 
+                  assignedPM={assignedPM} 
+                  assignedHR={assignedHR} 
+                />
+              )}
+              {activePage === "profile" && (
+                <ProfilePage intern={currentIntern} isMobile={isMobile} />
+              )}
+              {activePage === "project-submission" && (
+                <ProjectSubmissionPage isMobile={isMobile} />
               )}
             </div>
-            <button style={{ ...buttonStyle, marginTop: 16, background: COLORS.jungleTeal }}>
-              <MessageCircle size={16} /> Chat with PM
-            </button>
           </div>
-        </div>
-      )}
+        </main>
 
-      <div>
-        <h3 style={{ marginBottom: 16, fontSize: isMobile ? 18 : 22, display: "flex", alignItems: "center", gap: 8 }}>
-          <Bell size={22} /> Latest Announcements
-        </h3>
-        {recentAnnouncements.length === 0 ? (
-          <p style={{ color: "rgba(255,255,255,0.6)" }}>No announcements yet.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {recentAnnouncements.map((ann) => <AnnouncementCard key={ann.id} announcement={ann} isMobile={isMobile} />)}
-          </div>
+        {/* Mobile Overlay */}
+        {isMobile && sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{
+              position: "fixed", 
+              inset: 0, 
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999, 
+              backdropFilter: "blur(4px)",
+            }}
+          />
         )}
       </div>
-    </div>
+    </>
   );
 }
 
-function ProfileView({ intern, isMobile }) {
-  const profile = intern?.profile || {};
+function getPageTitle(page) {
+  return { 
+    "overview": "Intern Dashboard", 
+    "daily-log": "Daily Log", 
+    "reports": "Reports", 
+    "chat": "Messages", 
+    "profile": "My Profile", 
+    "project-submission": "Submit Project" 
+  }[page] || "Intern Dashboard";
+}
+
+function getPageSubtitle(page, intern) {
+  return { 
+    "overview": "Track your internship progress and activities", 
+    "daily-log": "Track your daily progress", 
+    "reports": "TNA & Project Blueprint", 
+    "chat": "Connect with your team", 
+    "profile": "Manage your information", 
+    "project-submission": "Share your work" 
+  }[page] || "";
+}
+
+function OverviewPage({ intern, pm, hr, announcements, stats, isMobile }) {
   return (
-    <div>
-      <h2 style={{ fontSize: isMobile ? 20 : 26, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
-        <User size={28} /> My Profile
-      </h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-        <Section title="Basic Information" icon={<User size={20} />}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-            <InfoField label="Full Name" value={intern?.fullName} />
-            <InfoField label="Email" value={intern?.email} />
-            <InfoField label="Phone" value={intern?.phone} />
-            <InfoField label="Date of Birth" value={intern?.dob} />
-            <InfoField label="Blood Group" value={profile.bloodGroup} />
+    <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+      {/* COMPACT Hero Section */}
+      <div className="animate-fadeIn" style={{
+        borderRadius: 16,
+        background: GRADIENTS.accent,
+        border: `1px solid ${COLORS.borderGlass}`,
+        padding: isMobile ? 20 : 24,
+        marginBottom: 24,
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          position: "absolute",
+          top: -50,
+          right: -50,
+          width: 200,
+          height: 200,
+          background: `radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%)`,
+          borderRadius: "50%",
+        }} />
+        
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <h2 style={{ 
+            fontSize: isMobile ? 22 : 26, 
+            margin: 0, 
+            color: "white", 
+            fontWeight: 700, 
+            marginBottom: 6,
+          }}>
+            Welcome back, {intern?.fullName?.split(" ")[0] || "Intern"}!
+          </h2>
+          
+          <p style={{ 
+            color: "rgba(255,255,255,0.85)", 
+            fontSize: 13, 
+            margin: 0,
+            marginBottom: 16,
+          }}>
+            You're making great progress on your internship journey
+          </p>
+
+          {/* Inline Stats */}
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", 
+            gap: 10 
+          }}>
+            {[
+              { label: "Days Active", value: stats.daysActive },
+              { label: "Hours Logged", value: `${stats.totalHours}h` },
+              { label: "Tasks Done", value: stats.tasksCompleted },
+              { label: "Progress", value: `${stats.progressPercent}%` },
+            ].map((stat, idx) => (
+              <div key={idx} style={{
+                padding: 12,
+                background: "rgba(255,255,255,0.15)",
+                borderRadius: 10,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "white" }}>{stat.value}</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.75)", marginTop: 4 }}>
+                  {stat.label}
+                </div>
+              </div>
+            ))}
           </div>
-        </Section>
-        <Section title="Address" icon={<MapPin size={20} />}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-            <InfoField label="Full Address" value={profile.address} fullWidth />
-            <InfoField label="City" value={profile.city} />
-            <InfoField label="State" value={profile.state} />
-            <InfoField label="Pincode" value={profile.pincode} />
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", 
+        gap: 24 
+      }}>
+        {/* Your Team */}
+        <div style={{
+          background: COLORS.surfaceGlass,
+          backdropFilter: "blur(20px)",
+          borderRadius: 16,
+          padding: 24,
+          border: `1px solid ${COLORS.borderGlass}`,
+        }}>
+          <h3 style={{ 
+            color: COLORS.textPrimary, 
+            fontSize: 16, 
+            fontWeight: 600, 
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}>
+            Your Team
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pm && <CompactTeamCard member={pm} role="Project Manager" online={true} />}
+            {hr && <CompactTeamCard member={hr} role="HR Manager" online={false} />}
           </div>
-        </Section>
-        <Section title="Emergency Contact" icon={<Phone size={20} />}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-            <InfoField label="Contact Name" value={profile.emergencyContactName} />
-            <InfoField label="Relation" value={profile.emergencyRelation} />
-            <InfoField label="Phone" value={profile.emergencyContactPhone} />
+        </div>
+
+        {/* Announcements */}
+        <div className="animate-fadeIn" style={{ animationDelay: "0.1s", opacity: 0 }}>
+          <h3 style={{ 
+            color: COLORS.textPrimary, 
+            fontSize: 16, 
+            fontWeight: 600, 
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}>
+            Announcements
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {announcements.map((ann, idx) => (
+              <AnnouncementCard key={ann.id} announcement={ann} index={idx} />
+            ))}
           </div>
-        </Section>
-        <Section title="Academic Details" icon={<GraduationCap size={20} />}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-            <InfoField label="College" value={profile.collegeName} fullWidth />
-            <InfoField label="Department" value={profile.department} />
-            <InfoField label="Semester" value={profile.semester} />
-            <InfoField label="Guide Name" value={profile.guideName} />
-            <InfoField label="Guide Email" value={profile.guideEmail} />
-            <InfoField label="Guide Phone" value={profile.guidePhone} />
-          </div>
-        </Section>
-        <Section title="Internship Details" icon={<Briefcase size={20} />}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-            <InfoField label="Duration" value={profile.internshipDuration} />
-            <InfoField label="Start Date" value={profile.startDate} />
-            <InfoField label="End Date" value={profile.endDate} />
-            <InfoField label="Work Mode" value={profile.workMode} />
-            <InfoField label="Expected Outcome" value={profile.expectedOutcome} fullWidth />
-          </div>
-          {profile.bio && <div style={{ marginTop: 16 }}><InfoField label="Bio" value={profile.bio} fullWidth /></div>}
-        </Section>
+        </div>
       </div>
     </div>
   );
 }
 
-function Section({ title, icon, children }) {
+function CompactTeamCard({ member, role, online = true }) {
   return (
-    <div style={{ background: "rgba(255,255,255,0.04)", padding: 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <h3 style={{ fontSize: 18, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>{icon} {title}</h3>
-      {children}
+    <div style={{
+      padding: 16,
+      borderRadius: 12,
+      display: "flex",
+      alignItems: "center",
+      gap: 14,
+      cursor: "pointer",
+      background: COLORS.surfaceGlass,
+      border: `1px solid ${COLORS.borderGlass}`,
+      transition: "all 0.2s"
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = COLORS.surfaceGlass; }}>
+      <div style={{ position: "relative" }}>
+        <div style={{
+          width: 46,
+          height: 46,
+          borderRadius: "50%",
+          background: GRADIENTS.accent,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 700,
+          fontSize: 16,
+          color: "white"
+        }}>
+          {member.fullName?.charAt(0) || "?"}
+        </div>
+        {/* Status indicator dot */}
+        <div style={{
+          position: "absolute",
+          bottom: 0,
+          right: 0,
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          background: online ? COLORS.emeraldGlow : COLORS.textMuted,
+          border: `2px solid ${COLORS.bgPrimary}`,
+          boxShadow: online ? `0 0 8px ${COLORS.emeraldGlow}` : "none",
+        }} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: 15, color: COLORS.textPrimary }}>
+          {member.fullName}
+        </div>
+        <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 2 }}>{role}</div>
+      </div>
     </div>
   );
 }
 
-function InfoField({ label, value, fullWidth }) {
+function AnnouncementCard({ announcement, index }) {
+  const priorityConfig = {
+    high: { color: COLORS.red, bg: `${COLORS.red}15`, border: `${COLORS.red}30`, icon: "🔴" },
+    medium: { color: COLORS.orange, bg: `${COLORS.orange}15`, border: `${COLORS.orange}30`, icon: "🟡" },
+    low: { color: COLORS.jungleTeal, bg: `${COLORS.jungleTeal}15`, border: `${COLORS.jungleTeal}30`, icon: "🟢" }
+  };
+  const config = priorityConfig[announcement.priority] || priorityConfig.low;
+  
   return (
-    <div style={{ gridColumn: fullWidth ? "1 / -1" : "auto" }}>
-      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.95)" }}>{value || "Not provided"}</div>
+    <div 
+      className={`animate-fadeIn stagger-${Math.min(index + 1, 5)}`}
+      style={{ 
+        background: COLORS.surfaceGlass,
+        backdropFilter: "blur(20px)",
+        padding: 18,
+        borderRadius: 14,
+        borderLeft: `4px solid ${config.color}`,
+        border: `1px solid ${COLORS.borderGlass}`,
+        position: "relative",
+      }}
+    >
+      {/* Priority indicator dot */}
+      <div style={{
+        position: "absolute",
+        top: 18,
+        right: 18,
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: config.color,
+        boxShadow: `0 0 8px ${config.color}`,
+        animation: announcement.priority === "high" ? "pulse 2s infinite" : "none",
+      }} />
+      
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "flex-start", 
+        marginBottom: 10, 
+        gap: 12,
+        paddingRight: 20,
+      }}>
+        <div style={{ fontWeight: 600, fontSize: 15, color: COLORS.textPrimary, flex: 1 }}>
+          {announcement.title}
+        </div>
+        <span style={{
+          background: config.bg,
+          color: config.color,
+          padding: "4px 10px",
+          borderRadius: 20,
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.5px",
+          border: `1px solid ${config.border}`,
+          flexShrink: 0,
+        }}>
+          {announcement.priority}
+        </span>
+      </div>
+      <p style={{ 
+        fontSize: 14, 
+        color: COLORS.textSecondary, 
+        marginBottom: 12, 
+        lineHeight: 1.6 
+      }}>
+        {announcement.message}
+      </p>
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        fontSize: 12, 
+        color: COLORS.textMuted 
+      }}>
+        <div>{new Date(announcement.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+        <div style={{ fontStyle: "italic" }}>{announcement.from}</div>
+      </div>
     </div>
-  );
+  );  
 }
 
-function AnnouncementsView({ announcements, isMobile }) {
+function ProjectSubmissionPage({ isMobile }) {
+  const [projectTitle, setProjectTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [githubLink, setGithubLink] = useState("");
+  const [demoLink, setDemoLink] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [files, setFiles] = useState([]);
+
+  const handleSubmit = (e) => { 
+    e.preventDefault(); 
+    setSubmitted(true); 
+    setTimeout(() => setSubmitted(false), 4000); 
+  };
+  
+  const handleFileChange = (e) => setFiles([...files, ...Array.from(e.target.files)]);
+
+  const inputStyle = {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 10,
+    border: `1px solid ${COLORS.borderGlass}`,
+    background: COLORS.surfaceGlass,
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+    fontFamily: "'Inter', system-ui, sans-serif",
+  };
+
   return (
-    <div>
-      <h2 style={{ fontSize: isMobile ? 20 : 26, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
-        <Bell size={28} /> All Announcements
-      </h2>
-      {announcements.length === 0 ? (
-        <p style={{ color: "rgba(255,255,255,0.6)" }}>No announcements yet.</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {announcements.map((ann) => <AnnouncementCard key={ann.id} announcement={ann} isMobile={isMobile} expanded />)}
+    <div style={{ maxWidth: 800, margin: "0 auto" }}>
+      {submitted && (
+        <div className="animate-fadeIn" style={{
+          background: `${COLORS.emeraldGlow}20`,
+          border: `1px solid ${COLORS.emeraldGlow}`,
+          padding: 16,
+          borderRadius: 12,
+          marginBottom: 24,
+          color: COLORS.emeraldGlow,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}>
+          <div style={{ 
+            width: 40, 
+            height: 40, 
+            borderRadius: 10, 
+            background: `${COLORS.emeraldGlow}20`, 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center" 
+          }}>
+            ✓
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 15, color: "white" }}>
+              Project Submitted Successfully!
+            </div>
+            <div style={{ fontSize: 13, marginTop: 2 }}>Your PM will review it shortly.</div>
+          </div>
         </div>
       )}
+
+      <div style={{
+        background: COLORS.surfaceGlass,
+        backdropFilter: "blur(20px)",
+        padding: isMobile ? 24 : 32,
+        borderRadius: 20,
+        border: `1px solid ${COLORS.borderGlass}`,
+        marginBottom: 24,
+      }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div>
+            <label style={{ 
+              display: "block", 
+              color: COLORS.textPrimary, 
+              marginBottom: 8, 
+              fontWeight: 500, 
+              fontSize: 14 
+            }}>
+              Project Title *
+            </label>
+            <input 
+              type="text" 
+              value={projectTitle} 
+              onChange={(e) => setProjectTitle(e.target.value)} 
+              style={inputStyle} 
+              placeholder="e.g., E-Commerce Dashboard" 
+              required 
+            />
+          </div>
+          
+          <div>
+            <label style={{ 
+              display: "block", 
+              color: COLORS.textPrimary, 
+              marginBottom: 8, 
+              fontWeight: 500, 
+              fontSize: 14 
+            }}>
+              Project Description *
+            </label>
+            <textarea 
+              value={description} 
+              onChange={(e) => setDescription(e.target.value)} 
+              style={{ ...inputStyle, minHeight: 120, resize: "vertical" }} 
+              placeholder="Describe your project, technologies used, key features..." 
+              required 
+            />
+          </div>
+          
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+            <div>
+              <label style={{ 
+                display: "block", 
+                color: COLORS.textPrimary, 
+                marginBottom: 8, 
+                fontWeight: 500, 
+                fontSize: 14 
+              }}>
+                GitHub Repository *
+              </label>
+              <input 
+                type="url" 
+                value={githubLink} 
+                onChange={(e) => setGithubLink(e.target.value)} 
+                style={inputStyle} 
+                placeholder="https://github.com/..." 
+                required 
+              />
+            </div>
+            
+            <div>
+              <label style={{ 
+                display: "block", 
+                color: COLORS.textPrimary, 
+                marginBottom: 8, 
+                fontWeight: 500, 
+                fontSize: 14 
+              }}>
+                Live Demo (Optional)
+              </label>
+              <input 
+                type="url" 
+                value={demoLink} 
+                onChange={(e) => setDemoLink(e.target.value)} 
+                style={inputStyle} 
+                placeholder="https://your-demo.com" 
+              />
+            </div>
+          </div>
+          
+          <button 
+            type="submit" 
+            style={{
+              padding: "14px 28px",
+              background: GRADIENTS.accent,
+              color: "white",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontSize: 15,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
+            <Send size={18} />
+            Submit Project
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
-
-function AnnouncementCard({ announcement, isMobile }) {
-  const priorityColor = { high: COLORS.racingRed, medium: "#f59e0b", low: "#4ade80" }[announcement.priority];
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", padding: isMobile ? 16 : 20, borderRadius: 12, borderLeft: `4px solid ${priorityColor}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: isMobile ? 16 : 18 }}>{announcement.title}</div>
-        <div style={{ background: priorityColor, color: "white", padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>{announcement.priority}</div>
-      </div>
-      <div style={{ fontSize: isMobile ? 13 : 14, color: "rgba(255,255,255,0.8)", marginBottom: 12, lineHeight: 1.5 }}>{announcement.message}</div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Calendar size={14} /> {new Date(announcement.date).toLocaleDateString()}</div>
-        <div style={{ fontStyle: "italic" }}>From: {announcement.from}</div>
-      </div>
-    </div>
-  );
-}
-
-function DocumentsView({ intern, isMobile }) {
-  const profile = intern?.profile || {};
-  return (
-    <div>
-      <h2 style={{ fontSize: isMobile ? 20 : 26, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
-        <FileText size={28} /> My Documents
-      </h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {profile.profilePicture && <DocumentCard title="Profile Picture" type="image" data={profile.profilePicture} isMobile={isMobile} />}
-        {profile.resume && <DocumentCard title="Resume / CV" type="document" data={profile.resume} isMobile={isMobile} />}
-        {!profile.profilePicture && !profile.resume && <p style={{ color: "rgba(255,255,255,0.6)" }}>No documents uploaded yet.</p>}
-      </div>
-    </div>
-  );
-}
-
-function DocumentCard({ title, type, data, isMobile }) {
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", padding: isMobile ? 16 : 20, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 12, background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {type === "image" ? <User size={24} /> : <FileText size={24} />}
-        </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>{type === "image" ? "Image file" : "Document file"}</div>
-        </div>
-      </div>
-      <button onClick={() => { const link = document.createElement("a"); link.href = data; link.download = title; link.click(); }} style={buttonStyle}>
-        <Eye size={16} /> View
-      </button>
-    </div>
-  );
-}
-
-const buttonStyle = {
-  padding: "10px 20px",
-  borderRadius: 999,
-  border: "none",
-  background: "white",
-  color: COLORS.inkBlack,
-  fontWeight: 700,
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 14,
-  transition: "all 0.2s",
-};
