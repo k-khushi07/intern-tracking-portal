@@ -23,6 +23,19 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [itemToReject, setItemToReject] = useState(null);
+  const [rejectError, setRejectError] = useState("");
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [approveRequest, setApproveRequest] = useState(null);
+  const [feedback, setFeedback] = useState({
+    open: false,
+    title: "",
+    message: "",
+    tone: "info",
+  });
+
+  const openFeedback = ({ title, message, tone = "info" }) => {
+    setFeedback({ open: true, title, message, tone });
+  };
 
   // Mock interns data with profile info - HR sees ALL interns
   const interns = [
@@ -498,14 +511,22 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
             type: "success"
           });
         }
-        alert(`✅ Approval email sent to ${item.internName}!`);
+        openFeedback({
+          title: "Approval email sent",
+          message: `Approval email sent to ${item.internName}.`,
+          tone: "success",
+        });
         return true;
       } else {
         throw new Error(data.message || "Failed to send email");
       }
     } catch (error) {
       console.error("Email error:", error);
-      alert(`❌ Error: ${error.message}`);
+      openFeedback({
+        title: "Approval failed",
+        message: error.message || "Failed to send approval email.",
+        tone: "error",
+      });
       return false;
     } finally {
       setIsLoading(false);
@@ -539,19 +560,28 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
             type: "warning"
           });
         }
-        alert(`✅ Rejection email sent to ${item.internName}!`);
+        openFeedback({
+          title: "Rejection email sent",
+          message: `Rejection email sent to ${item.internName}.`,
+          tone: "success",
+        });
         return true;
       } else {
         throw new Error(data.message || "Failed to send email");
       }
     } catch (error) {
       console.error("Email error:", error);
-      alert(`❌ Error: ${error.message}`);
+      openFeedback({
+        title: "Rejection failed",
+        message: error.message || "Failed to send rejection email.",
+        tone: "error",
+      });
       return false;
     } finally {
       setIsLoading(false);
       setShowRejectModal(false);
       setRejectReason("");
+      setRejectError("");
       setItemToReject(null);
     }
   };
@@ -690,19 +720,29 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
   };
 
   const handleApprove = async (item, type) => {
-    if (window.confirm(`Approve this ${type}?`)) {
-      await sendApprovalEmail(item, type);
+    setApproveRequest({ item, type });
+    setShowApproveConfirm(true);
+  };
+
+  const confirmApprove = async () => {
+    if (!approveRequest?.item || !approveRequest?.type) {
+      setShowApproveConfirm(false);
+      return;
     }
+    setShowApproveConfirm(false);
+    await sendApprovalEmail(approveRequest.item, approveRequest.type);
+    setApproveRequest(null);
   };
 
   const handleReject = (item, type) => {
+    setRejectError("");
     setItemToReject({ item, type });
     setShowRejectModal(true);
   };
 
   const handleRejectSubmit = async () => {
     if (!rejectReason.trim()) {
-      alert("Please provide a reason");
+      setRejectError("Please provide a reason.");
       return;
     }
     await sendRejectionEmail(itemToReject.item, itemToReject.type, rejectReason);
@@ -820,23 +860,86 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div onClick={() => { setShowRejectModal(false); setRejectReason(""); setItemToReject(null); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }}>
+        <div onClick={() => { setShowRejectModal(false); setRejectReason(""); setRejectError(""); setItemToReject(null); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()} className="glass animate-scaleIn" style={{ width: "100%", maxWidth: 500, borderRadius: 24, background: "rgba(7, 30, 34, 0.95)", border: "1px solid rgba(103, 146, 137, 0.3)" }}>
             <div style={{ padding: 24, borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 style={{ color: "white", margin: 0, fontSize: 20, fontWeight: 700 }}>Reject Submission</h2>
-              <button onClick={() => { setShowRejectModal(false); setRejectReason(""); setItemToReject(null); }} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 10, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
+              <button onClick={() => { setShowRejectModal(false); setRejectReason(""); setRejectError(""); setItemToReject(null); }} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 10, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
                 <X size={20} />
               </button>
             </div>
             <div style={{ padding: 24 }}>
               <p style={{ color: "rgba(255,255,255,0.7)", marginBottom: 20, fontSize: 14 }}>Provide rejection reason:</p>
-              <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Enter reason..." rows={5} style={{ width: "100%", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(103, 146, 137, 0.25)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: 14, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+              <textarea value={rejectReason} onChange={(e) => { setRejectReason(e.target.value); if (rejectError) setRejectError(""); }} placeholder="Enter reason..." rows={5} style={{ width: "100%", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(103, 146, 137, 0.25)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: 14, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+              {rejectError ? (
+                <div style={{ marginTop: 10, color: "#f87171", fontSize: 13 }}>{rejectError}</div>
+              ) : null}
               <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-                <button onClick={() => { setShowRejectModal(false); setRejectReason(""); setItemToReject(null); }} style={{ flex: 1, padding: "14px 20px", background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>Cancel</button>
+                <button onClick={() => { setShowRejectModal(false); setRejectReason(""); setRejectError(""); setItemToReject(null); }} style={{ flex: 1, padding: "14px 20px", background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>Cancel</button>
                 <button onClick={handleRejectSubmit} style={{ flex: 1, padding: "14px 20px", background: `linear-gradient(135deg, ${COLORS.racingRed}, #b00320)`, color: "white", border: "none", borderRadius: 12, fontWeight: 600, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   <Send size={16} />Send Rejection
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showApproveConfirm && approveRequest && (
+        <div
+          onClick={() => setShowApproveConfirm(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2100, padding: 20 }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="glass animate-scaleIn"
+            style={{ width: "100%", maxWidth: 460, borderRadius: 20, background: "rgba(7, 30, 34, 0.95)", border: "1px solid rgba(103, 146, 137, 0.3)", padding: 24 }}
+          >
+            <h3 style={{ margin: 0, color: "white", fontSize: 20, fontWeight: 700 }}>Confirm Approval</h3>
+            <p style={{ color: "rgba(255,255,255,0.75)", marginTop: 10, marginBottom: 18 }}>
+              Approve this {approveRequest.type} for <strong>{approveRequest.item?.internName}</strong>?
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button onClick={() => setShowApproveConfirm(false)} style={{ padding: "10px 14px", background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, fontWeight: 600, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button onClick={confirmApprove} style={{ padding: "10px 14px", background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`, color: "white", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedback.open && (
+        <div
+          onClick={() => setFeedback((prev) => ({ ...prev, open: false }))}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2200, padding: 20 }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="glass animate-scaleIn"
+            style={{ width: "100%", maxWidth: 480, borderRadius: 20, background: "rgba(7, 30, 34, 0.95)", border: "1px solid rgba(103, 146, 137, 0.3)", padding: 24 }}
+          >
+            <h3 style={{ margin: 0, color: "white", fontSize: 20, fontWeight: 700 }}>{feedback.title || "Update"}</h3>
+            <p style={{ color: "rgba(255,255,255,0.75)", marginTop: 10, marginBottom: 18, whiteSpace: "pre-line" }}>
+              {feedback.message}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setFeedback((prev) => ({ ...prev, open: false }))}
+                style={{
+                  padding: "10px 14px",
+                  background: feedback.tone === "success" ? "rgba(16,185,129,0.9)" : feedback.tone === "error" ? "rgba(239,68,68,0.9)" : "rgba(20,184,166,0.9)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

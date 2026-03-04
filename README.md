@@ -18,6 +18,15 @@
 - Run `supabase/migrations/005_change_hours_to_numeric.sql` in Supabase SQL editor.
 - Run `supabase/migrations/006_add_tna_blueprint_links.sql` in Supabase SQL editor.
 - Run `supabase/migrations/007_add_google_sync_metadata.sql` in Supabase SQL editor.
+- Run `supabase/migrations/007_add_report_links_sync_metadata.sql` in Supabase SQL editor.
+- Run `supabase/migrations/008_add_messaging.sql` in Supabase SQL editor.
+- Run `supabase/migrations/009_add_message_rpc.sql` in Supabase SQL editor.
+- Run `supabase/migrations/010_hr_workflow_upgrade.sql` in Supabase SQL editor.
+
+### 1.3) If you still see table/cache mismatch errors
+- Confirm `public.internship_applications` exists (the backend expects this table first).
+- If Supabase returns "schema cache" errors after creating tables, run:
+  - `NOTIFY pgrst, 'reload schema';`
 
 ### 2) Backend env
 - Copy `backend/.env.example` → `backend/.env` and fill:

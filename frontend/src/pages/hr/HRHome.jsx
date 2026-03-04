@@ -1,4 +1,4 @@
-// HRHome.jsx - FIXED with PM Dashboard colors
+﻿// HRHome.jsx - FIXED with PM Dashboard colors
 import React, { useState, useEffect } from "react";
 import { Menu, Bell, LogOut, Sparkles, X } from "lucide-react";
 import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
@@ -28,11 +28,14 @@ export default function HRHome() {
   const [currentHR, setCurrentHR] = useState(null);
   const [users, setUsers] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [apiStats, setApiStats] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [uiNotice, setUiNotice] = useState({ open: false, message: "", tone: "info" });
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -78,10 +81,23 @@ export default function HRHome() {
     const onChanged = () => {
       loadUsers();
       loadAnnouncements();
+      loadDashboardMetrics();
     };
     socket.on("itp:changed", onChanged);
     return () => socket.off("itp:changed", onChanged);
   }, []);
+
+  useEffect(() => {
+    if (!uiNotice.open) return undefined;
+    const timer = window.setTimeout(() => {
+      setUiNotice((prev) => ({ ...prev, open: false }));
+    }, 3200);
+    return () => window.clearTimeout(timer);
+  }, [uiNotice.open]);
+
+  const showNotice = (message, tone = "info") => {
+    setUiNotice({ open: true, message, tone });
+  };
 
   // Data Loading Functions
   const loadCurrentHR = async () => {
@@ -97,26 +113,11 @@ export default function HRHome() {
         setCurrentHR(hr);
         return;
       }
-      // Authenticated but not HR
-      localStorage.removeItem("currentUser");
-      window.location.href = "/";
-      return;
+      throw new Error("Forbidden");
     } catch (e) {
       console.error("Error loading HR (API):", e);
-      if (e?.status === 401 || e?.status === 403) {
-        localStorage.removeItem("currentUser");
-        window.location.href = "/";
-        return;
-      }
-    }
-
-    try {
-      const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-      if (user.role === "hr") {
-        setCurrentHR(user);
-      }
-    } catch (e) {
-      console.error("Error loading HR:", e);
+      localStorage.removeItem("currentUser");
+      window.location.href = "/";
     }
   };
 
@@ -124,9 +125,7 @@ export default function HRHome() {
     try {
       const res = await hrApi.users();
       const loadedUsers = res?.users || [];
-      localStorage.setItem("users", JSON.stringify(loadedUsers));
       setUsers(loadedUsers);
-      return;
     } catch (err) {
       console.error("Error loading users (API):", err);
       if (err?.status === 401 || err?.status === 403) {
@@ -134,63 +133,6 @@ export default function HRHome() {
         window.location.href = "/";
         return;
       }
-    }
-
-    try {
-      const storedUsers = JSON.parse(localStorage.getItem("users") || "[]");
-     
-      // Add sample data if empty
-      if (storedUsers.length === 0) {
-        const sampleUsers = [
-          // New Registrations (no status)
-          { email: "sarah@intern.com", fullName: "Sarah Johnson", role: "intern", degree: "Data Science", registeredAt: new Date().toISOString() },
-          { email: "mike@intern.com", fullName: "Mike Chen", role: "intern", degree: "Software Engineering", registeredAt: new Date().toISOString() },
-         
-          // Pending Approval
-          {
-            email: "john.doe@example.com",
-            fullName: "John Doe",
-            role: "intern",
-            degree: "Computer Science",
-            status: INTERN_STATUS.PENDING,
-            registeredAt: new Date().toISOString(),
-            movedToApprovalAt: new Date().toISOString()
-          },
-          {
-            email: "jane.smith@example.com",
-            fullName: "Jane Smith",
-            role: "intern",
-            degree: "Data Science",
-            status: INTERN_STATUS.PENDING,
-            registeredAt: new Date().toISOString(),
-            movedToApprovalAt: new Date().toISOString()
-          },
-
-          // Active Interns
-          {
-            email: "alex@intern.com",
-            fullName: "Alex Kumar",
-            role: "intern",
-            degree: "Computer Science",
-            status: INTERN_STATUS.ACTIVE,
-            internId: "INT001",
-            password: "Test123@",
-            pmCode: "PM001",
-            approvedAt: new Date().toISOString(),
-            approvedBy: "hr@company.com",
-            lastLogTime: "2 hours ago"
-          },
-
-          // Project Managers
-          { email: "pm1@company.com", fullName: "Test Project Manager", role: "pm", pmCode: "PM001", phone: "9876543210", location: "Mumbai" },
-          { email: "pm2@company.com", fullName: "Khushi", role: "pm", pmCode: "PM002", phone: "8884445175", location: "Bangalore" },
-        ];
-        localStorage.setItem("users", JSON.stringify(sampleUsers));
-        setUsers(sampleUsers);
-      } else {
-        setUsers(storedUsers);
-      }
-    } catch {
       setUsers([]);
     }
   };
@@ -221,6 +163,18 @@ export default function HRHome() {
     }
   };
 
+  const loadDashboardMetrics = async () => {
+    try {
+      const [statsRes, analyticsRes] = await Promise.all([hrApi.stats(), hrApi.analytics()]);
+      setApiStats(statsRes?.stats || null);
+      setAnalytics(analyticsRes || null);
+    } catch (err) {
+      console.error("Failed to load HR analytics/stats:", err);
+      setApiStats(null);
+      setAnalytics(null);
+    }
+  };
+
   const loadNotifications = () => {
     const sampleNotifications = [
       { id: 1, title: "New Intern Registration", message: "Sarah Johnson has registered", time: "5 min ago", read: false, type: "info" },
@@ -238,6 +192,7 @@ export default function HRHome() {
       await loadCurrentHR();
       await loadUsers();
       await loadAnnouncements();
+      await loadDashboardMetrics();
       loadNotifications();
     };
     initializeData();
@@ -263,100 +218,134 @@ export default function HRHome() {
     return diff < 7 * 24 * 60 * 60 * 1000;
   };
 
-  const stats = getStats();
+  const fallbackStats = getStats();
+  const stats = { ...fallbackStats, ...(apiStats || {}) };
 
   // Handlers
   const handleApprove = async (approval) => {
     try {
-      if (approval?.applicationId) {
-        const res = await hrApi.approveApplication(approval.applicationId, {
-          internId: approval.internId,
-          password: approval.password,
-          email: approval.email,
-        });
-        await loadUsers();
-        if (approval.showAlert !== false) {
-          alert(`✅ ${approval.fullName || "Intern"} has been approved and activated!`);
-        }
-        return res;
+      if (!approval?.applicationId) {
+        throw new Error("Application ID is required for approval.");
       }
-
-      const usersFromStorage = JSON.parse(localStorage.getItem("users") || "[]");
-
-      const updatedUsers = usersFromStorage.map(u =>
-        u.email === approval.email ? approval : u
-      );
-
-      localStorage.setItem("users", JSON.stringify(updatedUsers));
-      setUsers(updatedUsers);
-
-      alert(`✅ ${approval.fullName} has been approved and activated!`);
-
-      console.log("✅ Intern approved:", approval.email);
+      const res = await hrApi.approveApplication(approval.applicationId, {
+        startDate: approval.startDate,
+        endDate: approval.endDate,
+        department: approval.department,
+        mentorName: approval.mentorName,
+        stipend: approval.stipend,
+        password: approval.password,
+        sendEmail: approval.sendEmail !== false,
+      });
+      await loadUsers();
+      await loadDashboardMetrics();
+      if (approval.showAlert !== false) {
+        showNotice(`${approval.fullName || "Intern"} has been approved and activated.`, "success");
+      }
+      return res;
     } catch (err) {
-      console.error("❌ Approval error:", err);
-      alert(err.message || "❌ Something went wrong during approval. Please try again.");
+      console.error("Approval error:", err);
+      showNotice(err.message || "Something went wrong during approval. Please try again.", "error");
     }
   };
 
   const handleMoveToApproval = async (intern) => {
-    if (intern?.applicationId) {
-      try {
-        await hrApi.setApplicationStatus(intern.applicationId, INTERN_STATUS.PENDING);
-        await loadUsers();
-        alert(`✅ ${intern.fullName} moved to Approval Center!`);
-      } catch (err) {
-        console.error("Move to approval failed:", err);
-        alert(err.message || "❌ Failed to move intern to Approval Center.");
-      }
+    if (!intern?.applicationId) {
+      showNotice("Application ID missing for this intern.", "error");
       return;
     }
+    try {
+      await hrApi.setApplicationStatus(intern.applicationId, INTERN_STATUS.PENDING);
+      await loadUsers();
+      await loadDashboardMetrics();
+      showNotice(`${intern.fullName} moved to Approval Center.`, "success");
+    } catch (err) {
+      console.error("Move to approval failed:", err);
+      showNotice(err.message || "Failed to move intern to Approval Center.", "error");
+    }
+  };
 
-    const updatedUsers = users.map(u => {
-      if (u.email === intern.email && u.role === "intern") {
-        return {
-          ...u,
-          status: INTERN_STATUS.PENDING,
-          movedToApprovalBy: currentHR?.email || "HR",
-          movedToApprovalAt: new Date().toISOString(),
-          meetingDate: intern.meetingDate,
-          meetingTime: intern.meetingTime,
-          meetingLink: intern.meetingLink,
-          meetingScheduledAt: intern.meetingScheduledAt,
-        };
-      }
-      return u;
-    });
+  const handleBulkMoveToApproval = async (selectedInterns = []) => {
+    const rows = Array.isArray(selectedInterns) ? selectedInterns : [];
+    if (!rows.length) return { total: 0, success: 0, failed: [] };
 
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-    setUsers(updatedUsers);
+    const applicationIds = rows.map((item) => item?.applicationId).filter(Boolean);
+    const failed = [];
+    if (applicationIds.length !== rows.length) {
+      throw new Error("Some selected rows are missing application IDs.");
+    }
 
-    alert(`✅ ${intern.fullName} moved to Approval Center!`);
+    try {
+      const result = await hrApi.bulkApplicationStatus({
+        applicationIds,
+        action: "pending",
+      });
+      const failedRows = (result?.results || []).filter((row) => !row.success);
+      failed.push(...failedRows);
+
+      await loadUsers();
+      await loadDashboardMetrics();
+      return {
+        total: rows.length,
+        success: Math.max(0, rows.length - failed.length),
+        failed,
+      };
+    } catch (err) {
+      console.error("Bulk move to approval failed:", err);
+      throw err;
+    }
+  };
+
+  const handleBulkRejectInterns = async (selectedInterns = [], reason = "") => {
+    const rows = Array.isArray(selectedInterns) ? selectedInterns : [];
+    if (!rows.length) return { total: 0, success: 0, failed: [] };
+    const rejectionReason = String(reason || "").trim();
+    if (!rejectionReason) {
+      throw new Error("Rejection reason is required.");
+    }
+
+    const applicationIds = rows.map((item) => item?.applicationId).filter(Boolean);
+    const failed = [];
+    if (applicationIds.length !== rows.length) {
+      throw new Error("Some selected rows are missing application IDs.");
+    }
+
+    try {
+      const result = await hrApi.bulkApplicationStatus({
+        applicationIds,
+        action: "reject",
+        rejectionReason,
+      });
+      const failedRows = (result?.results || []).filter((row) => !row.success);
+      failed.push(...failedRows);
+
+      await loadUsers();
+      await loadDashboardMetrics();
+      return {
+        total: rows.length,
+        success: Math.max(0, rows.length - failed.length),
+        failed,
+      };
+    } catch (err) {
+      console.error("Bulk reject failed:", err);
+      throw err;
+    }
   };
 
   const handleRejectIntern = async () => {
-    if (selectedUser?.applicationId) {
-      try {
-        await hrApi.rejectApplication(selectedUser.applicationId, { reason: rejectReason });
-        await loadUsers();
-        setShowRejectModal(false);
-        alert(`⚠️ ${selectedUser.fullName} has been rejected.`);
-      } catch (err) {
-        console.error("Reject failed:", err);
-        alert(err.message || "❌ Failed to reject intern.");
-      }
+    if (!selectedUser?.applicationId) {
+      showNotice("Application ID missing for selected intern.", "error");
       return;
     }
-
-    const updatedUsers = users.filter(
-      u => !(u.email === selectedUser.email && u.role === "intern")
-    );
-
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-    setUsers(updatedUsers);
-    setShowRejectModal(false);
-
-    alert(`⚠️ ${selectedUser.fullName} has been rejected and removed.`);
+    try {
+      await hrApi.rejectApplication(selectedUser.applicationId, { reason: rejectReason });
+      await loadUsers();
+      await loadDashboardMetrics();
+      setShowRejectModal(false);
+      showNotice(`${selectedUser.fullName} has been rejected.`, "success");
+    } catch (err) {
+      console.error("Reject failed:", err);
+      showNotice(err.message || "Failed to reject intern.", "error");
+    }
   };
 
   const handleRejectClick = (intern) => {
@@ -375,7 +364,7 @@ export default function HRHome() {
   };
 
   const handleViewPMInterns = (pm) => {
-    alert(`Viewing interns under ${pm.fullName}`);
+    showNotice(`Viewing interns under ${pm.fullName}`, "info");
     console.log("PM clicked:", pm);
   };
 
@@ -395,10 +384,10 @@ export default function HRHome() {
       });
       await loadAnnouncements();
       setShowAnnouncementModal(false);
-      alert("✅ Announcement created successfully!");
+      showNotice("Announcement created successfully.", "success");
     } catch (err) {
       console.error("Create announcement failed:", err);
-      alert(err.message || "❌ Failed to create announcement");
+      showNotice(err.message || "Failed to create announcement", "error");
     }
   };
 
@@ -407,10 +396,10 @@ export default function HRHome() {
       const announcement = announcements.find((a) => a.id === id);
       await hrApi.deleteAnnouncement(id);
       await loadAnnouncements();
-      alert(`ℹ️ "${announcement?.title || "Announcement"}" has been deleted.`);
+      showNotice(`"${announcement?.title || "Announcement"}" has been deleted.`, "success");
     } catch (err) {
       console.error("Delete announcement failed:", err);
-      alert(err.message || "❌ Failed to delete announcement");
+      showNotice(err.message || "Failed to delete announcement", "error");
     }
   };
 
@@ -421,20 +410,24 @@ export default function HRHome() {
       await hrApi.updateAnnouncement(id, { pinned: nextPinned });
       await loadAnnouncements();
       if (nextPinned) {
-        alert(`ℹ️ "${announcement?.title}" has been pinned.`);
+        showNotice(`"${announcement?.title}" has been pinned.`, "success");
       } else {
-        alert(`ℹ️ "${announcement?.title}" has been unpinned.`);
+        showNotice(`"${announcement?.title}" has been unpinned.`, "success");
       }
     } catch (err) {
       console.error("Pin announcement failed:", err);
-      alert(err.message || "❌ Failed to update announcement");
+      showNotice(err.message || "Failed to update announcement", "error");
     }
+  };
+
+  const refreshHrData = async () => {
+    await Promise.all([loadUsers(), loadAnnouncements(), loadDashboardMetrics()]);
   };
 
   const markAllAsRead = () => {
     const updatedNotifications = notifications.map(n => ({ ...n, read: true }));
     setNotifications(updatedNotifications);
-    alert("✅ All notifications marked as read");
+    showNotice("All notifications marked as read.", "success");
   };
 
   const markNotificationAsRead = (id) => {
@@ -490,7 +483,7 @@ export default function HRHome() {
     <div style={{ display: "flex", minHeight: "100vh", background: GRADIENTS.primary, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <style>{keyframes}</style>
 
-      {/* ✅ FIXED SIDEBAR - EXACT PM DASHBOARD MATCH */}
+      {/* Sidebar */}
       <aside
         style={{
           width: sidebarOpen ? 280 : 0,
@@ -636,7 +629,7 @@ export default function HRHome() {
         </div>
       </aside>
 
-      {/* ✅ FIXED MAIN CONTENT AREA */}
+      {/* Main content area */}
       <main style={{
         flex: 1,
         display: "flex",
@@ -649,7 +642,7 @@ export default function HRHome() {
         overflow: "hidden",
       }}>
 
-        {/* ✅ FIXED TOP BAR - EXACT PM DASHBOARD MATCH */}
+        {/* Top bar */}
         <header style={{
           height: 72,
           display: "flex",
@@ -885,7 +878,7 @@ export default function HRHome() {
           </div>
         </header>
 
-        {/* ✅ FIXED PAGE CONTENT - SCROLLABLE */}
+        {/* Page content */}
         <div style={{ 
           flex: 1, 
           padding: 24, 
@@ -897,6 +890,7 @@ export default function HRHome() {
             {activeSection === "dashboard" && (
               <DashboardSection
                 stats={stats}
+                analytics={analytics}
                 currentHR={currentHR}
                 getGreeting={getGreeting}
                 announcements={announcements}
@@ -913,7 +907,7 @@ export default function HRHome() {
                 setSearchTerm={setSearchTerm}
                 onApprove={handleApprove}
                 onReject={handleRejectClick}
-                currentHR={currentHR}
+                onDataChanged={refreshHrData}
               />
             )}
 
@@ -928,6 +922,8 @@ export default function HRHome() {
                 setSearchTerm={setSearchTerm}
                 onApprove={handleMoveToApproval}
                 onReject={handleRejectClick}
+                onBulkMoveToApproval={handleBulkMoveToApproval}
+                onBulkReject={handleBulkRejectInterns}
               />
             )}
 
@@ -990,6 +986,39 @@ export default function HRHome() {
         </Modal>
       )}
 
+      {uiNotice.open && (
+        <div
+          style={{
+            position: "fixed",
+            right: 20,
+            bottom: 20,
+            zIndex: 3200,
+            minWidth: 260,
+            maxWidth: 420,
+            padding: "12px 14px",
+            borderRadius: 12,
+            color: "white",
+            border: `1px solid ${
+              uiNotice.tone === "success"
+                ? "rgba(16, 185, 129, 0.45)"
+                : uiNotice.tone === "error"
+                  ? "rgba(239, 68, 68, 0.45)"
+                  : "rgba(20, 184, 166, 0.45)"
+            }`,
+            background:
+              uiNotice.tone === "success"
+                ? "rgba(16, 185, 129, 0.2)"
+                : uiNotice.tone === "error"
+                  ? "rgba(239, 68, 68, 0.2)"
+                  : "rgba(20, 184, 166, 0.2)",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+          }}
+        >
+          {uiNotice.message}
+        </div>
+      )}
+
       {/* Mobile Overlay */}
       {isMobile && sidebarOpen && (
         <div
@@ -1003,3 +1032,7 @@ export default function HRHome() {
     </div>
   );
 }
+
+
+
+

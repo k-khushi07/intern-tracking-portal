@@ -55,7 +55,7 @@ const keyframes = `
   }
 `;
 
-export default function OverviewPage({ pm, interns, stats, isMobile, weeklyReports, sharedAnnouncements = [] }) {
+export default function OverviewPage({ pm, interns, stats, sharedAnnouncements = [] }) {
   const [announcements, setAnnouncements] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
@@ -66,43 +66,43 @@ export default function OverviewPage({ pm, interns, stats, isMobile, weeklyRepor
   });
 
   useEffect(() => {
-    loadAnnouncements();
-  }, [pm]);
+    const loadAnnouncements = async () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem("pmAnnouncements") || "[]");
+        const pmAnnouncements = saved.filter((announcement) => announcement.pmCode === pm?.pmCode);
 
-  const loadAnnouncements = async () => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("pmAnnouncements") || "[]");
-      const pmAnnouncements = saved.filter(a => a.pmCode === pm?.pmCode);
-      
-      if (pmAnnouncements.length === 0) {
-        const sample = [
-          { 
-            id: Date.now(), 
-            title: "Welcome New Interns!", 
-            message: "Please complete your profile setup and daily logs consistently.", 
-            date: new Date().toISOString(), 
-            priority: "high", 
-            pmCode: pm?.pmCode 
-          },
-          { 
-            id: Date.now() + 1, 
-            title: "Weekly Sync Meeting", 
-            message: "Remember our team standup every Monday at 10 AM.", 
-            date: new Date(Date.now() - 86400000).toISOString(), 
-            priority: "medium", 
-            pmCode: pm?.pmCode 
-          }
-        ];
-        setAnnouncements(sample);
-        localStorage.setItem("pmAnnouncements", JSON.stringify([...saved, ...sample]));
-      } else {
-        setAnnouncements(pmAnnouncements);
+        if (pmAnnouncements.length === 0) {
+          const sample = [
+            {
+              id: Date.now(),
+              title: "Welcome New Interns!",
+              message: "Please complete your profile setup and daily logs consistently.",
+              date: new Date().toISOString(),
+              priority: "high",
+              pmCode: pm?.pmCode,
+            },
+            {
+              id: Date.now() + 1,
+              title: "Weekly Sync Meeting",
+              message: "Remember our team standup every Monday at 10 AM.",
+              date: new Date(Date.now() - 86400000).toISOString(),
+              priority: "medium",
+              pmCode: pm?.pmCode,
+            },
+          ];
+          setAnnouncements(sample);
+          localStorage.setItem("pmAnnouncements", JSON.stringify([...saved, ...sample]));
+        } else {
+          setAnnouncements(pmAnnouncements);
+        }
+      } catch (error) {
+        console.error("Error loading announcements:", error);
+        setAnnouncements([]);
       }
-    } catch (error) {
-      console.error("Error loading announcements:", error);
-      setAnnouncements([]);
-    }
-  };
+    };
+
+    loadAnnouncements();
+  }, [pm?.pmCode]);
 
   const mappedSharedAnnouncements = (sharedAnnouncements || []).map((a) => ({
     id: a.id,

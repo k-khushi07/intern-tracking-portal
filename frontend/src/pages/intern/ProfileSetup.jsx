@@ -57,11 +57,7 @@ export default function InternProfileSetup() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  useEffect(() => {
-    loadCurrentUser();
-  }, []);
-
-  const loadCurrentUser = async () => {
+  async function loadCurrentUser() {
     try {
       const me = await authApi.me();
       if (me?.profile?.role !== "intern") {
@@ -91,10 +87,17 @@ export default function InternProfileSetup() {
       } else {
         window.location.href = "/";
       }
-    } catch (error) {
+    } catch {
       window.location.href = "/";
     }
-  };
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadCurrentUser();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   const handleChange = (field, value) => {
     setProfile((prev) => ({ ...prev, [field]: value }));
@@ -334,7 +337,6 @@ export default function InternProfileSetup() {
           {step === 4 && (
             <DocumentsStep
               profile={profile}
-              onChange={handleChange}
               onFileChange={handleFileChange}
               isMobile={isMobile}
             />
@@ -395,7 +397,7 @@ export default function InternProfileSetup() {
   );
 }
 
-function StepIndicator({ step, label, icon: Icon, active, completed, isMobile }) {
+function StepIndicator({ label, icon: StepIcon, active, completed, isMobile }) {
   return (
     <div
       style={{
@@ -421,7 +423,7 @@ function StepIndicator({ step, label, icon: Icon, active, completed, isMobile })
           transition: "all 0.3s",
         }}
       >
-        {completed ? <CheckCircle size={isMobile ? 24 : 28} /> : <Icon size={isMobile ? 20 : 24} />}
+        {completed ? <CheckCircle size={isMobile ? 24 : 28} /> : React.createElement(StepIcon, { size: isMobile ? 20 : 24 })}
       </div>
       {!isMobile && (
         <div
@@ -645,7 +647,7 @@ function InternshipDetailsStep({ profile, onChange, isMobile }) {
   );
 }
 
-function DocumentsStep({ profile, onChange, onFileChange, isMobile }) {
+function DocumentsStep({ profile, onFileChange, isMobile }) {
   return (
     <div>
       <h2 style={{ fontSize: isMobile ? 20 : 24, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>

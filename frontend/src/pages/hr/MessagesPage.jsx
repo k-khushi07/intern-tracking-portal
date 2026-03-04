@@ -54,10 +54,15 @@ const MessagesPage = ({ selectedIntern }) => {
   const [contacts, setContacts] = useState([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsQuery, setContactsQuery] = useState("");
+  const [uiNotice, setUiNotice] = useState({ open: false, message: "", tone: "info" });
   const chatBodyRef = useRef(null);
   const socketRef = useRef(null);
   const activeChatRef = useRef(null);
   const meRef = useRef(null);
+
+  const showNotice = useCallback((message, tone = "info") => {
+    setUiNotice({ open: true, message, tone });
+  }, []);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -302,10 +307,13 @@ const MessagesPage = ({ selectedIntern }) => {
 
   // Keep active chat object in sync with refreshed sidebar data.
   useEffect(() => {
-    if (!activeChat?.id) return;
-    const match = interns.find((c) => String(c.id) === String(activeChat.id));
-    if (match && match !== activeChat) setActiveChat(match);
-  }, [interns, activeChat?.id]);
+    setActiveChat((prev) => {
+      if (!prev?.id) return prev;
+      const match = interns.find((c) => String(c.id) === String(prev.id));
+      if (!match || match === prev) return prev;
+      return match;
+    });
+  }, [interns]);
 
   // Load messages + subscribe whenever active chat changes.
   useEffect(() => {
@@ -353,7 +361,7 @@ const MessagesPage = ({ selectedIntern }) => {
       cancelled = true;
       socket.emit("chat:unsubscribe", { conversationId: convId });
     };
-  }, [activeChat?.id, activeChat?.name, me?.id, refreshConversations]);
+  }, [activeChat?.id, activeChat?.name, activeChat?.type, activeChat?.peerLastReadAt, me?.id, refreshConversations]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -372,13 +380,21 @@ const MessagesPage = ({ selectedIntern }) => {
     }
   }, [messageInput]);
 
+  useEffect(() => {
+    if (!uiNotice.open) return undefined;
+    const timeout = setTimeout(() => {
+      setUiNotice((prev) => ({ ...prev, open: false }));
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [uiNotice.open]);
+
   const handleSendMessage = useCallback(async () => {
     const convId = activeChat?.id;
     const text = messageInput.trim();
     if (!convId || !text) return;
 
     if (activeChat.status !== "active" || !activeChat.canSend) {
-      alert("This conversation is read-only.");
+      showNotice("This conversation is read-only.", "error");
       return;
     }
 
@@ -419,9 +435,9 @@ const MessagesPage = ({ selectedIntern }) => {
       refreshConversations().catch(() => {});
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      alert(err?.message || "Failed to send message");
+      showNotice(err?.message || "Failed to send message", "error");
     }
-  }, [activeChat?.canSend, activeChat?.id, activeChat?.status, me?.id, messageInput, refreshConversations]);
+  }, [activeChat?.canSend, activeChat?.id, activeChat?.status, me?.id, messageInput, refreshConversations, showNotice]);
 
   const openNewChat = useCallback(async () => {
     setShowNewChat(true);
@@ -432,11 +448,11 @@ const MessagesPage = ({ selectedIntern }) => {
       setContacts(Array.isArray(res?.contacts) ? res.contacts : []);
     } catch (err) {
       setContacts([]);
-      alert(err?.message || "Failed to load contacts");
+      showNotice(err?.message || "Failed to load contacts", "error");
     } finally {
       setContactsLoading(false);
     }
-  }, []);
+  }, [showNotice]);
 
   const filteredContacts = contacts.filter((c) => {
     const q = contactsQuery.trim().toLowerCase();
@@ -453,10 +469,10 @@ const MessagesPage = ({ selectedIntern }) => {
         setActiveChat({ id: convId, name: label || "Conversation", avatar: initials(label || "Conversation") });
         setShowNewChat(false);
       } catch (err) {
-        alert(err?.message || "Failed to start chat");
+        showNotice(err?.message || "Failed to start chat", "error");
       }
     },
-    [refreshConversations]
+    [refreshConversations, showNotice]
   );
 
   const filteredInterns = interns.filter((intern) => intern.name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -1163,6 +1179,30 @@ const MessagesPage = ({ selectedIntern }) => {
                 })}
             </div>
           </div>
+        </div>
+      )}
+
+      {uiNotice.open && (
+        <div
+          style={{
+            position: "fixed",
+            right: 20,
+            bottom: 20,
+            zIndex: 2400,
+            minWidth: 240,
+            maxWidth: 420,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: `1px solid ${
+              uiNotice.tone === "error" ? "rgba(239,68,68,0.45)" : "rgba(20,184,166,0.45)"
+            }`,
+            background: uiNotice.tone === "error" ? "rgba(239,68,68,0.2)" : "rgba(20,184,166,0.2)",
+            color: COLORS.peachGlow,
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)",
+          }}
+        >
+          {uiNotice.message}
         </div>
       )}
     </div>

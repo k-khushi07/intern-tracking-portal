@@ -28,7 +28,7 @@ const COLORS = {
 };
 
 // ==================== SAMPLE DATA ====================
-const sampleContacts = [
+const _sampleContacts = [
   {
     id: "pm",
     type: "individual",
@@ -131,7 +131,7 @@ const sampleContacts = [
   },
 ];
 
-const sampleMessages = {
+const _sampleMessages = {
   pm: [
     { id: 1, from: "them", text: "Hi! How's the dashboard project going?", time: "10:15 AM", date: "Today", status: "read" },
     { id: 2, from: "me", text: "Hi Priya! It's going great. I've completed the API integration and working on the UI components now.", time: "10:20 AM", date: "Today", status: "read" },
@@ -193,10 +193,10 @@ const initials = (nameOrEmail) => {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 };
 
-const formatTime = (time) => time;
+const _formatTime = (time) => time;
 
 // ==================== UI COMPONENTS ====================
-const Avatar = ({ name, avatar, size = 48, status, isGroup = false, color }) => {
+const Avatar = ({ avatar, size = 48, status, isGroup = false, color }) => {
   const bgColor = color || (isGroup 
     ? `linear-gradient(135deg, ${COLORS.purple} 0%, ${COLORS.deepOcean} 100%)`
     : `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`);
@@ -401,11 +401,7 @@ const MessageBubble = ({ message, isGroup, showAvatar = true, onReport, onDelete
   const [showActions, setShowActions] = useState(false);
 
   const canDeleteSelf = (() => {
-    if (!isMe) return false;
-    if (message.deleted) return false;
-    const createdAt = message.createdAt ? new Date(message.createdAt) : null;
-    if (!createdAt || Number.isNaN(createdAt.getTime())) return false;
-    return Date.now() - createdAt.getTime() <= 10 * 60 * 1000;
+    return isMe && !message.deleted;
   })();
   
   return (
@@ -1007,18 +1003,18 @@ const ActionButton = ({ icon, label, danger }) => (
 );
 
 // ==================== MAIN COMPONENT ====================
-function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
+function MessagesPage({ isMobile = false }) {
   const [contacts, setContacts] = useState([]);
   const [activeContactId, setActiveContactId] = useState(null);
   const [messagesByConvId, setMessagesByConvId] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all"); // all, unread, groups, direct
   const [showInfo, setShowInfo] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
+  const [isTyping] = useState(false);
   const [me, setMe] = useState(null);
   const [presence, setPresence] = useState({});
-  const [loadingChats, setLoadingChats] = useState(true);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [_loadingChats, setLoadingChats] = useState(true);
+  const [_loadingMessages, setLoadingMessages] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatContacts, setNewChatContacts] = useState([]);
   const [newChatSearch, setNewChatSearch] = useState("");
@@ -1135,7 +1131,7 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
       });
       setContacts(mapped);
       if (!activeContactId && mapped.length) setActiveContactId(mapped[0].id);
-    } catch (e) {
+    } catch {
       setContacts([]);
     } finally {
       setLoadingChats(false);
@@ -1152,7 +1148,7 @@ function MessagesPage({ isMobile = false, assignedPM, assignedHR }) {
         const contact = contacts.find((c) => c.id === conversationId);
         const vm = msgs.map((m) => toMessageVm(m, contact));
         setMessagesByConvId((prev) => ({ ...prev, [conversationId]: vm }));
-      } catch (e) {
+      } catch {
         setMessagesByConvId((prev) => ({ ...prev, [conversationId]: prev[conversationId] || [] }));
       } finally {
         setLoadingMessages(false);

@@ -1,5 +1,5 @@
 // EmailTemplateManager.jsx - Email Template System for HR Dashboard
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText, Copy, RefreshCw, Save, Trash2, Paperclip, Upload, Edit2, X, Plus } from 'lucide-react';
 import { COLORS } from './HRConstants';
 import jsPDF from 'jspdf';
@@ -268,7 +268,7 @@ export const EmailTemplateManager = ({
   const [showTemplateList, setShowTemplateList] = useState(false);
   const [generatedPDF, setGeneratedPDF] = useState(null);
   const [pdfBase64, setPdfBase64] = useState(null);
-  const [lastNotifiedData, setLastNotifiedData] = useState(null);
+  const lastNotifiedDataRef = useRef(null);
   
   // Edit mode states
   const [isEditMode, setIsEditMode] = useState(false);
@@ -278,11 +278,46 @@ export const EmailTemplateManager = ({
 
   // Upload custom PDF state
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState(null);
+  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateError, setNewTemplateError] = useState("");
+  const [notice, setNotice] = useState({
+    open: false,
+    title: "",
+    message: "",
+    tone: "info",
+  });
+
+  const showNotice = ({ title, message, tone = "info" }) => {
+    setNotice({ open: true, title, message, tone });
+  };
+
+  const generatePDF = useCallback(async () => {
+    const template = allTemplates.find(t => t.id === selectedTemplateId);
+    if (!template) return;
+
+    if (template.customPDF) {
+      setPdfBase64(template.customPDF);
+      setGeneratedPDF(null);
+      return;
+    }
+
+    const pdf = generateOfferLetterPDF(template, internData || {});
+    setGeneratedPDF(pdf);
+
+    const base64 = await pdfToBase64(pdf);
+    setPdfBase64(base64);
+  }, [allTemplates, selectedTemplateId, internData]);
+
 
   // ✅ FIXED: Only regenerate when template ID actually changes
   useEffect(() => {
-    generatePDF();
-  }, [selectedTemplateId]); // Removed internData from dependencies
+    const timeoutId = window.setTimeout(() => {
+      void generatePDF();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [generatePDF]); // Removed internData from dependencies
   
   // ✅ FIXED: Separate effect to notify parent only when PDF changes
   useEffect(() => {
@@ -296,8 +331,8 @@ export const EmailTemplateManager = ({
     });
     
     // Only notify if data actually changed
-    if (currentDataKey !== lastNotifiedData) {
-      setLastNotifiedData(currentDataKey);
+    if (currentDataKey !== lastNotifiedDataRef.current) {
+      lastNotifiedDataRef.current = currentDataKey;
       
       const template = allTemplates.find(t => t.id === selectedTemplateId);
       if (onTemplateReady && template) {
@@ -308,26 +343,7 @@ export const EmailTemplateManager = ({
         });
       }
     }
-  }, [pdfBase64, selectedTemplateId, internData?.internName, lastNotifiedData]);
-
-  const generatePDF = async () => {
-    const template = allTemplates.find(t => t.id === selectedTemplateId);
-    if (!template) return;
-
-    // If it's a custom uploaded PDF, use it directly
-    if (template.customPDF) {
-      setPdfBase64(template.customPDF);
-      setGeneratedPDF(null);
-      return;
-    }
-
-    // Otherwise, generate PDF from content
-    const pdf = generateOfferLetterPDF(template, internData || {});
-    setGeneratedPDF(pdf);
-    
-    const base64 = await pdfToBase64(pdf);
-    setPdfBase64(base64);
-  };
+  }, [pdfBase64, selectedTemplateId, internData?.internName, allTemplates, onTemplateReady]);
 
   const handleTemplateSelect = (templateId) => {
     setSelectedTemplateId(templateId);
@@ -369,7 +385,11 @@ export const EmailTemplateManager = ({
   // Edit template
   const handleEditTemplate = (template) => {
     if (template.customPDF) {
-      alert('⚠️ Cannot edit uploaded PDF templates. You can only delete and re-upload.');
+      showNotice({
+        title: "Cannot edit template",
+        message: "Uploaded PDF templates cannot be edited. Delete and upload again.",
+        tone: "error",
+      });
       return;
     }
     setEditingTemplate(template);
@@ -380,12 +400,20 @@ export const EmailTemplateManager = ({
 
   const handleSaveEdit = () => {
     if (!editedName.trim()) {
-      alert('⚠️ Template name cannot be empty');
+      showNotice({
+        title: "Template name required",
+        message: "Template name cannot be empty.",
+        tone: "error",
+      });
       return;
     }
 
     if (!editedContent.trim()) {
-      alert('⚠️ Template content cannot be empty');
+      showNotice({
+        title: "Template content required",
+        message: "Template content cannot be empty.",
+        tone: "error",
+      });
       return;
     }
 
@@ -409,8 +437,12 @@ export const EmailTemplateManager = ({
       setTimeout(() => generatePDF(), 100);
     }
 
-    alert('✅ Template updated successfully!');
-  };
+    showNotice({
+      title: "Template updated",
+      message: "Template updated successfully.",
+      tone: "success",
+    });
+  }
 
   const handleCancelEdit = () => {
     setIsEditMode(false);
@@ -422,14 +454,19 @@ export const EmailTemplateManager = ({
   // Delete template
   const handleDeleteTemplate = (template) => {
     if (!template.isCustom) {
-      alert('⚠️ Cannot delete default templates');
+      showNotice({
+        title: "Delete not allowed",
+        message: "Default templates cannot be deleted.",
+        tone: "error",
+      });
       return;
     }
+    setPendingDeleteTemplate(template);
+  };
 
-    if (!window.confirm(`Are you sure you want to delete "${template.name}"?`)) {
-      return;
-    }
-
+  const confirmDeleteTemplate = () => {
+    const template = pendingDeleteTemplate;
+    if (!template) return;
     const updatedTemplates = allTemplates.filter(t => t.id !== template.id);
     setAllTemplates(updatedTemplates);
     
@@ -442,7 +479,12 @@ export const EmailTemplateManager = ({
       setSelectedTemplateId(updatedTemplates[0].id);
     }
 
-    alert('✅ Template deleted successfully!');
+    setPendingDeleteTemplate(null);
+    showNotice({
+      title: "Template deleted",
+      message: `"${template.name}" deleted successfully.`,
+      tone: "success",
+    });
   };
 
   // Upload custom PDF
@@ -451,7 +493,11 @@ export const EmailTemplateManager = ({
     if (!file) return;
 
     if (file.type !== 'application/pdf') {
-      alert('⚠️ Please upload a PDF file');
+      showNotice({
+        title: "Invalid file",
+        message: "Please upload a PDF file.",
+        tone: "error",
+      });
       return;
     }
 
@@ -478,7 +524,11 @@ export const EmailTemplateManager = ({
       setSelectedTemplateId(newTemplate.id);
       setShowUploadDialog(false);
 
-      alert('✅ Custom PDF template uploaded successfully!');
+      showNotice({
+        title: "Template uploaded",
+        message: "Custom PDF template uploaded successfully.",
+        tone: "success",
+      });
     };
 
     reader.readAsDataURL(file);
@@ -486,8 +536,17 @@ export const EmailTemplateManager = ({
 
   // Create new text template
   const handleCreateNewTemplate = () => {
-    const templateName = prompt('Enter template name:');
-    if (!templateName || !templateName.trim()) return;
+    setNewTemplateName("");
+    setNewTemplateError("");
+    setShowCreateTemplateModal(true);
+  };
+
+  const submitCreateNewTemplate = () => {
+    const templateName = String(newTemplateName || "").trim();
+    if (!templateName) {
+      setNewTemplateError("Template name is required.");
+      return;
+    }
 
     const newTemplate = {
       id: `custom_${Date.now()}`,
@@ -516,6 +575,7 @@ HR Team`
 
     // Select and edit the new template
     setSelectedTemplateId(newTemplate.id);
+    setShowCreateTemplateModal(false);
     handleEditTemplate(newTemplate);
   };
 
@@ -1017,29 +1077,191 @@ HR Team`
           </div>
         </>
       )}
+
+      {showCreateTemplateModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.55)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 1200,
+          padding: 16,
+        }}>
+          <div style={{
+            width: 'min(480px, 100%)',
+            background: '#0f1720',
+            border: `1px solid ${COLORS.borderGlass}`,
+            borderRadius: 14,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+            padding: 18,
+          }}>
+            <h3 style={{ margin: '0 0 10px', color: COLORS.textPrimary, fontSize: 18 }}>Create Template</h3>
+            <p style={{ margin: '0 0 12px', color: COLORS.textSecondary, fontSize: 13 }}>
+              Enter a name for your custom offer letter template.
+            </p>
+            <input
+              type="text"
+              value={newTemplateName}
+              onChange={(e) => {
+                setNewTemplateName(e.target.value);
+                if (newTemplateError) setNewTemplateError('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitCreateNewTemplate();
+              }}
+              placeholder="Template name"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: `1px solid ${COLORS.borderGlass}`,
+                background: COLORS.surfaceGlass,
+                color: COLORS.textPrimary,
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            {newTemplateError ? (
+              <div style={{ marginTop: 8, color: COLORS.red, fontSize: 12 }}>{newTemplateError}</div>
+            ) : null}
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => {
+                  setShowCreateTemplateModal(false);
+                  setNewTemplateError('');
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${COLORS.borderGlass}`,
+                  background: 'transparent',
+                  color: COLORS.textSecondary,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitCreateNewTemplate}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: COLORS.jungleTeal,
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteTemplate && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.55)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 1200,
+          padding: 16,
+        }}>
+          <div style={{
+            width: 'min(460px, 100%)',
+            background: '#0f1720',
+            border: `1px solid ${COLORS.borderGlass}`,
+            borderRadius: 14,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+            padding: 18,
+          }}>
+            <h3 style={{ margin: '0 0 10px', color: COLORS.textPrimary, fontSize: 18 }}>Delete Template</h3>
+            <p style={{ margin: 0, color: COLORS.textSecondary, fontSize: 13, lineHeight: 1.45 }}>
+              Delete <strong style={{ color: COLORS.textPrimary }}>{pendingDeleteTemplate.name}</strong> permanently?
+              This action cannot be undone.
+            </p>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => setPendingDeleteTemplate(null)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${COLORS.borderGlass}`,
+                  background: 'transparent',
+                  color: COLORS.textSecondary,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteTemplate}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: COLORS.red,
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {notice.open && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.45)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 1250,
+          padding: 16,
+        }}>
+          <div style={{
+            width: 'min(520px, 100%)',
+            background: '#0f1720',
+            border: `1px solid ${COLORS.borderGlass}`,
+            borderRadius: 14,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+            padding: 18,
+          }}>
+            <h3 style={{ margin: '0 0 10px', color: COLORS.textPrimary, fontSize: 18 }}>
+              {notice.title || 'Update'}
+            </h3>
+            <p style={{ margin: 0, color: COLORS.textSecondary, fontSize: 13, lineHeight: 1.5 }}>
+              {notice.message}
+            </p>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setNotice((prev) => ({ ...prev, open: false }))}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: notice.tone === 'error' ? COLORS.red : COLORS.jungleTeal,
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-// Export function to process template variables (for use in other components)
-export const processTemplateVariables = (text, data) => {
-  let processed = text;
-  const variables = {
-    '[INTERN_NAME]': data.internName || '[Name]',
-    '[INTERN_ID]': data.internId || '[ID]',
-    '[PASSWORD]': data.password || '[Password]',
-    '[PM_CODE]': data.pmCode || '[PM Code]',
-    '[PORTAL_LINK]': data.portalLink || window.location.origin + '/login',
-    '[DOMAIN]': data.domain || '[Domain]',
-    '[DURATION]': data.duration || '[Duration]',
-    '[START_DATE]': data.startDate || '[Start Date]',
-  };
-
-  Object.keys(variables).forEach(key => {
-    processed = processed.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), variables[key]);
-  });
-
-  return processed;
 };
 
 export default EmailTemplateManager;

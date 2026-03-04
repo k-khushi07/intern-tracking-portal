@@ -24,6 +24,35 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const httpServer = http.createServer(app);
 
+const probeExistingApi = (port) =>
+  new Promise((resolve) => {
+    const req = http.get(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/api/health",
+        timeout: 1500,
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          const okStatus = res.statusCode >= 200 && res.statusCode < 300;
+          const looksLikePortalApi =
+            body.includes("Intern Tracking Portal API") || body.includes("\"status\":\"OK\"");
+          resolve(okStatus && looksLikePortalApi);
+        });
+      }
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true,
@@ -155,6 +184,29 @@ app.use((err, req, res, next) => {
   const message = err.expose ? err.message : "Internal server error";
   if (status >= 500) console.error("API error:", err);
   res.status(status).json({ success: false, message });
+});
+
+httpServer.on("error", async (err) => {
+  if (err?.code !== "EADDRINUSE") {
+    throw err;
+  }
+
+  const existingApiHealthy = await probeExistingApi(PORT);
+  if (existingApiHealthy) {
+    console.warn(
+      `[startup] Port ${PORT} is already in use by an active Intern Tracking Portal API instance. Reusing that instance.`
+    );
+    process.exit(0);
+    return;
+  }
+
+  console.error(
+    `[startup] Port ${PORT} is already in use by another process. Stop it or set a different PORT in backend/.env.`
+  );
+  console.error(
+    "[startup] If you change backend PORT, update frontend proxy target in frontend/vite.config.js to match."
+  );
+  process.exit(1);
 });
 
 httpServer.listen(PORT, () => {
