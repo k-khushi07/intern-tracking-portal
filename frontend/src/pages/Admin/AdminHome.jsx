@@ -78,6 +78,14 @@ const generatePassword = () => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
 };
 
+const stableNumberFromString = (value, min, max) => {
+  const text = String(value || "");
+  const hash = text.split("").reduce((acc, char, index) => {
+    return (acc + char.charCodeAt(0) * (index + 1)) % 1000003;
+  }, 0);
+  return min + (hash % (max - min + 1));
+};
+
 const sendSimulatedEmail = (to, subject, body) => {
   try {
     const emails = JSON.parse(localStorage.getItem("sentEmails") || "[]");
@@ -101,10 +109,16 @@ const sendSimulatedEmail = (to, subject, body) => {
 
 export default function AdminHome() {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("currentUser") || "null");
+    } catch {
+      return null;
+    }
+  });
   const [activeTab, setActiveTab] = useState("overview");
-  const [users, setUsers] = useState([]);
-  const [archivedInterns, setArchivedInterns] = useState([]);
+  const [users, setUsers] = useState(() => getUsers());
+  const [archivedInterns, setArchivedInterns] = useState(() => getArchivedInterns());
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -114,7 +128,7 @@ export default function AdminHome() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [modalRole, setModalRole] = useState("hr");
   const [isMobile, setIsMobile] = useState(false);
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState(() => getNotifications());
 
   // Filter states
   const [registrationDate, setRegistrationDate] = useState("");
@@ -130,14 +144,7 @@ export default function AdminHome() {
   const [archiveReason, setArchiveReason] = useState("");
 
   useEffect(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem("currentUser"));
-      if (!user || user.role !== "admin") {
-        navigate("/");
-        return;
-      }
-      setCurrentUser(user);
-    } catch {
+    if (!currentUser || currentUser.role !== "admin") {
       navigate("/");
       return;
     }
@@ -146,25 +153,15 @@ export default function AdminHome() {
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [navigate]);
+  }, [currentUser, navigate]);
 
-  useEffect(() => {
-    loadUsers();
-    loadNotifications();
-    loadArchivedInterns();
-  }, []);
-
-  const loadUsers = () => {
-    setUsers(getUsers());
-  };
-
-  const loadNotifications = () => {
+  function loadNotifications() {
     setNotifications(getNotifications());
-  };
+  }
 
-  const loadArchivedInterns = () => {
+  function loadArchivedInterns() {
     setArchivedInterns(getArchivedInterns());
-  };
+  }
 
   const logout = async () => {
     try {
@@ -1311,8 +1308,8 @@ function InternsView({ users, searchTerm, setSearchTerm, onViewProfile, onArchiv
   };
 
   // Calculate mock performance data
-  const getPerformance = (user) => {
-    return Math.floor(75 + Math.random() * 25); // 75-100%
+  const getPerformance = (candidate) => {
+    return stableNumberFromString(candidate?.email || candidate?.fullName || "", 75, 100);
   };
 
   return (
@@ -1690,11 +1687,12 @@ function ViewProfileModal({ user, onClose, isMobile }) {
   const isIntern = user.role === "intern";
   
   // Mock data for demonstration
+  const seed = user?.email || user?.fullName || "";
   const mockData = {
-    performance: Math.floor(75 + Math.random() * 25),
-    tasksCompleted: Math.floor(15 + Math.random() * 15),
+    performance: stableNumberFromString(`${seed}-performance`, 75, 100),
+    tasksCompleted: stableNumberFromString(`${seed}-tasks`, 15, 30),
     tasksTotal: 30,
-    weeklyReports: Math.floor(5 + Math.random() * 5),
+    weeklyReports: stableNumberFromString(`${seed}-reports`, 5, 10),
     lastActive: "2 hours ago",
     skills: profile.skills || ["React", "JavaScript", "Node.js"],
     recentActivities: [

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Search, Mail, Eye, MapPin, Calendar, Award, TrendingUp, Clock } from "lucide-react";
+import { Search, Mail, Eye, MapPin, Calendar, Award, TrendingUp, Clock, FileDown, CheckCircle2 } from "lucide-react";
 import InternProfilePage from "./InternProfilePage";
+import { Modal } from "../HRComponents";
 import { hrApi } from "../../../lib/apiClient";
 
 const COLORS = {
@@ -20,7 +21,19 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
 
   const [pmSelections, setPmSelections] = useState({});
   const [savingAssign, setSavingAssign] = useState({});
+  const [markingCompleted, setMarkingCompleted] = useState({});
   const [loadError, setLoadError] = useState("");
+  const [pendingCompleteIntern, setPendingCompleteIntern] = useState(null);
+  const [feedback, setFeedback] = useState({
+    open: false,
+    title: "",
+    message: "",
+    tone: "info",
+  });
+
+  const openFeedback = ({ title, message, tone = "info" }) => {
+    setFeedback({ open: true, title, message, tone });
+  };
 
   useEffect(() => {
     if (Array.isArray(usersProp) && usersProp.length) {
@@ -39,18 +52,11 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
         if (cancelled) return;
         const users = res?.users || [];
         setAllUsers(users);
-        localStorage.setItem("users", JSON.stringify(users));
       } catch (err) {
         console.error("Error loading users (API):", err);
         if (cancelled) return;
         setLoadError(err?.message || "Failed to load interns");
-
-        try {
-          const usersData = localStorage.getItem("users");
-          if (usersData) setAllUsers(JSON.parse(usersData));
-        } catch (e) {
-          setAllUsers([]);
-        }
+        setAllUsers([]);
       }
     };
 
@@ -92,12 +98,46 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
         u.id === intern.id ? { ...u, pmCode, pmId: allPMs.find((p) => p.pmCode === pmCode)?.id || u.pmId } : u
       );
       setAllUsers(updatedAll);
-      localStorage.setItem("users", JSON.stringify(updatedAll));
     } catch (err) {
       console.error("Error assigning PM:", err);
-      alert(err?.message || "Failed to assign PM");
+      openFeedback({
+        title: "PM assignment failed",
+        message: err?.message || "Failed to assign PM.",
+        tone: "error",
+      });
     } finally {
       setSavingAssign((prev) => ({ ...prev, [intern.id]: false }));
+    }
+  };
+
+  const handleMarkCompleted = async (intern) => {
+    if (!intern?.id) return;
+    setPendingCompleteIntern(intern);
+  };
+
+  const confirmMarkCompleted = async () => {
+    const intern = pendingCompleteIntern;
+    if (!intern?.id) {
+      setPendingCompleteIntern(null);
+      return;
+    }
+    try {
+      setMarkingCompleted((prev) => ({ ...prev, [intern.id]: true }));
+      await hrApi.markInternCompleted(intern.id);
+      const nextAll = (allUsers || []).map((row) =>
+        row.id === intern.id ? { ...row, status: "completed", approvalStatus: "completed" } : row
+      );
+      setAllUsers(nextAll);
+      setActiveInterns((rows) => rows.filter((row) => row.id !== intern.id));
+    } catch (err) {
+      openFeedback({
+        title: "Update failed",
+        message: err?.message || "Failed to mark intern as completed.",
+        tone: "error",
+      });
+    } finally {
+      setMarkingCompleted((prev) => ({ ...prev, [intern.id]: false }));
+      setPendingCompleteIntern(null);
     }
   };
 
@@ -611,6 +651,70 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
                 Send Message
               </button>
             </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
+                <button
+                  onClick={() => window.open(hrApi.downloadOfferLetter(intern.id), "_blank", "noopener,noreferrer")}
+                  style={{
+                    padding: "10px 8px",
+                    background: "rgba(255,255,255,0.06)",
+                    border: `1px solid rgba(103, 146, 137, 0.35)`,
+                    borderRadius: 10,
+                    color: COLORS.peachGlow,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <FileDown size={14} />
+                  Offer
+                </button>
+                <button
+                  onClick={() => window.open(hrApi.downloadCertificate(intern.id), "_blank", "noopener,noreferrer")}
+                  style={{
+                    padding: "10px 8px",
+                    background: "rgba(255,255,255,0.06)",
+                    border: `1px solid rgba(103, 146, 137, 0.35)`,
+                    borderRadius: 10,
+                    color: COLORS.peachGlow,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <FileDown size={14} />
+                  Certificate
+                </button>
+                <button
+                  onClick={() => handleMarkCompleted(intern)}
+                  disabled={!!markingCompleted[intern.id]}
+                  style={{
+                    padding: "10px 8px",
+                    background: "rgba(34, 197, 94, 0.15)",
+                    border: "1px solid rgba(34, 197, 94, 0.45)",
+                    borderRadius: 10,
+                    color: "#86efac",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: markingCompleted[intern.id] ? "not-allowed" : "pointer",
+                    opacity: markingCompleted[intern.id] ? 0.65 : 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <CheckCircle2 size={14} />
+                  {markingCompleted[intern.id] ? "Updating..." : "Complete"}
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -647,6 +751,91 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
             {searchQuery ? "Try adjusting your search criteria" : "No active interns in the system yet"}
           </p>
         </div>
+      )}
+
+      {pendingCompleteIntern && (
+        <Modal onClose={() => setPendingCompleteIntern(null)}>
+          <h3 style={{ margin: 0, color: COLORS.peachGlow, fontSize: 20 }}>Confirm completion</h3>
+          <p style={{ color: "rgba(255, 229, 217, 0.8)", marginTop: 10, marginBottom: 16 }}>
+            Mark <strong>{pendingCompleteIntern.fullName || pendingCompleteIntern.name || "this intern"}</strong> as completed?
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              onClick={() => setPendingCompleteIntern(null)}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid rgba(103, 146, 137, 0.35)",
+                background: "transparent",
+                color: COLORS.peachGlow,
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmMarkCompleted}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "none",
+                background: "rgba(34, 197, 94, 0.9)",
+                color: "#052e16",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              Confirm
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {feedback.open && (
+        <Modal
+          onClose={() =>
+            setFeedback({
+              open: false,
+              title: "",
+              message: "",
+              tone: "info",
+            })
+          }
+        >
+          <h3 style={{ margin: 0, color: COLORS.peachGlow, fontSize: 20 }}>{feedback.title || "Update"}</h3>
+          <p style={{ color: "rgba(255, 229, 217, 0.8)", marginTop: 10, marginBottom: 16, whiteSpace: "pre-line" }}>
+            {feedback.message}
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() =>
+                setFeedback({
+                  open: false,
+                  title: "",
+                  message: "",
+                  tone: "info",
+                })
+              }
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "none",
+                background:
+                  feedback.tone === "success"
+                    ? "rgba(16, 185, 129, 0.9)"
+                    : feedback.tone === "error"
+                      ? "rgba(239, 68, 68, 0.9)"
+                      : "rgba(20, 184, 166, 0.9)",
+                color: "white",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

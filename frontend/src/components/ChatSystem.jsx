@@ -24,22 +24,11 @@ export default function ChatSystem({ userRole, currentUser }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  useEffect(() => {
-    if (activeChatType) {
-      loadMessages();
-      loadRecipient();
-    }
-  }, [activeChatType, currentUser]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const scrollToBottom = () => {
+  function scrollToBottom() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }
 
-  const getChatId = () => {
+  function getChatId() {
     if (!currentUser || !activeChatType) return null;
 
     if (userRole === "intern") {
@@ -60,9 +49,9 @@ export default function ChatSystem({ userRole, currentUser }) {
       }
     }
     return null;
-  };
+  }
 
-  const loadMessages = () => {
+  function loadMessages() {
     const chatId = getChatId();
     if (!chatId) return;
 
@@ -74,9 +63,9 @@ export default function ChatSystem({ userRole, currentUser }) {
       console.error("Error loading messages:", error);
       setMessages([]);
     }
-  };
+  }
 
-  const loadRecipient = () => {
+  function loadRecipient() {
     if (userRole === "intern") {
       const users = JSON.parse(localStorage.getItem("users") || "[]");
       
@@ -88,7 +77,22 @@ export default function ChatSystem({ userRole, currentUser }) {
         setRecipient(hr || { fullName: "HR Team", email: "hr@company.com" });
       }
     }
-  };
+  }
+
+  useEffect(() => {
+    if (activeChatType) {
+      const timeout = window.setTimeout(() => {
+        loadMessages();
+        loadRecipient();
+      }, 0);
+      return () => window.clearTimeout(timeout);
+    }
+    return undefined;
+  }, [activeChatType, currentUser]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -300,11 +304,7 @@ function ChatOptionCard({ icon, title, subtitle, color, onClick }) {
 function PMInternList({ currentUser, onSelectIntern, isMobile }) {
   const [interns, setInterns] = useState([]);
 
-  useEffect(() => {
-    loadInterns();
-  }, [currentUser]);
-
-  const loadInterns = () => {
+  function loadInterns() {
     try {
       const users = JSON.parse(localStorage.getItem("users") || "[]");
       const assignedInterns = users.filter(
@@ -314,7 +314,14 @@ function PMInternList({ currentUser, onSelectIntern, isMobile }) {
     } catch (error) {
       console.error("Error loading interns:", error);
     }
-  };
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadInterns();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [currentUser]);
 
   return (
     <div>
@@ -342,11 +349,7 @@ function PMInternList({ currentUser, onSelectIntern, isMobile }) {
 function HRInternList({ onSelectIntern, isMobile }) {
   const [interns, setInterns] = useState([]);
 
-  useEffect(() => {
-    loadInterns();
-  }, []);
-
-  const loadInterns = () => {
+  function loadInterns() {
     try {
       const users = JSON.parse(localStorage.getItem("users") || "[]");
       const allInterns = users.filter((u) => u.role === "intern" && u.status === "active");
@@ -354,7 +357,14 @@ function HRInternList({ onSelectIntern, isMobile }) {
     } catch (error) {
       console.error("Error loading interns:", error);
     }
-  };
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadInterns();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   return (
     <div>
