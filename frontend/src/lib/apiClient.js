@@ -167,10 +167,34 @@ export const hrApi = {
 };
 
 export const adminApi = {
-  createUser({ email, password, role, fullName, pmCode }) {
+  users(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/admin/users${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  createUser(payload) {
     return apiFetch("/admin/users", {
       method: "POST",
-      body: JSON.stringify({ email, password, role, fullName, pmCode }),
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  deleteUser(userId) {
+    return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
+  },
+  stats() {
+    return apiFetch("/admin/stats", { method: "GET" });
+  },
+  internProgress() {
+    return apiFetch("/admin/intern-progress", { method: "GET" });
+  },
+  setInternStatus(internId, status) {
+    return apiFetch(`/admin/interns/${internId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   },
 };
@@ -197,11 +221,26 @@ export const pmApi = {
   reports() {
     return apiFetch("/pm/reports", { method: "GET" });
   },
-  reviewReport(reportId, { status, reason }) {
+  reviewReport(reportId, payload) {
     return apiFetch(`/pm/reports/${reportId}/review`, {
       method: "PATCH",
-      body: JSON.stringify({ status, reason }),
+      body: JSON.stringify(payload || {}),
     });
+  },
+  createAnnouncement({ title, content, priority, audienceRoles, pinned }) {
+    return apiFetch("/pm/announcements", {
+      method: "POST",
+      body: JSON.stringify({ title, content, priority, audienceRoles, pinned }),
+    });
+  },
+  updateAnnouncement(announcementId, patch) {
+    return apiFetch(`/pm/announcements/${announcementId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  },
+  deleteAnnouncement(announcementId) {
+    return apiFetch(`/pm/announcements/${announcementId}`, { method: "DELETE" });
   },
 };
 

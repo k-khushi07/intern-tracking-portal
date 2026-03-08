@@ -39,7 +39,7 @@ export default function AdminLogin() {
           email: res.profile.email,
         })
       );
-      navigate("/admin");
+      navigate("/admin/dashboard");
     } catch (err) {
       setError(err.message || "Error. Please try again.");
     }

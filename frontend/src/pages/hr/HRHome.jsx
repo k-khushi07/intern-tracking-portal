@@ -117,7 +117,7 @@ export default function HRHome() {
     } catch (e) {
       console.error("Error loading HR (API):", e);
       localStorage.removeItem("currentUser");
-      window.location.href = "/";
+      window.location.href = "/hr/login";
     }
   };
 
@@ -130,7 +130,7 @@ export default function HRHome() {
       console.error("Error loading users (API):", err);
       if (err?.status === 401 || err?.status === 403) {
         localStorage.removeItem("currentUser");
-        window.location.href = "/";
+        window.location.href = "/hr/login";
         return;
       }
       setUsers([]);
@@ -156,7 +156,7 @@ export default function HRHome() {
       console.error("Failed to load announcements:", err);
       if (err?.status === 401 || err?.status === 403) {
         localStorage.removeItem("currentUser");
-        window.location.href = "/";
+        window.location.href = "/hr/login";
         return;
       }
       setAnnouncements([]);
@@ -219,7 +219,7 @@ export default function HRHome() {
   };
 
   const fallbackStats = getStats();
-  const stats = { ...fallbackStats, ...(apiStats || {}) };
+  const stats = { ...(apiStats || {}), ...fallbackStats };
 
   // Handlers
   const handleApprove = async (approval) => {
@@ -604,7 +604,7 @@ export default function HRHome() {
                   // ignore
                 }
                 localStorage.removeItem("currentUser");
-                window.location.href = "/";
+                window.location.href = "/hr/login";
               }}
               style={{
                 width: "100%",

@@ -54,6 +54,9 @@ const MessagesPage = ({ selectedIntern }) => {
   const [contacts, setContacts] = useState([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsQuery, setContactsQuery] = useState("");
+  const [newChatMode, setNewChatMode] = useState("direct");
+  const [groupName, setGroupName] = useState("");
+  const [groupMemberIds, setGroupMemberIds] = useState([]);
   const chatBodyRef = useRef(null);
   const socketRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -302,10 +305,13 @@ const MessagesPage = ({ selectedIntern }) => {
 
   // Keep active chat object in sync with refreshed sidebar data.
   useEffect(() => {
-    if (!activeChat?.id) return;
-    const match = interns.find((c) => String(c.id) === String(activeChat.id));
-    if (match && match !== activeChat) setActiveChat(match);
-  }, [interns, activeChat?.id]);
+    setActiveChat((prev) => {
+      if (!prev?.id) return prev;
+      const match = interns.find((c) => String(c.id) === String(prev.id));
+      if (!match || match === prev) return prev;
+      return match;
+    });
+  }, [interns]);
 
   // Load messages + subscribe whenever active chat changes.
   useEffect(() => {
@@ -353,7 +359,7 @@ const MessagesPage = ({ selectedIntern }) => {
       cancelled = true;
       socket.emit("chat:unsubscribe", { conversationId: convId });
     };
-  }, [activeChat?.id, activeChat?.name, me?.id, refreshConversations]);
+  }, [activeChat?.id, activeChat?.name, activeChat?.peerLastReadAt, activeChat?.type, me?.id, refreshConversations]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -426,6 +432,9 @@ const MessagesPage = ({ selectedIntern }) => {
   const openNewChat = useCallback(async () => {
     setShowNewChat(true);
     setContactsQuery("");
+    setNewChatMode("direct");
+    setGroupName("");
+    setGroupMemberIds([]);
     setContactsLoading(true);
     try {
       const res = await messagesApi.contacts();
@@ -458,6 +467,35 @@ const MessagesPage = ({ selectedIntern }) => {
     },
     [refreshConversations]
   );
+
+  const toggleGroupMember = useCallback((profileId) => {
+    setGroupMemberIds((prev) =>
+      prev.includes(profileId) ? prev.filter((id) => id !== profileId) : [...prev, profileId]
+    );
+  }, []);
+
+  const createGroupChat = useCallback(async () => {
+    const cleanName = String(groupName || "").trim();
+    if (!cleanName) {
+      alert("Group name is required.");
+      return;
+    }
+    if (!groupMemberIds.length) {
+      alert("Select at least one member.");
+      return;
+    }
+    try {
+      const res = await messagesApi.createGroup({ name: cleanName, memberProfileIds: groupMemberIds });
+      await refreshConversations();
+      const convId = res?.conversationId;
+      if (convId) {
+        setActiveChat({ id: convId, name: cleanName, avatar: initials(cleanName), type: "group" });
+      }
+      setShowNewChat(false);
+    } catch (err) {
+      alert(err?.message || "Failed to create group.");
+    }
+  }, [groupMemberIds, groupName, refreshConversations]);
 
   const filteredInterns = interns.filter((intern) =>
     intern.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -1080,6 +1118,58 @@ const MessagesPage = ({ selectedIntern }) => {
             </div>
 
             <div style={{ padding: 16, borderBottom: `1px solid rgba(103, 146, 137, 0.15)` }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <button
+                  onClick={() => setNewChatMode("direct")}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    border: `1px solid ${newChatMode === "direct" ? COLORS.jungleTeal : "rgba(103,146,137,0.3)"}`,
+                    background: newChatMode === "direct" ? "rgba(103,146,137,0.25)" : "rgba(255,255,255,0.04)",
+                    color: COLORS.peachGlow,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Direct
+                </button>
+                <button
+                  onClick={() => setNewChatMode("group")}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    border: `1px solid ${newChatMode === "group" ? COLORS.jungleTeal : "rgba(103,146,137,0.3)"}`,
+                    background: newChatMode === "group" ? "rgba(103,146,137,0.25)" : "rgba(255,255,255,0.04)",
+                    color: COLORS.peachGlow,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Group
+                </button>
+              </div>
+
+              {newChatMode === "group" && (
+                <input
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Group name..."
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    marginBottom: 10,
+                    background: "rgba(103, 146, 137, 0.1)",
+                    border: `1px solid rgba(103, 146, 137, 0.3)`,
+                    borderRadius: "10px",
+                    color: COLORS.peachGlow,
+                    fontSize: "13px",
+                    outline: "none",
+                  }}
+                />
+              )}
+
               <input
                 value={contactsQuery}
                 onChange={(e) => setContactsQuery(e.target.value)}
@@ -1096,8 +1186,13 @@ const MessagesPage = ({ selectedIntern }) => {
                 }}
               />
               <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255, 229, 217, 0.65)" }}>
-                You can message your interns and HR.
+                You can message assigned interns, HR, and other PMs.
               </div>
+              {newChatMode === "group" && (
+                <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255, 229, 217, 0.75)" }}>
+                  Selected members: {groupMemberIds.length}
+                </div>
+              )}
             </div>
 
             <div style={{ padding: 10, overflowY: "auto" }}>
@@ -1113,7 +1208,13 @@ const MessagesPage = ({ selectedIntern }) => {
                   return (
                     <button
                       key={c.id}
-                      onClick={() => startDirectWith(c.id, label)}
+                      onClick={() => {
+                        if (newChatMode === "group") {
+                          toggleGroupMember(c.id);
+                        } else {
+                          startDirectWith(c.id, label);
+                        }
+                      }}
                       style={{
                         width: "100%",
                         textAlign: "left",
@@ -1141,11 +1242,32 @@ const MessagesPage = ({ selectedIntern }) => {
                           </div>
                         </div>
                       </div>
-                      <div style={{ fontSize: 12, color: "rgba(255, 229, 217, 0.65)" }}>Start</div>
+                      <div style={{ fontSize: 12, color: "rgba(255, 229, 217, 0.65)", fontWeight: 700 }}>
+                        {newChatMode === "group" ? (groupMemberIds.includes(c.id) ? "Selected" : "Select") : "Start"}
+                      </div>
                     </button>
                   );
                 })}
             </div>
+
+            {newChatMode === "group" && (
+              <div style={{ padding: 12, borderTop: `1px solid rgba(103,146,137,0.2)`, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={createGroupChat}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                    color: COLORS.peachGlow,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Create Group
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
