@@ -307,22 +307,6 @@ const generateMonthlySummary = (month, monthKey) => {
   };
 };
 
-// ==================== SAMPLE DATA ====================
-const sampleLogs = [
-  { id: 1, date: "2024-01-15", tasks: "Completed React component development for dashboard. Implemented responsive design patterns. Created reusable card components.", learnings: "React hooks, Context API, performance optimization techniques.", blockers: "None", hoursWorked: 8 },
-  { id: 2, date: "2024-01-14", tasks: "API integration with backend services. Set up error handling and loading states.", learnings: "REST API best practices, async/await patterns in JavaScript.", blockers: "CORS issues - resolved with proxy configuration", hoursWorked: 7 },
-  { id: 3, date: "2024-01-13", tasks: "Database schema design and MongoDB setup. Created indexes for optimization.", learnings: "NoSQL design patterns, indexing strategies, aggregation pipelines.", blockers: "None", hoursWorked: 6 },
-  { id: 4, date: "2024-01-12", tasks: "User authentication module. Implemented JWT tokens and refresh logic.", learnings: "Security best practices, JWT implementation, OAuth 2.0 fundamentals.", blockers: "Token refresh logic was tricky - resolved after research", hoursWorked: 8 },
-  { id: 5, date: "2024-01-11", tasks: "Frontend routing with React Router. Created protected route components.", learnings: "Client-side routing patterns, route guards, lazy loading.", blockers: "None", hoursWorked: 7 },
-  { id: 6, date: "2024-01-08", tasks: "Code review and refactoring. Improved component structure.", learnings: "Clean code principles, component composition patterns.", blockers: "None", hoursWorked: 6 },
-  { id: 7, date: "2024-01-07", tasks: "Testing with Jest and React Testing Library. Unit tests for utilities.", learnings: "TDD, mocking strategies, coverage reporting.", blockers: "Mocking external APIs was challenging", hoursWorked: 8 },
-  { id: 8, date: "2024-01-05", tasks: "Performance optimization. Implemented memo, useMemo, useCallback.", learnings: "React performance patterns, profiling tools.", blockers: "None", hoursWorked: 7 },
-  { id: 9, date: "2024-01-04", tasks: "Documentation. Created README and inline code docs.", learnings: "Technical writing, JSDoc comments, API documentation.", blockers: "None", hoursWorked: 5 },
-  { id: 10, date: "2024-01-03", tasks: "Project setup. ESLint, Prettier, Husky configuration.", learnings: "Dev environment setup, linting rules, git hooks.", blockers: "Husky configuration took longer than expected", hoursWorked: 6 },
-  { id: 11, date: "2023-12-28", tasks: "Year-end review and planning. Q1 roadmap creation.", learnings: "Reflection, goal setting, time management.", blockers: "None", hoursWorked: 4 },
-  { id: 12, date: "2023-12-27", tasks: "Bug fixes. Resolved UI inconsistencies and mobile issues.", learnings: "Debugging techniques, browser dev tools, CSS specificity.", blockers: "None", hoursWorked: 6 },
-];
-
 // ==================== UI COMPONENTS ====================
 const StatMini = ({ icon, label, value, color }) => (
   <div 
@@ -1116,10 +1100,11 @@ const ConsistencyBadge = ({ rating, score }) => {
 
 // ==================== SUMMARY MODAL ====================
 const SummaryModal = ({ type, summary, assignedPM, pmAssigned, onClose, onSend, isSending, sendSuccess, isMobile }) => {
-  if (!summary) return null;
   const isWeekly = type === "weekly";
   const [sendToPM, setSendToPM] = useState(!!pmAssigned);
   const [sendToHR, setSendToHR] = useState(true);
+
+  if (!summary) return null;
 
   const handleExport = () => {
     const text = isWeekly 

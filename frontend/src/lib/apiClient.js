@@ -56,8 +56,47 @@ export const hrApi = {
   users() {
     return apiFetch("/hr/users", { method: "GET" });
   },
+  applications(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/hr/applications${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  applicationById(applicationId) {
+    return apiFetch(`/hr/applications/${applicationId}`, { method: "GET" });
+  },
+  updateApplicationNotes(applicationId, hrNotes) {
+    return apiFetch(`/hr/applications/${applicationId}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ hrNotes }),
+    });
+  },
   stats() {
     return apiFetch("/hr/stats", { method: "GET" });
+  },
+  analytics() {
+    return apiFetch("/hr/analytics", { method: "GET" });
+  },
+  activeInterns(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/hr/active-interns${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  markInternCompleted(profileId) {
+    return apiFetch(`/hr/active-interns/${profileId}/mark-completed`, { method: "POST" });
+  },
+  setActiveInternStatus(profileId, status) {
+    return apiFetch(`/hr/active-interns/${profileId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
   },
   reports() {
     return apiFetch("/hr/reports", { method: "GET" });
@@ -86,16 +125,16 @@ export const hrApi = {
   deleteAnnouncement(announcementId) {
     return apiFetch(`/hr/announcements/${announcementId}`, { method: "DELETE" });
   },
-  setApplicationStatus(applicationId, status) {
+  setApplicationStatus(applicationId, status, reason) {
     return apiFetch(`/hr/applications/${applicationId}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, reason }),
     });
   },
-  approveApplication(applicationId, { internId, password, email }) {
+  approveApplication(applicationId, payload) {
     return apiFetch(`/hr/applications/${applicationId}/approve`, {
       method: "POST",
-      body: JSON.stringify({ internId, password, email }),
+      body: JSON.stringify(payload || {}),
     });
   },
   rejectApplication(applicationId, { reason }) {
@@ -104,19 +143,58 @@ export const hrApi = {
       body: JSON.stringify({ reason }),
     });
   },
+  bulkApplicationStatus(payload) {
+    return apiFetch("/hr/applications/bulk-status", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
   assignPm(internProfileId, pmCode) {
     return apiFetch(`/hr/interns/${internProfileId}/assign-pm`, {
       method: "PATCH",
       body: JSON.stringify({ pmCode }),
     });
   },
+  downloadOfferLetter(profileId) {
+    return `/api/hr/active-interns/${profileId}/offer-letter.pdf`;
+  },
+  downloadCertificate(profileId, performanceNote = "") {
+    const params = new URLSearchParams();
+    if (performanceNote) params.set("performanceNote", performanceNote);
+    const query = params.toString();
+    return `/api/hr/active-interns/${profileId}/certificate.pdf${query ? `?${query}` : ""}`;
+  },
 };
 
 export const adminApi = {
-  createUser({ email, password, role, fullName, pmCode }) {
+  users(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/admin/users${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  createUser(payload) {
     return apiFetch("/admin/users", {
       method: "POST",
-      body: JSON.stringify({ email, password, role, fullName, pmCode }),
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  deleteUser(userId) {
+    return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
+  },
+  stats() {
+    return apiFetch("/admin/stats", { method: "GET" });
+  },
+  internProgress() {
+    return apiFetch("/admin/intern-progress", { method: "GET" });
+  },
+  setInternStatus(internId, status) {
+    return apiFetch(`/admin/interns/${internId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   },
 };
@@ -143,11 +221,26 @@ export const pmApi = {
   reports() {
     return apiFetch("/pm/reports", { method: "GET" });
   },
-  reviewReport(reportId, { status, reason }) {
+  reviewReport(reportId, payload) {
     return apiFetch(`/pm/reports/${reportId}/review`, {
       method: "PATCH",
-      body: JSON.stringify({ status, reason }),
+      body: JSON.stringify(payload || {}),
     });
+  },
+  createAnnouncement({ title, content, priority, audienceRoles, pinned }) {
+    return apiFetch("/pm/announcements", {
+      method: "POST",
+      body: JSON.stringify({ title, content, priority, audienceRoles, pinned }),
+    });
+  },
+  updateAnnouncement(announcementId, patch) {
+    return apiFetch(`/pm/announcements/${announcementId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  },
+  deleteAnnouncement(announcementId) {
+    return apiFetch(`/pm/announcements/${announcementId}`, { method: "DELETE" });
   },
 };
 

@@ -1,6 +1,6 @@
-// HRSections.jsx - My code
+﻿// HRSections.jsx - My code
 import React, { useState, useEffect } from "react";
-import { EmailTemplateManager, processTemplateVariables } from "./EmailTemplateManager";
+import { EmailTemplateManager } from "./EmailTemplateManager";
 import { Edit, Trash2, Pin, Calendar } from "lucide-react";
 import {
   Clock, UserCheck, Users, Briefcase, CheckCircle2, FileText,
@@ -11,10 +11,11 @@ import { COLORS, GRADIENTS, keyframes, glassCardStyle, smallButtonStyle,
   emailInputStyle, emailPrimaryButtonStyle } from "./HRConstants";
   
 import {
-  StatMini, PendingCard, ActiveInternCard,
+  Modal, StatMini, PendingCard, ActiveInternCard,
   AnnouncementCard, EmptyState, SearchBar, DailyLogsReport,
   SummaryReport, TNAReport, AttendanceReport, PMPerformanceReport
 } from "./HRComponents";
+import { hrApi } from "../../lib/apiClient";
 
 import ReviewLogsPage from "./ReviewLogsPage";
 import ActiveInternsPage from "./ActiveInterns/ActiveInternsPage.jsx";
@@ -75,9 +76,19 @@ const INTERN_STATUS = {
 
 // ==================== DASHBOARD SECTION ====================
 // ==================== DASHBOARD SECTION (PM Style) ====================
-export function DashboardSection({ stats, currentHR, getGreeting, announcements = [], onCreateAnnouncement, onDeleteAnnouncement, onPinAnnouncement }) {
+export function DashboardSection({
+  stats,
+  analytics,
+  currentHR,
+  getGreeting,
+  announcements = [],
+  onCreateAnnouncement,
+  onDeleteAnnouncement,
+  onPinAnnouncement,
+}) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [formError, setFormError] = useState("");
   const [newAnnouncement, setNewAnnouncement] = useState({ 
     title: "", 
     content: "", 
@@ -86,9 +97,10 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
 
   const handleAddAnnouncement = () => {
     if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim()) {
-      alert("Please fill in all fields");
+      setFormError("Please fill in all fields before creating the announcement.");
       return;
     }
+    setFormError("");
     
     if (editingAnnouncement) {
       const updatedAnnouncement = {
@@ -104,7 +116,6 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
       );
       
       localStorage.setItem("announcements", JSON.stringify(updated));
-      alert("✅ Announcement updated successfully!");
       setEditingAnnouncement(null);
     } else {
       const announcement = { 
@@ -125,6 +136,7 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
 
   const handleEditAnnouncement = (announcement) => {
     setEditingAnnouncement(announcement);
+    setFormError("");
     setNewAnnouncement({
       title: announcement.title,
       content: announcement.content,
@@ -138,7 +150,6 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
   };
 
   const handleDeleteAnnouncement = (id) => {
-    if (!window.confirm("Are you sure you want to delete this announcement?")) return;
     onDeleteAnnouncement(id);
   };
 
@@ -181,6 +192,30 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
         <StatCard icon={<Briefcase size={24} />} label="Project Managers" value={stats?.pms || 0} color={COLORS.jungleTeal} delay={0.3} />
       </div>
 
+      {/* Analytics Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 24 }}>
+        <AnalyticsListCard
+          title="Domain Distribution"
+          emptyLabel="No domain data"
+          items={analytics?.charts?.domainWise || []}
+        />
+        <AnalyticsListCard
+          title="Monthly Trend"
+          emptyLabel="No monthly trend data"
+          items={(analytics?.charts?.monthlyTrend || []).map((entry) => ({ name: entry.month, count: entry.count }))}
+        />
+        <AnalyticsListCard
+          title="Top Colleges"
+          emptyLabel="No college data"
+          items={analytics?.charts?.topColleges || []}
+        />
+        <AnalyticsListCard
+          title="Department Spread"
+          emptyLabel="No department data"
+          items={analytics?.charts?.departmentWise || []}
+        />
+      </div>
+
       {/* Announcements - PM Style */}
       <div style={{ ...glassCardStyle, animation: "slideUp 0.5s ease 0.3s both" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -190,6 +225,7 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
           <button 
             onClick={() => {
               setEditingAnnouncement(null);
+              setFormError("");
               setNewAnnouncement({ title: "", content: "", priority: "medium" });
               setShowAddModal(true);
             }} 
@@ -355,10 +391,17 @@ export function DashboardSection({ stats, currentHR, getGreeting, announcements 
                 </div>
               </div>
 
+              {formError ? (
+                <div style={{ marginBottom: 14, color: COLORS.red, fontSize: 13 }}>
+                  {formError}
+                </div>
+              ) : null}
+
               <div style={{ display: "flex", gap: 12 }}>
                 <button 
                   onClick={() => {
                     setShowAddModal(false);
+                    setFormError("");
                     setEditingAnnouncement(null);
                   }} 
                   style={{ 
@@ -428,6 +471,42 @@ function StatCard({ icon, label, value, color, delay }) {
         <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.textPrimary, fontFamily: "'Inter', system-ui, sans-serif" }}>{value}</div>
         <div style={{ fontSize: 13, color: COLORS.textMuted }}>{label}</div>
       </div>
+    </div>
+  );
+}
+
+function AnalyticsListCard({ title, items = [], emptyLabel }) {
+  const top = (items || []).slice(0, 5);
+  const max = Math.max(1, ...top.map((entry) => Number(entry.count || 0)));
+  return (
+    <div style={{ ...glassCardStyle, padding: 18 }}>
+      <div style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{title}</div>
+      {top.length === 0 ? (
+        <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{emptyLabel}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {top.map((entry, index) => (
+            <div key={`${title}-${entry.name || index}`}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ color: COLORS.textSecondary, fontSize: 12, maxWidth: "74%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {entry.name || "-"}
+                </span>
+                <span style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: 700 }}>{entry.count || 0}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${Math.max(8, Math.round((Number(entry.count || 0) / max) * 100))}%`,
+                    height: "100%",
+                    borderRadius: 999,
+                    background: GRADIENTS.accent,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -568,376 +647,347 @@ function AnnouncementCardPM({ announcement, onDelete, onEdit, onPin }) {
   );
 }
 // ==================== APPROVAL SECTION ====================
-export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove, currentHR }) {
+export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove, onReject, onDataChanged }) {
   const [selectedIntern, setSelectedIntern] = useState(null);
-  const [internId, setInternId] = useState("");
   const [password, setPassword] = useState("");
-  const [pmCode, setPmCode] = useState("");
-  const [emailContent, setEmailContent] = useState("");
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [offerLetterPDF, setOfferLetterPDF] = useState(null);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [department, setDepartment] = useState("");
+  const [mentorName, setMentorName] = useState("");
+  const [stipend, setStipend] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
+  const [bulkRejectReason, setBulkRejectReason] = useState("");
+  const [bulkRejectError, setBulkRejectError] = useState("");
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsData, setDetailsData] = useState(null);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [approvalFeedback, setApprovalFeedback] = useState({
+    open: false,
+    title: "",
+    message: "",
+    tone: "info",
+  });
 
-  // Generate sequential Intern ID
-  const generateInternId = () => {
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    const existingInterns = users.filter(u => u.internId).map(u => u.internId);
-   
-    let maxNumber = 0;
-    existingInterns.forEach(id => {
-      const num = parseInt(id.replace("INT", ""));
-      if (num > maxNumber) maxNumber = num;
-    });
-   
-    const nextNumber = maxNumber + 1;
-    return `INT${String(nextNumber).padStart(3, "0")}`;
+  const openApprovalFeedback = ({ title, message, tone = "info" }) => {
+    setApprovalFeedback({ open: true, title, message, tone });
   };
 
-  // Generate 8-character password
   const generatePassword = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$";
-    let password = "";
-    for (let i = 0; i < 8; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$!";
+    let output = "";
+    for (let index = 0; index < 10; index += 1) output += chars.charAt(Math.floor(Math.random() * chars.length));
+    return output;
+  };
+
+  useEffect(() => {
+    const validIds = new Set((interns || []).map((intern) => String(intern.applicationId)));
+    setSelectedIds((prev) => prev.filter((id) => validIds.has(String(id))));
+    if (selectedIntern?.applicationId && !validIds.has(String(selectedIntern.applicationId))) {
+      setSelectedIntern(null);
     }
-    return password;
+  }, [interns, selectedIntern?.applicationId]);
+
+  const resetForm = () => {
+    setSelectedIntern(null);
+    setShowApproveConfirm(false);
+    setPassword("");
+    setStartDate("");
+    setEndDate("");
+    setDepartment("");
+    setMentorName("");
+    setStipend("");
   };
 
-  // Get approval email template
-  const getApprovalEmailTemplate = (intern, internId, password, pmCode) => {
-    const portalLink = `${window.location.origin}/`;
-   
-    return `Dear ${intern?.fullName || "[Name]"},
-
-Congratulations! 🎉
-
-We are pleased to inform you that you have been selected for our internship program at InternHub.
-
-YOUR CREDENTIALS:
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Login Email: ${intern?.email || "[Email]"}
-Password: ${password}
-Intern ID (reference): ${internId}
-PM Assignment: Pending (HR will assign PM code later)
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-NEXT STEPS:
-1. Visit the InternHub Portal: ${portalLink}
-2. Login with your Email and Password
-3. Complete your profile setup
-4. Review the attached Offer Letter carefully
-5. Your start date and further instructions will be shared soon
-
-📎 Please find your formal Offer Letter attached to this email.
-
-We are excited to have you on board!
-
-If you have any questions, please feel free to reach out to us.
-
-Best regards,
-HR Team
-InternHub`;
-  };
-
-  // ✅ NEW: Get rejection email template
-  const getRejectionEmailTemplate = (intern) => {
-    return `Dear ${intern?.fullName || "[Name]"},
-
-Thank you for your interest in the internship program at InternHub and for taking the time to apply.
-
-After careful consideration of all applications, we regret to inform you that we are unable to offer you a position in our current internship program.
-
-This decision was difficult as we received many qualified applications. We encourage you to continue developing your skills and to apply for future opportunities with us.
-
-We wish you the best of luck in your career endeavors.
-
-Best regards,
-HR Team
-InternHub`;
-  };
-
-  // Handle intern selection
   const handleInternSelect = (intern) => {
     setSelectedIntern(intern);
-    const newInternId = generateInternId();
-    const newPassword = generatePassword();
-    setInternId(newInternId);
-    setPassword(newPassword);
-    setPmCode("");
-    setEmailContent(getApprovalEmailTemplate(intern, newInternId, newPassword, "[PM Code]"));
-    setCc("");
-    setBcc("");
+    setPassword(generatePassword());
+    setStartDate("");
+    setEndDate("");
+    setDepartment(intern?.internshipDomain || intern?.degree || "");
+    setMentorName("");
+    setStipend("");
   };
 
-  // Regenerate password
-  const handleRegeneratePassword = () => {
-    const newPassword = generatePassword();
-    setPassword(newPassword);
-    setEmailContent(getApprovalEmailTemplate(selectedIntern, internId, newPassword, pmCode || "[PM Code]"));
-  };
-
-  // Update email template when PM code changes
-  const handlePmCodeChange = (value) => {
-    setPmCode(value);
-    setEmailContent(getApprovalEmailTemplate(selectedIntern, internId, password, value || "[PM Code]"));
-  };
-
-  // Handle offer letter template ready
-  const handleOfferLetterReady = (pdfData) => {
-    setOfferLetterPDF(pdfData);
-    console.log("📎 Offer letter PDF ready:", pdfData.filename);
-  };
-
-  // ✅ NEW: Handle rejection
-  const handleReject = async () => {
-    if (!selectedIntern) {
-      alert("⚠️ Please select an intern first");
+  const handleApprove = () => {
+    if (!selectedIntern?.applicationId) {
+      openApprovalFeedback({
+        title: "No selection",
+        message: "Please select an application first.",
+        tone: "error",
+      });
       return;
     }
+    if (!startDate || !endDate || !department.trim() || !mentorName.trim()) {
+      openApprovalFeedback({
+        title: "Missing fields",
+        message: "Start date, end date, department, and mentor name are required.",
+        tone: "error",
+      });
+      return;
+    }
+    if (!password.trim()) {
+      openApprovalFeedback({
+        title: "Missing password",
+        message: "Password is required.",
+        tone: "error",
+      });
+      return;
+    }
+    setShowApproveConfirm(true);
+  };
 
-    const rejectionEmail = getRejectionEmailTemplate(selectedIntern);
-
-    const confirmed = window.confirm(
-      `Send rejection email and remove intern from approval queue?\n\n` +
-      `To: ${selectedIntern.email}\n` +
-      `Name: ${selectedIntern.fullName}\n\n` +
-      `This action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    setIsSending(true);
-
+  const submitApprove = async () => {
+    if (!selectedIntern?.applicationId) return;
+    setShowApproveConfirm(false);
+    setIsSubmitting(true);
     try {
-      // Try to send rejection email
-      let emailSent = false;
-      try {
-        console.log("📧 Sending rejection email to:", selectedIntern.email);
-
-        const emailPayload = {
-          to: selectedIntern.email,
-          subject: "InternHub Internship Application Update",
-          html: rejectionEmail.replace(/\n/g, '<br>'),
-        };
-
-        const response = await fetch("/api/send-email", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(emailPayload),
-        });
-
-        if (response.ok) {
-          emailSent = true;
-          console.log("✅ Rejection email sent successfully!");
-        } else {
-          const errorData = await response.json();
-          console.warn("⚠️ Email failed:", errorData);
-        }
-      } catch (emailError) {
-        console.warn("⚠️ Email service unavailable:", emailError.message);
-      }
-
-      // Remove intern from users
-      const users = JSON.parse(localStorage.getItem("users") || "[]");
-      const updatedUsers = users.filter(u => u.email !== selectedIntern.email);
-      localStorage.setItem("users", JSON.stringify(updatedUsers));
-
-      const emailStatus = emailSent
-        ? "✅ Rejection email sent successfully!"
-        : "⚠️ Email could not be sent (check backend), but intern was removed.";
-
-      alert(
-        `✅ ${selectedIntern.fullName} has been REJECTED and removed.\n\n` +
-        `${emailStatus}`
-      );
-
-      // Reset form and trigger parent update
-      setSelectedIntern(null);
-      setInternId("");
-      setPassword("");
-      setPmCode("");
-      setEmailContent("");
-      setCc("");
-      setBcc("");
-      setOfferLetterPDF(null);
-
-      // Force page refresh to update the list
-      window.location.reload();
-
-    } catch (error) {
-      console.error("❌ Error:", error);
-      alert(`❌ Error: ${error.message}`);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  // ✅ FIXED: Complete approval function with proper email payload
-  const handleFinalApprove = async () => {
-    // Validation
-    if (!selectedIntern || !internId || !password) {
-      alert("⚠️ Error: Missing credentials. Please try again.");
-      return;
-    }
-
-    // PM Code is assigned after approval (HR will assign it later)
-
-    if (!emailContent.trim()) {
-      alert("⚠️ Email content cannot be empty");
-      return;
-    }
-
-    // Validate CC/BCC emails
-    if (cc && !validateMultipleEmails(cc)) {
-      alert("⚠️ Invalid CC email format. Use comma-separated emails:\nexample1@mail.com, example2@mail.com");
-      return;
-    }
-
-    if (bcc && !validateMultipleEmails(bcc)) {
-      alert("⚠️ Invalid BCC email format. Use comma-separated emails:\nexample1@mail.com, example2@mail.com");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Send approval email with offer letter and activate intern?\n\n` +
-      `To: ${selectedIntern.email}\n` +
-      `${cc ? `CC: ${cc}\n` : ''}` +
-      `${bcc ? `BCC: ${bcc}\n` : ''}` +
-      `\nIntern ID: ${internId}\n` +
-      `Password: ${password}\n` +
-      `Attachment: ${offerLetterPDF ? 'Offer Letter PDF ✓' : 'No attachment'}\n\n` +
-      `This will immediately activate the intern account.`
-    );
-
-    if (!confirmed) return;
-
-    setIsSending(true);
-
-    try {
-      // First approve in backend (creates Supabase auth user + profile), then email credentials
-      await onApprove({
+      const result = await onApprove({
         applicationId: selectedIntern.applicationId,
-        fullName: selectedIntern.fullName,
-        internId,
-        password,
+        startDate,
+        endDate,
+        department: department.trim(),
+        mentorName: mentorName.trim(),
+        stipend: stipend.trim() || null,
+        password: password.trim(),
+        sendEmail: true,
         showAlert: false,
       });
 
-      // Try to send email with offer letter attachment
-      let emailSent = false;
-      try {
-        console.log("📧 Sending approval email with offer letter to:", selectedIntern.email);
-       
-        // ✅ FIXED: Proper email format matching backend expectations
-        const emailPayload = {
-          to: selectedIntern.email,
-          subject: "🎉 Congratulations! InternHub Selection - Offer Letter Attached",
-          html: emailContent.replace(/\n/g, '<br>'), // Convert plain text to HTML
-        };
-
-        // Add CC/BCC if provided
-        if (cc) emailPayload.cc = cc;
-        if (bcc) emailPayload.bcc = bcc;
-
-        // Add attachment if available
-        if (offerLetterPDF && offerLetterPDF.pdfBase64) {
-          emailPayload.attachments = [
-            {
-              filename: offerLetterPDF.filename,
-              content: offerLetterPDF.pdfBase64,
-            }
-          ];
-        }
-
-        console.log("📨 Email payload prepared:", {
-          to: emailPayload.to,
-          hasAttachment: !!emailPayload.attachments
-        });
-
-        const response = await fetch("/api/send-email", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(emailPayload),
-        });
-
-        if (response.ok) {
-          emailSent = true;
-          console.log("✅ Email with offer letter sent successfully!");
-        } else {
-          const errorData = await response.json();
-          console.warn("⚠️ Email failed:", errorData);
-        }
-      } catch (emailError) {
-        console.warn("⚠️ Email service unavailable:", emailError.message);
-      }
-
-      // ALWAYS approve and move to active
-      const updatedIntern = {
-        ...selectedIntern,
-        internId: internId,
-        password: password,
-        pmCode: pmCode || null,
-        status: INTERN_STATUS.ACTIVE,
-        approvedAt: new Date().toISOString(),
-        approvedBy: currentHR?.email || "HR",
-        credentialsSent: emailSent,
-        emailSentAt: emailSent ? new Date().toISOString() : null,
-        offerLetterSent: offerLetterPDF ? true : false,
-        offerLetterPDF: offerLetterPDF || null,
-      };
-
-      // (Backend approval already done above)
-
-      const emailStatus = emailSent
-        ? "✅ Email with offer letter sent successfully!"
-        : "⚠️ Email could not be sent (check backend), but intern was approved.";
-
-      alert(
-        `✅ ${selectedIntern.fullName} has been APPROVED and ACTIVATED!\n\n` +
-        `${emailStatus}\n\n` +
-        `Intern ID: ${internId}\n` +
-        `Password: ${password}\n` +
-        `PM Assignment: Pending (HR will assign PM code later)\n` +
-        `Offer Letter: ${offerLetterPDF ? 'Attached ✓' : 'Not attached'}\n\n` +
-        `The intern can now login and complete their profile.`
-      );
-
-      // Reset form
-      setSelectedIntern(null);
-      setInternId("");
-      setPassword("");
-      setPmCode("");
-      setEmailContent("");
-      setCc("");
-      setBcc("");
-      setOfferLetterPDF(null);
-
-    } catch (error) {
-      console.error("❌ Error:", error);
-      alert(`❌ Error: ${error.message}`);
+      const resolvedInternId = result?.intern?.internId || "Generated";
+      const resolvedPassword = result?.credentials?.password || password;
+      const emailStatus = result?.emailSent ? "Approval email sent." : "Approval done (email not sent).";
+      openApprovalFeedback({
+        title: "Approved successfully",
+        message: `Intern ID: ${resolvedInternId}\nPassword: ${resolvedPassword}\n${emailStatus}`,
+        tone: "success",
+      });
+      resetForm();
+      if (typeof onDataChanged === "function") await onDataChanged();
+    } catch (err) {
+      openApprovalFeedback({
+        title: "Approval failed",
+        message: err?.message || "Failed to approve application.",
+        tone: "error",
+      });
     } finally {
-      setIsSending(false);
+      setIsSubmitting(false);
     }
   };
 
-  // Get all available PMs
-  const allPMs = JSON.parse(localStorage.getItem("users") || "[]").filter(u => u.role === "pm");
+  const handleReject = () => {
+    if (!selectedIntern) {
+      openApprovalFeedback({
+        title: "No selection",
+        message: "Please select an application first.",
+        tone: "error",
+      });
+      return;
+    }
+    if (typeof onReject === "function") {
+      onReject(selectedIntern);
+      return;
+    }
+    openApprovalFeedback({
+      title: "Action unavailable",
+      message: "Reject handler is not configured.",
+      tone: "error",
+    });
+  };
+
+  const toggleSelect = (applicationId, checked) => {
+    const id = String(applicationId);
+    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((value) => value !== id)));
+  };
+
+  const toggleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedIds([]);
+      return;
+    }
+    const all = (interns || []).map((intern) => String(intern.applicationId)).filter(Boolean);
+    setSelectedIds(all);
+  };
+
+  const executeBulkAction = async (action, explicitReason = "") => {
+    if (!selectedIds.length) {
+      openApprovalFeedback({
+        title: "No selection",
+        message: "Select at least one application.",
+        tone: "error",
+      });
+      return;
+    }
+
+    const payload = { applicationIds: selectedIds, action };
+    if (action === "approve") {
+      if (!startDate || !endDate || !department.trim() || !mentorName.trim()) {
+        openApprovalFeedback({
+          title: "Missing fields",
+          message: "For bulk approve, fill start date, end date, department, and mentor in the right panel first.",
+          tone: "error",
+        });
+        return;
+      }
+      payload.startDate = startDate;
+      payload.endDate = endDate;
+      payload.department = department.trim();
+      payload.mentorName = mentorName.trim();
+      payload.stipend = stipend.trim() || null;
+    }
+    if (action === "reject") {
+      const reason = String(explicitReason || "").trim();
+      if (!reason) {
+        setBulkRejectReason("");
+        setBulkRejectError("");
+        setShowBulkRejectModal(true);
+        return;
+      }
+      payload.rejectionReason = reason;
+    }
+
+    setBulkSubmitting(true);
+    try {
+      const response = await hrApi.bulkApplicationStatus(payload);
+      const rows = response?.results || [];
+      const successCount = rows.filter((row) => row.success).length;
+      const failed = rows.filter((row) => !row.success);
+      if (failed.length > 0) {
+        const summary = failed
+          .slice(0, 3)
+          .map((row) => `• ${row.applicationId}: ${row.error || "Failed"}`)
+          .join("\n");
+        openApprovalFeedback({
+          title: "Bulk action completed with issues",
+          message: `Success: ${successCount}\nFailed: ${failed.length}\n${summary ? `\n${summary}` : ""}`,
+          tone: "error",
+        });
+      } else {
+        openApprovalFeedback({
+          title: "Bulk action completed",
+          message: `Completed successfully for ${successCount} applications.`,
+          tone: "success",
+        });
+      }
+      setSelectedIds([]);
+      if (typeof onDataChanged === "function") await onDataChanged();
+    } catch (error) {
+      openApprovalFeedback({
+        title: "Bulk action failed",
+        message: error?.message || "Bulk action failed.",
+        tone: "error",
+      });
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const openDetails = async (intern) => {
+    if (!intern?.applicationId) return;
+    setShowDetails(true);
+    setDetailsLoading(true);
+    setDetailsData(null);
+    setNotesDraft("");
+    try {
+      const response = await hrApi.applicationById(intern.applicationId);
+      setDetailsData(response || null);
+      setNotesDraft(response?.application?.hrNotes || "");
+    } catch (error) {
+      openApprovalFeedback({
+        title: "Failed to load details",
+        message: error?.message || "Failed to load application details.",
+        tone: "error",
+      });
+      setShowDetails(false);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const saveNotes = async () => {
+    const applicationId = detailsData?.application?.id;
+    if (!applicationId) return;
+    setNotesSaving(true);
+    try {
+      await hrApi.updateApplicationNotes(applicationId, notesDraft);
+      setDetailsData((prev) => ({
+        ...(prev || {}),
+        application: { ...(prev?.application || {}), hrNotes: notesDraft },
+      }));
+      if (typeof onDataChanged === "function") await onDataChanged();
+      openApprovalFeedback({
+        title: "Notes saved",
+        message: "HR notes updated successfully.",
+        tone: "success",
+      });
+    } catch (error) {
+      openApprovalFeedback({
+        title: "Failed to save notes",
+        message: error?.message || "Failed to save notes.",
+        tone: "error",
+      });
+    } finally {
+      setNotesSaving(false);
+    }
+  };
+
+  const allVisibleSelected = interns.length > 0 && selectedIds.length === interns.length;
+
+  const submitBulkReject = async () => {
+    const reason = String(bulkRejectReason || "").trim();
+    if (!reason) {
+      setBulkRejectError("Rejection reason is required.");
+      return;
+    }
+    setShowBulkRejectModal(false);
+    await executeBulkAction("reject", reason);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h2 style={{ fontSize: 24, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
-            Approval Center
-          </h2>
-          <p style={{ color: COLORS.textMuted, marginTop: 4 }}>
-            {interns.length} interns awaiting final approval
-          </p>
+          <h2 style={{ fontSize: 24, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>Approval Center</h2>
+          <p style={{ color: COLORS.textMuted, marginTop: 4 }}>{interns.length} interns awaiting final approval</p>
         </div>
-        <SearchBar value={searchTerm || ''} onChange={setSearchTerm} placeholder="Search pending interns..." />
+        <SearchBar value={searchTerm || ""} onChange={setSearchTerm} placeholder="Search pending interns..." />
+      </div>
+
+      <div style={{ ...glassCardStyle, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.textSecondary, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={(event) => toggleSelectAll(event.target.checked)}
+            style={{ width: 16, height: 16, accentColor: COLORS.jungleTeal }}
+          />
+          Select all visible
+        </label>
+        <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{selectedIds.length} selected</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => executeBulkAction("under_review")} disabled={!selectedIds.length || bulkSubmitting} style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12 }}>
+            Mark Under Review
+          </button>
+          <button
+            onClick={() => executeBulkAction("reject")}
+            disabled={!selectedIds.length || bulkSubmitting}
+            style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12, borderColor: "rgba(239,68,68,0.45)", color: COLORS.red }}
+          >
+            Bulk Reject
+          </button>
+          <button
+            onClick={() => executeBulkAction("approve")}
+            disabled={!selectedIds.length || bulkSubmitting}
+            style={{ ...primaryButtonStyle, padding: "8px 12px", fontSize: 12, background: GRADIENTS.accent, opacity: !selectedIds.length || bulkSubmitting ? 0.6 : 1 }}
+          >
+            Bulk Approve
+          </button>
+        </div>
       </div>
 
       {interns.length === 0 ? (
@@ -945,292 +995,408 @@ InternHub`;
           <EmptyState icon={<Check size={48} />} message="No pending approvals" subMessage="All caught up!" />
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 24 }}>
-          {/* Left: Intern List - ✅ FIXED: Added unique keys */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 24 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {interns.map((intern, idx) => (
-              <div
-                key={intern.email || `intern-${idx}`}
-                onClick={() => handleInternSelect(intern)}
-                style={{
-                  ...glassCardStyle,
-                  padding: 16,
-                  cursor: "pointer",
-                  borderTop: `2px solid ${selectedIntern?.email === intern.email ? COLORS.emeraldGlow : COLORS.borderGlass}`,
-                  borderRight: `2px solid ${selectedIntern?.email === intern.email ? COLORS.emeraldGlow : COLORS.borderGlass}`,
-                  borderBottom: `2px solid ${selectedIntern?.email === intern.email ? COLORS.emeraldGlow : COLORS.borderGlass}`,
-                  borderLeft: `4px solid ${COLORS.emeraldGlow}`,
-                  transition: "all 0.2s",
-                  background: selectedIntern?.email === intern.email ? `${COLORS.emeraldGlow}15` : COLORS.surfaceGlass,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{
-                    width: 48, height: 48, borderRadius: "50%",
-                    background: GRADIENTS.emerald,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontWeight: 700, color: "white", fontSize: 16,
-                  }}>
-                    {intern.fullName?.charAt(0) || "?"}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 15 }}>
-                      {intern.fullName}
+            {interns.map((intern, index) => {
+              const checked = selectedIds.includes(String(intern.applicationId));
+              return (
+                <div
+                  key={intern.applicationId || intern.email || `pending-${index}`}
+                  onClick={() => handleInternSelect(intern)}
+                  style={{
+                    ...glassCardStyle,
+                    padding: 16,
+                    cursor: "pointer",
+                    borderTop: `2px solid ${selectedIntern?.applicationId === intern.applicationId ? COLORS.emeraldGlow : COLORS.borderGlass}`,
+                    borderRight: `2px solid ${selectedIntern?.applicationId === intern.applicationId ? COLORS.emeraldGlow : COLORS.borderGlass}`,
+                    borderBottom: `2px solid ${selectedIntern?.applicationId === intern.applicationId ? COLORS.emeraldGlow : COLORS.borderGlass}`,
+                    borderLeft: `4px solid ${checked ? COLORS.cyanHighlight : COLORS.emeraldGlow}`,
+                    transition: "all 0.2s",
+                    background:
+                      selectedIntern?.applicationId === intern.applicationId ? `${COLORS.emeraldGlow}15` : COLORS.surfaceGlass,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => toggleSelect(intern.applicationId, event.target.checked)}
+                      onClick={(event) => event.stopPropagation()}
+                      style={{ width: 16, height: 16, accentColor: COLORS.jungleTeal }}
+                    />
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: "50%",
+                        background: GRADIENTS.emerald,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        color: "white",
+                      }}
+                    >
+                      {(intern.fullName || "?").charAt(0)}
                     </div>
-                    <div style={{ fontSize: 13, color: COLORS.textMuted }}>{intern.email}</div>
-                    <div style={{ fontSize: 12, color: COLORS.emeraldGlow, marginTop: 4 }}>{intern.degree}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 15 }}>{intern.fullName || "Intern"}</div>
+                      <div style={{ fontSize: 13, color: COLORS.textMuted, overflow: "hidden", textOverflow: "ellipsis" }}>{intern.email}</div>
+                      <div style={{ fontSize: 12, color: COLORS.emeraldGlow, marginTop: 4 }}>{intern.internshipDomain || intern.degree || "-"}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openDetails(intern);
+                      }}
+                      style={{ ...secondaryButtonStyle, padding: "8px 10px", fontSize: 12 }}
+                    >
+                      Details
+                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {/* Right: Approval Form */}
           <div style={glassCardStyle}>
             {!selectedIntern ? (
-              <EmptyState
-                icon={<User size={48} />}
-                message="Select an intern to approve"
-                subMessage="Click on any intern from the list"
-              />
+              <EmptyState icon={<User size={48} />} message="Select an intern to approve" subMessage="Choose from the left list" />
             ) : (
-              <div>
-                <h3 style={{ fontSize: 18, fontWeight: 600, color: COLORS.textPrimary, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-                  <Mail size={20} color={COLORS.emeraldGlow} />
-                  Approve & Activate Intern
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <h3 style={{ fontSize: 18, fontWeight: 600, color: COLORS.textPrimary, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  <Mail size={18} color={COLORS.emeraldGlow} />
+                  Approve Application
                 </h3>
 
-                {/* Intern Info */}
-                <div style={{ marginBottom: 16, padding: 14, background: COLORS.surfaceGlass, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
-                  <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 6 }}>To:</div>
-                  <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 16 }}>{selectedIntern.fullName}</div>
-                  <div style={{ fontSize: 13, color: COLORS.emeraldGlow, marginTop: 2 }}>{selectedIntern.email}</div>
-                  <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }}>{selectedIntern.degree}</div>
+                <div style={{ padding: 14, background: COLORS.surfaceGlass, borderRadius: 12, border: `1px solid ${COLORS.borderGlass}` }}>
+                  <div style={{ fontWeight: 600, color: COLORS.textPrimary }}>{selectedIntern.fullName}</div>
+                  <div style={{ fontSize: 13, color: COLORS.emeraldGlow }}>{selectedIntern.email}</div>
                 </div>
 
-                {/* Credentials Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  {/* Intern ID - ✅ FIXED: Controlled input */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                      Intern ID
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <User size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: COLORS.emeraldGlow }} />
-                      <input
-                        type="text"
-                        value={internId || ''}
-                        readOnly
-                        style={{ ...inputStyle, paddingLeft: 40, background: COLORS.surfaceGlass, fontWeight: 600, color: COLORS.emeraldGlow }}
-                      />
-                    </div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Start Date *</label>
+                    <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} style={inputStyle} />
                   </div>
-
-                  {/* Password - ✅ FIXED: Controlled input */}
                   <div>
-                    <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                      Password
-                      <button
-                        onClick={handleRegeneratePassword}
-                        style={{
-                          padding: "4px 8px",
-                          background: "transparent",
-                          border: `1px solid ${COLORS.borderGlass}`,
-                          borderRadius: 6,
-                          color: COLORS.textSecondary,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          fontSize: 11,
-                        }}
-                      >
-                        <RefreshCw size={12} /> New
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>End Date *</label>
+                    <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Department *</label>
+                    <input value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="Engineering" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Mentor Name *</label>
+                    <input value={mentorName} onChange={(event) => setMentorName(event.target.value)} placeholder="Mentor name" style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Stipend (optional)</label>
+                    <input value={stipend} onChange={(event) => setStipend(event.target.value)} placeholder="e.g. 15000" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>
+                      Portal Password *
+                      <button onClick={() => setPassword(generatePassword())} type="button" style={{ border: "none", background: "transparent", color: COLORS.emeraldGlow, cursor: "pointer", fontSize: 12 }}>
+                        Regenerate
                       </button>
                     </label>
-                    <div style={{ position: "relative" }}>
-                      <Lock size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: COLORS.orange }} />
-                      <input
-                        type="text"
-                        value={password || ''}
-                        readOnly
-                        style={{ ...inputStyle, paddingLeft: 40, background: COLORS.surfaceGlass, fontWeight: 600, color: COLORS.orange, fontFamily: "monospace" }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* PM Code - ✅ FIXED: Controlled input */}
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                      PM Code (optional)
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <Key size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: COLORS.jungleTeal }} />
-                      <input
-                        type="text"
-                        placeholder="PM001"
-                        value={pmCode || ''}
-                        onChange={(e) => handlePmCodeChange(e.target.value.toUpperCase())}
-                        style={{ ...inputStyle, paddingLeft: 40 }}
-                      />
-                    </div>
+                    <input value={password} onChange={(event) => setPassword(event.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
                   </div>
                 </div>
 
-                {/* Available PMs - ✅ FIXED: Added unique keys */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>Available PM Codes (click to select):</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {allPMs.map(pm => (
-                      <button
-                        key={pm.pmCode || pm.email}
-                        onClick={() => handlePmCodeChange(pm.pmCode)}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: 8,
-                          border: `1px solid ${pmCode === pm.pmCode ? COLORS.jungleTeal : COLORS.borderGlass}`,
-                          background: pmCode === pm.pmCode ? `${COLORS.jungleTeal}20` : COLORS.surfaceGlass,
-                          color: pmCode === pm.pmCode ? COLORS.jungleTeal : COLORS.textSecondary,
-                          fontSize: 12,
-                          cursor: "pointer",
-                          transition: "all 0.2s",
-                        }}
-                      >
-                        {pm.pmCode} - {pm.fullName}
-                      </button>
-                    ))}
-                  </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+                  Intern ID is generated by backend in EDCS-YYYY-### format. PM assignment is handled after approval.
                 </div>
 
-                {/* EMAIL TEMPLATE MANAGER - OFFER LETTER */}
-                <EmailTemplateManager
-                  internData={{
-                    internName: selectedIntern?.fullName,
-                    internEmail: selectedIntern?.email,
-                    internId: internId,
-                    password: password,
-                    pmCode: pmCode,
-                    domain: selectedIntern?.internshipDomain || selectedIntern?.degree,
-                    duration: selectedIntern?.preferredDuration || '3 months',
-                    startDate: 'To be announced',
-                    hrName: currentHR?.fullName || 'HR Manager'
-                  }}
-                  onTemplateReady={handleOfferLetterReady}
-                />
-
-                {/* CC and BCC Fields - ✅ FIXED: Controlled inputs */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                      CC (optional, comma-separated)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="email1@ex.com, email2@ex.com"
-                      value={cc || ''}
-                      onChange={(e) => setCc(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                      BCC (optional, comma-separated)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="email1@ex.com, email2@ex.com"
-                      value={bcc || ''}
-                      onChange={(e) => setBcc(e.target.value)}
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
-
-                {/* Email Content - ✅ FIXED: Controlled input */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary, fontWeight: 500 }}>
-                    Email Message
-                  </label>
-                  <textarea
-                    value={emailContent || ''}
-                    onChange={(e) => setEmailContent(e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      minHeight: 200,
-                      resize: "vertical",
-                      fontFamily: "monospace",
-                      fontSize: 12,
-                      lineHeight: 1.5,
-                    }}
-                  />
-                </div>
-
-                {/* Action Buttons - ✅ ADDED REJECT BUTTON */}
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                   <button
-                    onClick={handleFinalApprove}
-                    disabled={isSending}
+                    onClick={handleApprove}
+                    disabled={isSubmitting}
                     style={{
                       ...primaryButtonStyle,
                       flex: 1,
                       background: GRADIENTS.emerald,
-                      opacity: isSending ? 0.6 : 1,
-                      cursor: isSending ? "not-allowed" : "pointer",
+                      opacity: isSubmitting ? 0.7 : 1,
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    <Send size={16} /> {isSending ? "Processing..." : "Approve & Activate"}
+                    <Send size={16} /> {isSubmitting ? "Approving..." : "Approve"}
                   </button>
-                  
                   <button
                     onClick={handleReject}
-                    disabled={isSending}
+                    disabled={isSubmitting}
                     style={{
                       ...primaryButtonStyle,
                       background: `linear-gradient(135deg, ${COLORS.red}, #dc2626)`,
-                      opacity: isSending ? 0.6 : 1,
-                      cursor: isSending ? "not-allowed" : "pointer",
+                      opacity: isSubmitting ? 0.7 : 1,
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
                     <X size={16} /> Reject
                   </button>
-                  
-                  <button
-                    onClick={() => {
-                      setSelectedIntern(null);
-                      setInternId("");
-                      setPassword("");
-                      setPmCode("");
-                      setEmailContent("");
-                      setCc("");
-                      setBcc("");
-                      setOfferLetterPDF(null);
-                    }}
-                    style={{
-                      ...secondaryButtonStyle,
-                      padding: "12px 20px",
-                    }}
-                  >
-                    <X size={16} /> Cancel
+                  <button onClick={resetForm} style={secondaryButtonStyle}>
+                    <X size={16} /> Clear
                   </button>
-                </div>
-
-                {/* Info Box */}
-                <div style={{
-                  marginTop: 16,
-                  padding: 12,
-                  background: `${COLORS.jungleTeal}15`,
-                  borderRadius: 10,
-                  border: `1px solid ${COLORS.jungleTeal}`,
-                }}>
-                  <p style={{ fontSize: 12, color: COLORS.textSecondary, margin: 0 }}>
-                    💡 <strong>Actions:</strong> <span style={{ color: COLORS.emeraldGlow }}>Approve</span> sends credentials + offer letter and activates the intern. <span style={{ color: COLORS.red }}>Reject</span> sends rejection email and removes the intern permanently.
-                  </p>
                 </div>
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {showDetails && (
+        <div
+          onClick={() => !detailsLoading && setShowDetails(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.65)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2200,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(920px, 96vw)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              borderRadius: 16,
+              padding: 20,
+              background: COLORS.bgSecondary,
+              border: `1px solid ${COLORS.borderGlass}`,
+            }}
+          >
+            {detailsLoading ? (
+              <div style={{ color: COLORS.textSecondary }}>Loading application details...</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Application Detail</h3>
+                  <button onClick={() => setShowDetails(false)} style={{ ...secondaryButtonStyle, padding: "8px 12px" }}>
+                    Close
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                  <DetailItem label="Name" value={detailsData?.application?.applicantName || "-"} />
+                  <DetailItem label="Email" value={detailsData?.application?.email || "-"} />
+                  <DetailItem label="Phone" value={detailsData?.application?.phone || "-"} />
+                  <DetailItem label="College" value={detailsData?.application?.college || "-"} />
+                  <DetailItem label="Domain" value={detailsData?.application?.domain || "-"} />
+                  <DetailItem label="CGPA" value={detailsData?.application?.cgpa ?? "-"} />
+                  <DetailItem label="Status" value={detailsData?.application?.status || "-"} />
+                  <DetailItem label="Submitted" value={detailsData?.application?.submittedAt ? new Date(detailsData.application.submittedAt).toLocaleString() : "-"} />
+                  <DetailItem
+                    label="Resume"
+                    value={detailsData?.application?.resumeUrl ? "Open" : "-"}
+                    link={detailsData?.application?.resumeUrl || ""}
+                  />
+                </div>
+
+                <div style={{ ...glassCardStyle, padding: 14 }}>
+                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 8 }}>HR Notes</div>
+                  <textarea
+                    value={notesDraft}
+                    onChange={(event) => setNotesDraft(event.target.value)}
+                    placeholder="Write review notes..."
+                    rows={5}
+                    style={{ ...inputStyle, resize: "vertical", minHeight: 110 }}
+                  />
+                  <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                    <button onClick={saveNotes} disabled={notesSaving} style={{ ...primaryButtonStyle, padding: "10px 14px", background: GRADIENTS.accent, opacity: notesSaving ? 0.65 : 1 }}>
+                      {notesSaving ? "Saving..." : "Save Notes"}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ ...glassCardStyle, padding: 14 }}>
+                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 10 }}>Status Timeline</div>
+                  {(detailsData?.timeline || []).length === 0 ? (
+                    <div style={{ color: COLORS.textMuted, fontSize: 13 }}>No timeline events yet.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {detailsData.timeline.map((item) => (
+                        <div key={item.id} style={{ padding: 10, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.03)" }}>
+                          <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>
+                            {item.fromStatus || "new"} → {item.toStatus}
+                          </div>
+                          <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                            {item.changedAt ? new Date(item.changedAt).toLocaleString() : "-"}
+                            {item.changedBy?.fullName ? ` • ${item.changedBy.fullName}` : ""}
+                          </div>
+                          {item.reason ? <div style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 4 }}>Reason: {item.reason}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showApproveConfirm && selectedIntern && (
+        <Modal onClose={() => (!isSubmitting ? setShowApproveConfirm(false) : null)}>
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 22, fontWeight: 700 }}>
+            Confirm Approval
+          </h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 16 }}>
+            Approve <strong>{selectedIntern.fullName}</strong> with these details:
+          </p>
+          <div style={{ ...glassCardStyle, padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Start Date</div>
+            <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>{startDate}</div>
+            <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>End Date</div>
+            <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>{endDate}</div>
+            <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Department</div>
+            <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>{department}</div>
+            <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Mentor</div>
+            <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>{mentorName}</div>
+            <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Stipend</div>
+            <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>{stipend || "N/A"}</div>
+          </div>
+          <p style={{ color: COLORS.textMuted, marginTop: 12, marginBottom: 16, fontSize: 12 }}>
+            Account credentials will be created automatically.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              onClick={() => setShowApproveConfirm(false)}
+              disabled={isSubmitting}
+              style={{ ...secondaryButtonStyle, padding: "10px 14px", opacity: isSubmitting ? 0.6 : 1 }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitApprove}
+              disabled={isSubmitting}
+              style={{
+                ...primaryButtonStyle,
+                padding: "10px 14px",
+                background: GRADIENTS.emerald,
+                opacity: isSubmitting ? 0.6 : 1,
+              }}
+            >
+              {isSubmitting ? "Approving..." : "Confirm Approve"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showBulkRejectModal && (
+        <Modal onClose={() => (!bulkSubmitting ? setShowBulkRejectModal(false) : null)}>
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Reject selected applications</h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 14, fontSize: 14 }}>
+            Enter one rejection reason for all selected applications.
+          </p>
+          <textarea
+            value={bulkRejectReason}
+            onChange={(event) => {
+              setBulkRejectReason(event.target.value);
+              if (bulkRejectError) setBulkRejectError("");
+            }}
+            rows={5}
+            placeholder="Reason is required..."
+            style={{ ...inputStyle, resize: "vertical", minHeight: 120 }}
+          />
+          {bulkRejectError ? (
+            <div style={{ marginTop: 8, color: COLORS.red, fontSize: 12 }}>{bulkRejectError}</div>
+          ) : null}
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              onClick={() => setShowBulkRejectModal(false)}
+              disabled={bulkSubmitting}
+              style={{ ...secondaryButtonStyle, padding: "10px 14px", opacity: bulkSubmitting ? 0.6 : 1 }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitBulkReject}
+              disabled={bulkSubmitting}
+              style={{
+                ...primaryButtonStyle,
+                padding: "10px 14px",
+                background: COLORS.red,
+                opacity: bulkSubmitting ? 0.6 : 1,
+              }}
+            >
+              {bulkSubmitting ? "Rejecting..." : "Confirm Reject"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {approvalFeedback.open && (
+        <Modal
+          onClose={() =>
+            setApprovalFeedback({
+              open: false,
+              title: "",
+              message: "",
+              tone: "info",
+            })
+          }
+        >
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>
+            {approvalFeedback.title || "Update"}
+          </h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 16, whiteSpace: "pre-line" }}>
+            {approvalFeedback.message}
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() =>
+                setApprovalFeedback({
+                  open: false,
+                  title: "",
+                  message: "",
+                  tone: "info",
+                })
+              }
+              style={{
+                ...primaryButtonStyle,
+                padding: "10px 16px",
+                background:
+                  approvalFeedback.tone === "success"
+                    ? COLORS.emeraldGlow
+                    : approvalFeedback.tone === "error"
+                      ? COLORS.red
+                      : GRADIENTS.accent,
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function DetailItem({ label, value, link }) {
+  return (
+    <div style={{ padding: 10, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.03)" }}>
+      <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>{label}</div>
+      {link ? (
+        <a href={link} target="_blank" rel="noreferrer" style={{ color: COLORS.cyanHighlight, fontSize: 13, textDecoration: "none" }}>
+          {value}
+        </a>
+      ) : (
+        <div style={{ fontSize: 13, color: COLORS.textPrimary, overflowWrap: "anywhere" }}>{value}</div>
       )}
     </div>
   );
@@ -1268,7 +1434,7 @@ export function ActiveInternsSection({
         />
       </div>
 
-      {/* Filters - ✅ FIXED: Controlled inputs */}
+      {/* Filters */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <select value={filterPM || ''} onChange={(e) => setFilterPM(e.target.value)} style={inputStyle}>
           <option value="">All PMs</option>
@@ -1286,7 +1452,7 @@ export function ActiveInternsSection({
         </select>
       </div>
 
-      {/* List - ✅ FIXED: Added unique keys */}
+      {/* List */}
       {interns.length === 0 ? (
         <div style={glassCardStyle}>
           <EmptyState icon={<Users size={48} />} message="No active interns" />
@@ -1309,7 +1475,15 @@ export function ActiveInternsSection({
 }
 
 // ==================== NEW REGISTRATIONS SECTION ====================
-export function NewRegistrationsSection({ interns, searchTerm, setSearchTerm, onApprove, onReject }) {
+export function NewRegistrationsSection({
+  interns,
+  searchTerm,
+  setSearchTerm,
+  onApprove,
+  onReject,
+  onBulkMoveToApproval,
+  onBulkReject,
+}) {
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [emailContent, setEmailContent] = useState("");
   const [cc, setCc] = useState("");
@@ -1318,6 +1492,23 @@ export function NewRegistrationsSection({ interns, searchTerm, setSearchTerm, on
   const [meetingTime, setMeetingTime] = useState("");
   const [meetingLink, setMeetingLink] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsData, setDetailsData] = useState(null);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
+  const [bulkRejectReason, setBulkRejectReason] = useState("");
+  const [bulkRejectError, setBulkRejectError] = useState("");
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const [bulkFeedback, setBulkFeedback] = useState({
+    open: false,
+    title: "",
+    message: "",
+    tone: "info",
+  });
 
   const getDefaultEmailTemplate = (intern, date = "[To be scheduled]", time = "", link = "") => {
     const dateTimeText = date !== "[To be scheduled]"
@@ -1325,8 +1516,8 @@ export function NewRegistrationsSection({ interns, searchTerm, setSearchTerm, on
       : date;
    
     const linkText = link
-      ? `🔗 Meeting Link: ${link}`
-      : "🔗 Meeting Link: [Will be shared shortly]";
+      ? `Meeting Link: ${link}`
+      : "Meeting Link: [Will be shared shortly]";
 
     return `Dear ${intern?.fullName || "[Intern Name]"},
 
@@ -1334,11 +1525,11 @@ Thank you for your application to our internship program. We have carefully revi
 
 We would like to schedule a meeting with you to discuss the next steps and learn more about your interests.
 
-📅 MEETING DETAILS:
-━━━━━━━━━━━━━━━━━━━━━━━━━
+MEETING DETAILS:
+-------------------------
 Date & Time: ${dateTimeText}
 ${linkText}
-━━━━━━━━━━━━━━━━━━━━━━━━━
+-------------------------
 
 Please confirm your availability by replying to this email.
 
@@ -1364,7 +1555,16 @@ InternHub`;
     }
   }, [meetingDate, meetingTime, meetingLink, selectedIntern]);
 
-  const handleInternSelect = (intern) => {
+  useEffect(() => {
+    const valid = new Set((interns || []).map((intern) => String(intern.applicationId || intern.email || "")));
+    setSelectedIds((prev) => prev.filter((id) => valid.has(String(id))));
+    if (selectedIntern) {
+      const key = String(selectedIntern.applicationId || selectedIntern.email || "");
+      if (!valid.has(key)) setSelectedIntern(null);
+    }
+  }, [interns, selectedIntern]);
+
+  const handleInternSelect = async (intern, options = {}) => {
     setSelectedIntern(intern);
     setEmailContent(getDefaultEmailTemplate(intern));
     setCc("");
@@ -1372,12 +1572,74 @@ InternHub`;
     setMeetingDate("");
     setMeetingTime("");
     setMeetingLink("");
+
+    if (options.openDetails && intern?.applicationId) {
+      await openDetails(intern);
+    }
   };
 
-  // ✅ ADD THIS FUNCTION - View Application PDF
+  const openDetails = async (intern) => {
+    if (!intern?.applicationId) {
+      openBulkFeedback({
+        title: "Details unavailable",
+        message: "Application details are unavailable for this record.",
+        tone: "error",
+      });
+      return;
+    }
+    setShowDetails(true);
+    setDetailsLoading(true);
+    setDetailsData(null);
+    setNotesDraft("");
+    try {
+      const response = await hrApi.applicationById(intern.applicationId);
+      setDetailsData(response || null);
+      setNotesDraft(response?.application?.hrNotes || "");
+    } catch (error) {
+      openBulkFeedback({
+        title: "Failed to load details",
+        message: error?.message || "Failed to load application details.",
+        tone: "error",
+      });
+      setShowDetails(false);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const saveNotes = async () => {
+    const applicationId = detailsData?.application?.id;
+    if (!applicationId) return;
+    setNotesSaving(true);
+    try {
+      await hrApi.updateApplicationNotes(applicationId, notesDraft);
+      setDetailsData((prev) => ({
+        ...(prev || {}),
+        application: { ...(prev?.application || {}), hrNotes: notesDraft },
+      }));
+      openBulkFeedback({
+        title: "Notes saved",
+        message: "HR notes updated successfully.",
+        tone: "success",
+      });
+    } catch (error) {
+      openBulkFeedback({
+        title: "Failed to save notes",
+        message: error?.message || "Failed to save notes.",
+        tone: "error",
+      });
+    } finally {
+      setNotesSaving(false);
+    }
+  };
+
   const handleViewPDF = (intern) => {
     if (!intern.applicationPDF || !intern.applicationPDF.base64) {
-      alert('⚠️ Application PDF not available for this intern.');
+      openBulkFeedback({
+        title: "PDF unavailable",
+        message: "Application PDF is not available for this intern.",
+        tone: "error",
+      });
       return;
     }
 
@@ -1402,24 +1664,60 @@ InternHub`;
       }
     } catch (error) {
       console.error('Error viewing PDF:', error);
-      alert('❌ Error opening PDF. Please try again.');
+      openBulkFeedback({
+        title: "PDF open failed",
+        message: "Error opening PDF. Please try again.",
+        tone: "error",
+      });
     }
+  };
+
+  const rowKey = (intern) => String(intern?.applicationId || intern?.email || "");
+
+  const openBulkFeedback = ({ title, message, tone = "info" }) => {
+    setBulkFeedback({ open: true, title, message, tone });
+  };
+
+  const toggleSelect = (intern, checked) => {
+    const key = rowKey(intern);
+    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, key])) : prev.filter((id) => id !== key)));
+  };
+
+  const toggleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedIds([]);
+      return;
+    }
+    const all = (interns || []).map((intern) => rowKey(intern)).filter(Boolean);
+    setSelectedIds(all);
   };
 
   const handleSendEmail = async () => {
     if (!selectedIntern || !emailContent.trim()) {
-      alert("⚠️ Please select an intern and write an email");
+      openBulkFeedback({
+        title: "Missing details",
+        message: "Please select an intern and write an email.",
+        tone: "error",
+      });
       return;
     }
 
     // Validate CC/BCC
     if (cc && !validateMultipleEmails(cc)) {
-      alert("⚠️ Invalid CC email format. Use comma-separated emails:\nexample1@mail.com, example2@mail.com");
+      openBulkFeedback({
+        title: "Invalid CC format",
+        message: "Use comma-separated emails.\nExample: example1@mail.com, example2@mail.com",
+        tone: "error",
+      });
       return;
     }
 
     if (bcc && !validateMultipleEmails(bcc)) {
-      alert("⚠️ Invalid BCC email format. Use comma-separated emails:\nexample1@mail.com, example2@mail.com");
+      openBulkFeedback({
+        title: "Invalid BCC format",
+        message: "Use comma-separated emails.\nExample: example1@mail.com, example2@mail.com",
+        tone: "error",
+      });
       return;
     }
 
@@ -1433,17 +1731,25 @@ InternHub`;
           to: selectedIntern.email,
           cc: cc || undefined,
           bcc: bcc || undefined,
-          subject: "Internship Application – Next Steps",
+          subject: "Internship Application - Next Steps",
           html: emailContent.replace(/\n/g, '<br>'),
         }),
       });
 
       if (!res.ok) throw new Error("Email failed");
      
-      alert(`✅ Email sent successfully to ${selectedIntern.fullName}`);
+      openBulkFeedback({
+        title: "Email sent",
+        message: `Email sent successfully to ${selectedIntern.fullName}.`,
+        tone: "success",
+      });
     } catch (err) {
       console.warn("Email sending failed:", err);
-      alert(`⚠️ Email could not be sent: ${err.message}\n\nYou can still accept the intern - meeting details will be saved.`);
+      openBulkFeedback({
+        title: "Email failed",
+        message: `Email could not be sent: ${err.message}\nYou can still accept the intern and meeting details will be saved.`,
+        tone: "error",
+      });
     } finally {
       setIsSending(false);
     }
@@ -1451,7 +1757,11 @@ InternHub`;
 
   const handleAccept = () => {
     if (!selectedIntern) {
-      alert("⚠️ Please select an intern first");
+      openBulkFeedback({
+        title: "No selection",
+        message: "Please select an intern first.",
+        tone: "error",
+      });
       return;
     }
 
@@ -1477,19 +1787,170 @@ InternHub`;
   };
 
   const handleReject = () => {
-    if (!selectedIntern) return;
-   
-    if (window.confirm(`Are you sure you want to reject ${selectedIntern.fullName}?`)) {
-      onReject(selectedIntern);
-      setSelectedIntern(null);
-      setEmailContent("");
-      setCc("");
-      setBcc("");
-      setMeetingDate("");
-      setMeetingTime("");
-      setMeetingLink("");
+    if (!selectedIntern) {
+      openBulkFeedback({
+        title: "No selection",
+        message: "Please select an intern first.",
+        tone: "error",
+      });
+      return;
+    }
+    setShowRejectConfirm(true);
+  };
+
+  const confirmReject = () => {
+    if (!selectedIntern) {
+      setShowRejectConfirm(false);
+      return;
+    }
+    onReject(selectedIntern);
+    setShowRejectConfirm(false);
+    setSelectedIntern(null);
+    setEmailContent("");
+    setCc("");
+    setBcc("");
+    setMeetingDate("");
+    setMeetingTime("");
+    setMeetingLink("");
+  };
+
+  const handleBulkMove = async () => {
+    if (!selectedIds.length) {
+      openBulkFeedback({
+        title: "No selection",
+        message: "Select at least one registration.",
+        tone: "error",
+      });
+      return;
+    }
+    if (typeof onBulkMoveToApproval !== "function") {
+      openBulkFeedback({
+        title: "Action unavailable",
+        message: "Bulk move action is not configured.",
+        tone: "error",
+      });
+      return;
+    }
+    const selectedRows = (interns || []).filter((intern) => selectedIds.includes(rowKey(intern)));
+    setBulkSubmitting(true);
+    try {
+      const result = await onBulkMoveToApproval(selectedRows);
+      setSelectedIds([]);
+      if (selectedIntern && selectedRows.some((row) => rowKey(row) === rowKey(selectedIntern))) {
+        setSelectedIntern(null);
+      }
+      const failed = Array.isArray(result?.failed) ? result.failed : [];
+      const successCount = Number.isFinite(result?.success)
+        ? result.success
+        : Math.max(0, selectedRows.length - failed.length);
+      if (failed.length > 0) {
+        const summary = failed
+          .slice(0, 3)
+          .map((row) => `• ${row.applicationId || "Unknown"}: ${row.error || "Failed"}`)
+          .join("\n");
+        openBulkFeedback({
+          title: "Bulk move completed with issues",
+          message: `Moved ${successCount}/${selectedRows.length} registrations.\n\nFailed: ${failed.length}${summary ? `\n${summary}` : ""}`,
+          tone: "error",
+        });
+      } else {
+        openBulkFeedback({
+          title: "Bulk move completed",
+          message: `Moved ${successCount} registration(s) to Approval Center.`,
+          tone: "success",
+        });
+      }
+    } catch (error) {
+      openBulkFeedback({
+        title: "Bulk move failed",
+        message: error?.message || "Failed to move selected registrations.",
+        tone: "error",
+      });
+    } finally {
+      setBulkSubmitting(false);
     }
   };
+
+  const handleBulkReject = async () => {
+    if (!selectedIds.length) {
+      openBulkFeedback({
+        title: "No selection",
+        message: "Select at least one registration.",
+        tone: "error",
+      });
+      return;
+    }
+    if (typeof onBulkReject !== "function") {
+      openBulkFeedback({
+        title: "Action unavailable",
+        message: "Bulk reject action is not configured.",
+        tone: "error",
+      });
+      return;
+    }
+    setBulkRejectReason("");
+    setBulkRejectError("");
+    setShowBulkRejectModal(true);
+  };
+
+  const submitBulkReject = async () => {
+    const reason = String(bulkRejectReason || "").trim();
+    if (!reason) {
+      setBulkRejectError("Rejection reason is required.");
+      return;
+    }
+    if (!selectedIds.length) {
+      setShowBulkRejectModal(false);
+      openBulkFeedback({
+        title: "No selection",
+        message: "Select at least one registration.",
+        tone: "error",
+      });
+      return;
+    }
+    const selectedRows = (interns || []).filter((intern) => selectedIds.includes(rowKey(intern)));
+    setBulkSubmitting(true);
+    try {
+      const result = await onBulkReject(selectedRows, reason);
+      setSelectedIds([]);
+      if (selectedIntern && selectedRows.some((row) => rowKey(row) === rowKey(selectedIntern))) {
+        setSelectedIntern(null);
+      }
+      setShowBulkRejectModal(false);
+      const failed = Array.isArray(result?.failed) ? result.failed : [];
+      const successCount = Number.isFinite(result?.success)
+        ? result.success
+        : Math.max(0, selectedRows.length - failed.length);
+      if (failed.length > 0) {
+        const summary = failed
+          .slice(0, 3)
+          .map((row) => `• ${row.applicationId || "Unknown"}: ${row.error || "Failed"}`)
+          .join("\n");
+        openBulkFeedback({
+          title: "Bulk reject completed with issues",
+          message: `Rejected ${successCount}/${selectedRows.length} registrations.\n\nFailed: ${failed.length}${summary ? `\n${summary}` : ""}`,
+          tone: "error",
+        });
+      } else {
+        openBulkFeedback({
+          title: "Bulk reject completed",
+          message: `Rejected ${successCount} registration(s).`,
+          tone: "success",
+        });
+      }
+    } catch (error) {
+      setShowBulkRejectModal(false);
+      openBulkFeedback({
+        title: "Bulk reject failed",
+        message: error?.message || "Failed to reject selected registrations.",
+        tone: "error",
+      });
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const allVisibleSelected = interns.length > 0 && selectedIds.length === interns.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -1506,6 +1967,35 @@ InternHub`;
         <SearchBar value={searchTerm || ''} onChange={setSearchTerm} placeholder="Search registrations..." />
       </div>
 
+      <div style={{ ...glassCardStyle, padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.textSecondary, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={(event) => toggleSelectAll(event.target.checked)}
+            style={{ width: 16, height: 16, accentColor: COLORS.jungleTeal }}
+          />
+          Select all visible
+        </label>
+        <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{selectedIds.length} selected</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            onClick={handleBulkMove}
+            disabled={!selectedIds.length || bulkSubmitting}
+            style={{ ...primaryButtonStyle, padding: "8px 12px", fontSize: 12, background: GRADIENTS.accent, opacity: !selectedIds.length || bulkSubmitting ? 0.6 : 1 }}
+          >
+            Move Selected to Approval
+          </button>
+          <button
+            onClick={handleBulkReject}
+            disabled={!selectedIds.length || bulkSubmitting}
+            style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12, borderColor: "rgba(239,68,68,0.45)", color: COLORS.red }}
+          >
+            Reject Selected
+          </button>
+        </div>
+      </div>
+
       {/* No interns state */}
       {interns.length === 0 ? (
         <div style={glassCardStyle}>
@@ -1516,11 +2006,13 @@ InternHub`;
           {/* Left: Intern List */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {interns.map((intern, idx) => {
-              const isSelected = selectedIntern?.email === intern.email;
+              const internKey = rowKey(intern);
+              const isSelected = rowKey(selectedIntern) === internKey;
+              const checked = selectedIds.includes(internKey);
               return (
                 <div
-                  key={intern.email || `registration-${idx}`}
-                  onClick={() => handleInternSelect(intern)}
+                  key={internKey || `registration-${idx}`}
+                  onClick={() => handleInternSelect(intern, { openDetails: true })}
                   style={{
                     ...glassCardStyle,
                     padding: 16,
@@ -1532,6 +2024,13 @@ InternHub`;
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => toggleSelect(intern, e.target.checked)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ width: 16, height: 16, accentColor: COLORS.jungleTeal }}
+                      />
                       <div style={{
                         width: 48, height: 48, borderRadius: "50%",
                         background: GRADIENTS.ocean,
@@ -1549,7 +2048,7 @@ InternHub`;
                       </div>
                     </div>
                     
-                    {/* ✅ ADD VIEW APPLICATION BUTTON */}
+                    {/* View Application button */}
                     {intern.applicationPDF && (
                       <button 
                         onClick={(e) => {
@@ -1603,7 +2102,7 @@ InternHub`;
                       <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }}>{selectedIntern.degree}</div>
                     </div>
                     
-                    {/* ✅ VIEW APPLICATION BUTTON IN HEADER */}
+                    {/* View Application button in header */}
                     {selectedIntern.applicationPDF && (
                       <button 
                         onClick={() => handleViewPDF(selectedIntern)}
@@ -1757,13 +2256,213 @@ InternHub`;
                   border: `1px solid ${COLORS.jungleTeal}`,
                 }}>
                   <p style={{ fontSize: 12, color: COLORS.textSecondary, margin: 0 }}>
-                    💡 <strong>Workflow:</strong> Send acknowledgment email → Accept to move to Approval Center. Meeting details will be saved with the intern's record.
+                    <strong>Workflow:</strong> Send acknowledgment email, then move the intern to Approval Center. Meeting details are saved with the intern record.
                   </p>
                 </div>
               </>
             )}
           </div>
         </div>
+      )}
+
+      {showDetails && (
+        <div
+          onClick={() => !detailsLoading && setShowDetails(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.65)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2200,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(920px, 96vw)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              borderRadius: 16,
+              padding: 20,
+              background: COLORS.bgSecondary,
+              border: `1px solid ${COLORS.borderGlass}`,
+            }}
+          >
+            {detailsLoading ? (
+              <div style={{ color: COLORS.textSecondary }}>Loading application details...</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Application Detail</h3>
+                  <button onClick={() => setShowDetails(false)} style={{ ...secondaryButtonStyle, padding: "8px 12px" }}>
+                    Close
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                  <DetailItem label="Name" value={detailsData?.application?.applicantName || "-"} />
+                  <DetailItem label="Email" value={detailsData?.application?.email || "-"} />
+                  <DetailItem label="Phone" value={detailsData?.application?.phone || "-"} />
+                  <DetailItem label="College" value={detailsData?.application?.college || "-"} />
+                  <DetailItem label="Domain" value={detailsData?.application?.domain || "-"} />
+                  <DetailItem label="CGPA" value={detailsData?.application?.cgpa ?? "-"} />
+                  <DetailItem label="Status" value={detailsData?.application?.status || "-"} />
+                  <DetailItem label="Submitted" value={detailsData?.application?.submittedAt ? new Date(detailsData.application.submittedAt).toLocaleString() : "-"} />
+                  <DetailItem
+                    label="Resume"
+                    value={detailsData?.application?.resumeUrl ? "Open" : "-"}
+                    link={detailsData?.application?.resumeUrl || ""}
+                  />
+                </div>
+
+                <div style={{ ...glassCardStyle, padding: 14 }}>
+                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 8 }}>HR Notes</div>
+                  <textarea
+                    value={notesDraft}
+                    onChange={(event) => setNotesDraft(event.target.value)}
+                    placeholder="Write review notes..."
+                    rows={5}
+                    style={{ ...inputStyle, resize: "vertical", minHeight: 110 }}
+                  />
+                  <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                    <button onClick={saveNotes} disabled={notesSaving} style={{ ...primaryButtonStyle, padding: "10px 14px", background: GRADIENTS.accent, opacity: notesSaving ? 0.65 : 1 }}>
+                      {notesSaving ? "Saving..." : "Save Notes"}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ ...glassCardStyle, padding: 14 }}>
+                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 10 }}>Status Timeline</div>
+                  {(detailsData?.timeline || []).length === 0 ? (
+                    <div style={{ color: COLORS.textMuted, fontSize: 13 }}>No timeline events yet.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {detailsData.timeline.map((item) => (
+                        <div key={item.id} style={{ padding: 10, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.03)" }}>
+                          <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>
+                            {item.fromStatus || "new"} → {item.toStatus}
+                          </div>
+                          <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                            {item.changedAt ? new Date(item.changedAt).toLocaleString() : "-"}
+                            {item.changedBy?.fullName ? ` • ${item.changedBy.fullName}` : ""}
+                          </div>
+                          {item.reason ? <div style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 4 }}>Reason: {item.reason}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showBulkRejectModal && (
+        <Modal onClose={() => (!bulkSubmitting ? setShowBulkRejectModal(false) : null)}>
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Reject Selected Registrations</h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 14, fontSize: 14 }}>
+            Enter one rejection reason for all selected registrations.
+          </p>
+          <textarea
+            value={bulkRejectReason}
+            onChange={(event) => {
+              setBulkRejectReason(event.target.value);
+              if (bulkRejectError) setBulkRejectError("");
+            }}
+            rows={5}
+            placeholder="Reason is required..."
+            style={{ ...inputStyle, resize: "vertical", minHeight: 120 }}
+          />
+          {bulkRejectError ? (
+            <div style={{ marginTop: 8, color: COLORS.red, fontSize: 12 }}>{bulkRejectError}</div>
+          ) : null}
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              onClick={() => setShowBulkRejectModal(false)}
+              disabled={bulkSubmitting}
+              style={{ ...secondaryButtonStyle, padding: "10px 14px", opacity: bulkSubmitting ? 0.6 : 1 }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitBulkReject}
+              disabled={bulkSubmitting}
+              style={{
+                ...primaryButtonStyle,
+                padding: "10px 14px",
+                background: COLORS.red,
+                opacity: bulkSubmitting ? 0.6 : 1,
+              }}
+            >
+              {bulkSubmitting ? "Rejecting..." : "Confirm Reject"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showRejectConfirm && selectedIntern && (
+        <Modal onClose={() => setShowRejectConfirm(false)}>
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Confirm reject</h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 16 }}>
+            Are you sure you want to reject <strong>{selectedIntern.fullName}</strong>?
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              onClick={() => setShowRejectConfirm(false)}
+              style={{ ...secondaryButtonStyle, padding: "10px 14px" }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmReject}
+              style={{ ...primaryButtonStyle, padding: "10px 14px", background: COLORS.red }}
+            >
+              Confirm Reject
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {bulkFeedback.open && (
+        <Modal
+          onClose={() =>
+            setBulkFeedback({
+              open: false,
+              title: "",
+              message: "",
+              tone: "info",
+            })
+          }
+        >
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>{bulkFeedback.title || "Bulk action"}</h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 16, whiteSpace: "pre-line" }}>
+            {bulkFeedback.message}
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() =>
+                setBulkFeedback({
+                  open: false,
+                  title: "",
+                  message: "",
+                  tone: "info",
+                })
+              }
+              style={{
+                ...primaryButtonStyle,
+                padding: "10px 16px",
+                background: bulkFeedback.tone === "success" ? COLORS.emeraldGlow : bulkFeedback.tone === "error" ? COLORS.red : GRADIENTS.accent,
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -1905,7 +2604,7 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
         </div>
       </div>
 
-      {/* Search Bar - ✅ FIXED: Controlled input */}
+      {/* Search Bar */}
       <div
         className="glass animate-fadeIn stagger-4"
         style={{
@@ -1939,7 +2638,7 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
         </div>
       </div>
 
-      {/* PMs Grid - ✅ FIXED: Added unique keys */}
+      {/* PMs Grid */}
       <div
         style={{
           display: "grid",
@@ -2210,7 +2909,7 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
 }
 
 // ==================== REPORTS SECTION ====================
-export function ReportsSection({ users, reportsTab, setReportsTab, currentHR }) {
+export function ReportsSection() {
   return <ReportsInbox />;
 }
 
@@ -2218,3 +2917,6 @@ export function ReportsSection({ users, reportsTab, setReportsTab, currentHR }) 
 export const ActiveInterns = ({ onNavigateToMessages, users }) => (
   <ActiveInternsPage onNavigateToMessages={onNavigateToMessages} users={users} />
 );
+
+
+

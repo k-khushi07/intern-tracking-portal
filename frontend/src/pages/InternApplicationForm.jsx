@@ -5,10 +5,13 @@ import jsPDF from 'jspdf';
 import { applicationsApi } from '../lib/apiClient';
 
 const InternApplicationForm = () => {
+  const MAX_RESUME_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+  const RESUME_ACCEPT_ATTR = '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [resumeFile, setResumeFile] = useState(null);
   
   const [formData, setFormData] = useState({
     // Personal Details
@@ -57,6 +60,53 @@ const InternApplicationForm = () => {
     }));
   };
 
+  const isValidResumeFile = (file) => {
+    if (!file) return false;
+
+    const allowedMimeTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    const lowerName = String(file.name || '').toLowerCase();
+    const hasAllowedExtension = lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
+
+    return hasAllowedExtension || allowedMimeTypes.includes(file.type);
+  };
+
+  const toDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Failed to read resume file.'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleResumeFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setResumeFile(null);
+      return;
+    }
+
+    if (!isValidResumeFile(file)) {
+      setError('Resume must be a PDF, DOC, or DOCX file.');
+      setResumeFile(null);
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_RESUME_FILE_SIZE_BYTES) {
+      setError('Resume file is too large. Please upload a file up to 5 MB.');
+      setResumeFile(null);
+      e.target.value = '';
+      return;
+    }
+
+    setError('');
+    setResumeFile(file);
+  };
+
   const validateStep = (currentStep) => {
     setError('');
     
@@ -80,7 +130,7 @@ const InternApplicationForm = () => {
         }
         return true;
         
-      case 2:
+      case 2: {
         if (!formData.collegeName || !formData.degree || !formData.branch || !formData.yearOfStudy || !formData.cgpa || !formData.graduationYear) {
           setError('Please fill all required fields');
           return false;
@@ -95,6 +145,7 @@ const InternApplicationForm = () => {
           return false;
         }
         return true;
+      }
         
       case 3:
         if (!formData.internshipDomain || !formData.preferredDuration || !formData.availableFrom) {
@@ -108,15 +159,27 @@ const InternApplicationForm = () => {
           setError('Please fill all required fields (GitHub and Portfolio are optional)');
           return false;
         }
-        if (!formData.resumeLink) {
-          setError('Please provide your resume link');
+        if (!formData.resumeLink && !resumeFile) {
+          setError('Please provide a resume link or upload a resume file');
           return false;
         }
-        try {
-          new URL(formData.resumeLink);
-        } catch {
-          setError('Please provide a valid resume link (Google Drive, Dropbox, OneDrive, etc.)');
-          return false;
+        if (formData.resumeLink) {
+          try {
+            new URL(formData.resumeLink);
+          } catch {
+            setError('Please provide a valid resume link (Google Drive, Dropbox, OneDrive, etc.)');
+            return false;
+          }
+        }
+        if (resumeFile) {
+          if (!isValidResumeFile(resumeFile)) {
+            setError('Resume must be a PDF, DOC, or DOCX file.');
+            return false;
+          }
+          if (resumeFile.size > MAX_RESUME_FILE_SIZE_BYTES) {
+            setError('Resume file is too large. Please upload a file up to 5 MB.');
+            return false;
+          }
         }
         if (formData.linkedinUrl) {
           try {
@@ -609,10 +672,19 @@ const InternApplicationForm = () => {
 
     try {
       const pdfBase64 = generateApplicationPDF();
+      const resumeLinkValue = String(formData.resumeLink || '').trim();
+      let resolvedResumeLink = resumeLinkValue;
+
+      if (!resolvedResumeLink && resumeFile) {
+        resolvedResumeLink = await toDataUrl(resumeFile);
+      }
 
       await applicationsApi.create({
         formData: {
           ...formData,
+          resumeLink: resolvedResumeLink || null,
+          resumeFileName: resumeFile?.name || null,
+          resumeFileType: resumeFile?.type || null,
           registeredAt: new Date().toISOString(),
           location: `${formData.city}, ${formData.state}`,
         },
@@ -623,10 +695,10 @@ const InternApplicationForm = () => {
       });
 
       setSubmitted(true);
-      setLoading(false);
     } catch (err) {
       console.error('Error submitting application:', err);
-      setError('Failed to submit application. Please try again.');
+      setError(err?.message || 'Failed to submit application. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -1244,22 +1316,36 @@ const InternApplicationForm = () => {
                 </div>
 
                 <div style={{ marginBottom: '24px' }}>
-                  <label style={labelStyle}>Resume Link (Google Drive / Dropbox / OneDrive) *</label>
+                  <label style={labelStyle}>Resume (Link or File Upload) *</label>
                   <input
                     type="url"
                     name="resumeLink"
                     value={formData.resumeLink}
                     onChange={handleInputChange}
                     style={inputStyle}
-                    placeholder="https://drive.google.com/file/d/... (paste your shareable link here)"
-                    required
+                    placeholder="Optional: https://drive.google.com/file/d/... (shareable link)"
                   />
+                  <div style={{ marginTop: '10px' }}>
+                    <input
+                      type="file"
+                      accept={RESUME_ACCEPT_ATTR}
+                      onChange={handleResumeFileChange}
+                      style={inputStyle}
+                    />
+                    {resumeFile && (
+                      <p style={{ fontSize: '14px', color: '#1d7874', marginTop: '8px', marginBottom: 0 }}>
+                        Selected file: <strong>{resumeFile.name}</strong> ({(resumeFile.size / (1024 * 1024)).toFixed(2)} MB)
+                      </p>
+                    )}
+                  </div>
                   <p style={{
                     fontSize: '14px',
                     color: '#679289',
                     marginTop: '8px',
                     lineHeight: '1.5'
                   }}>
+                    Provide either a shareable link or upload a file from your computer.<br/>
+                    <strong>Supported file types:</strong> PDF, DOC, DOCX (max 5 MB)<br/><br/>
                     <strong>How to get shareable link:</strong><br/>
                     <strong>Google Drive:</strong> Right-click file → Share → Copy link<br/>
                     <strong>Dropbox:</strong> Click Share → Create link → Copy link<br/>

@@ -1,6 +1,6 @@
 // HRComponents.jsx - Reusable components for HR Dashboard
 // ✅ UPDATED WITH VIEW APPLICATION BUTTON
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import {
   Check, X, Eye, EyeOff, Key, Mail, Phone, MapPin, Users, MessageSquare,
@@ -59,9 +59,15 @@ export function StatMini({ icon, value, label, color }) {
 // ==================== CARD COMPONENTS ====================
 // ✅ UPDATED PendingCard with "View Application" Button
 export function PendingCard({ intern, onApprove, onReject, compact = false, showTimestamp = false }) {
+  const [pdfFeedback, setPdfFeedback] = useState({ open: false, message: "", tone: "info" });
+
   const handleViewPDF = () => {
     if (!intern.applicationPDF || !intern.applicationPDF.base64) {
-      alert('⚠️ Application PDF not available for this intern.');
+      setPdfFeedback({
+        open: true,
+        message: "Application PDF not available for this intern.",
+        tone: "error",
+      });
       return;
     }
 
@@ -86,7 +92,11 @@ export function PendingCard({ intern, onApprove, onReject, compact = false, show
       }
     } catch (error) {
       console.error('Error viewing PDF:', error);
-      alert('❌ Error opening PDF. Please try again.');
+      setPdfFeedback({
+        open: true,
+        message: "Error opening PDF. Please try again.",
+        tone: "error",
+      });
     }
   };
 
@@ -165,6 +175,41 @@ export function PendingCard({ intern, onApprove, onReject, compact = false, show
             <X size={14} /> Reject
           </button>
         </div>
+      )}
+
+      {pdfFeedback.open && (
+        <Modal
+          onClose={() =>
+            setPdfFeedback({
+              open: false,
+              message: "",
+              tone: "info",
+            })
+          }
+        >
+          <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Notice</h3>
+          <p style={{ color: COLORS.textSecondary, marginTop: 10, marginBottom: 16 }}>
+            {pdfFeedback.message}
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() =>
+                setPdfFeedback({
+                  open: false,
+                  message: "",
+                  tone: "info",
+                })
+              }
+              style={{
+                ...primaryButtonStyle,
+                padding: "10px 14px",
+                background: pdfFeedback.tone === "error" ? COLORS.red : COLORS.jungleTeal,
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -645,7 +690,7 @@ function ReportsTab({ user }) {
   const [blueprint, setBlueprint] = useState(null);
   const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!internId) return;
     setLoading(true);
     setError("");
@@ -668,11 +713,11 @@ function ReportsTab({ user }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [internId]);
 
   useEffect(() => {
     load();
-  }, [internId]);
+  }, [load]);
 
   useEffect(() => {
     const socket = getRealtimeSocket();
@@ -684,7 +729,7 @@ function ReportsTab({ user }) {
     };
     socket.on("itp:changed", onChanged);
     return () => socket.off("itp:changed", onChanged);
-  }, [internId]);
+  }, [internId, load]);
 
   const completed = (tnaItems || []).filter((i) => (i.status || "") === "completed").length;
   const blocked = (tnaItems || []).filter((i) => (i.status || "") === "blocked").length;
@@ -817,6 +862,7 @@ export function AnnouncementModal({ onSave, onClose }) {
   const [pinned, setPinned] = useState(false);
   const [targetInterns, setTargetInterns] = useState(true);
   const [targetPMs, setTargetPMs] = useState(true);
+  const [audienceError, setAudienceError] = useState("");
 
   return (
     <>
@@ -848,6 +894,9 @@ export function AnnouncementModal({ onSave, onClose }) {
         <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>
           Select who should see this announcement.
         </div>
+        {audienceError ? (
+          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.red }}>{audienceError}</div>
+        ) : null}
       </div>
 
       <div style={{ marginBottom: 20 }}>
@@ -863,9 +912,10 @@ export function AnnouncementModal({ onSave, onClose }) {
             if (targetInterns) roles.push("intern");
             if (targetPMs) roles.push("pm");
             if (!roles.length) {
-              alert("Please select at least one audience (Interns and/or PMs).");
+              setAudienceError("Please select at least one audience (Interns and/or PMs).");
               return;
             }
+            setAudienceError("");
             onSave({ title, content, pinned, audienceRoles: roles });
           }}
           style={primaryButtonStyle}

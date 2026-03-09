@@ -180,7 +180,7 @@ export default function InternDashboard() {
         } else {
           window.location.href = "/";
         }
-      } catch (e) {
+      } catch {
         window.location.href = "/";
       }
     }
@@ -690,7 +690,7 @@ function getPageTitle(page) {
   }[page] || "Intern Dashboard";
 }
 
-function getPageSubtitle(page, intern) {
+function getPageSubtitle(page) {
   return { 
     "overview": "Track your internship progress and activities", 
     "daily-log": "Track your daily progress", 
@@ -968,7 +968,6 @@ function ProjectSubmissionPage({ isMobile }) {
   const [githubLink, setGithubLink] = useState("");
   const [demoLink, setDemoLink] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [files, setFiles] = useState([]);
 
   const handleSubmit = (e) => { 
     e.preventDefault(); 
@@ -976,8 +975,6 @@ function ProjectSubmissionPage({ isMobile }) {
     setTimeout(() => setSubmitted(false), 4000); 
   };
   
-  const handleFileChange = (e) => setFiles([...files, ...Array.from(e.target.files)]);
-
   const inputStyle = {
     width: "100%",
     padding: "12px 14px",

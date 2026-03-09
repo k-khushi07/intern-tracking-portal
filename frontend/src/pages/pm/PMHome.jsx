@@ -481,7 +481,7 @@ const PMHome = () => {
                   // ignore
                 }
                 localStorage.removeItem("currentUser");
-                window.location.href = "/";
+                window.location.href = "/pm/login";
               }}
               style={{
                 width: "100%",

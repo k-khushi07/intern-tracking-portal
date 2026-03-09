@@ -18,8 +18,6 @@ export function DashboardSection({
   recentLogs, 
   announcements,
   onViewProfile,
-  onViewLogs,
-  onChat,
   onViewLogDetails,
   onCreateAnnouncement
 }) {
@@ -482,10 +480,17 @@ function InternPerformanceReport({ interns, logs }) {
 }
 
 function AttendanceReport({ interns }) {
-  // Mock attendance data - in real app, this would come from actual data
-  const getAttendanceData = (intern) => {
+  const stableNumberFromString = (value, min, max) => {
+    const text = String(value || "");
+    const hash = text.split("").reduce((acc, char, index) => {
+      return (acc + char.charCodeAt(0) * (index + 1)) % 1000003;
+    }, 0);
+    return min + (hash % (max - min + 1));
+  };
+
+  const getAttendanceData = (internEmail) => {
     const total = 22;
-    const present = Math.floor(Math.random() * 5) + 17; // Random between 17-22
+    const present = stableNumberFromString(internEmail, 17, 22);
     const percentage = Math.round((present / total) * 100);
     return { present, absent: total - present, percentage };
   };
@@ -496,7 +501,7 @@ function AttendanceReport({ interns }) {
         <EmptyState icon={<Calendar size={40} />} message="No attendance data" />
       ) : (
         interns.map((intern, idx) => {
-          const attendance = getAttendanceData(intern);
+          const attendance = getAttendanceData(intern.email);
           return (
             <div key={idx} style={{ background: COLORS.surfaceGlass, padding: 16, borderRadius: 12, display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ width: 40, height: 40, borderRadius: "50%", background: GRADIENTS.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "white" }}>

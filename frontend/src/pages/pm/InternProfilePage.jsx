@@ -1,5 +1,5 @@
 // InternProfilePage.jsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Mail, MapPin, Calendar, Award, TrendingUp, Clock, Phone, Briefcase, GraduationCap, Target, CheckCircle2, AlertCircle } from "lucide-react";
 import { pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
@@ -13,6 +13,55 @@ const COLORS = {
 };
 
 const InternProfilePage = ({ intern, onBack }) => {
+  const [tnaItems, setTnaItems] = useState([]);
+  const [blueprint, setBlueprint] = useState(null);
+  const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
+  const [reportsError, setReportsError] = useState("");
+
+  const internId = intern?.id || null;
+
+  const loadReports = useCallback(async () => {
+    if (!internId) return;
+    setReportsError("");
+    try {
+      const [tnaRes, blueprintRes, linksRes] = await Promise.all([
+        pmApi.internTna(internId),
+        pmApi.internBlueprint(internId),
+        pmApi.internReportLinks(internId),
+      ]);
+      setTnaItems(tnaRes?.items || []);
+      setBlueprint(blueprintRes?.blueprint || null);
+      setLinks({
+        tnaSheetUrl: linksRes?.links?.tnaSheetUrl || "",
+        blueprintDocUrl: linksRes?.links?.blueprintDocUrl || "",
+      });
+    } catch (e) {
+      setReportsError(e?.message || "Failed to load reports");
+      setTnaItems([]);
+      setBlueprint(null);
+    }
+  }, [internId]);
+
+  useEffect(() => {
+    if (!internId) return;
+    const timeoutId = window.setTimeout(() => {
+      loadReports();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [internId, loadReports]);
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = (payload) => {
+      if (!payload) return;
+      if (payload.internId && internId && payload.internId !== internId) return;
+      if (!["tna", "blueprint", "report_links"].includes(payload.entity)) return;
+      loadReports();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, [internId, loadReports]);
+
   if (!intern) {
     return (
       <div className="animate-fadeIn" style={{ textAlign: "center", padding: "60px 20px" }}>
@@ -21,7 +70,6 @@ const InternProfilePage = ({ intern, onBack }) => {
     );
   }
 
-  // Mock additional profile data
   const profileData = {
     ...intern,
     phone: "+1 (555) 123-4567",
@@ -50,51 +98,6 @@ const InternProfilePage = ({ intern, onBack }) => {
       { id: 3, title: "Build 3 full-stack projects", progress: 66, deadline: "Apr 2025" },
     ],
   };
-
-  const [tnaItems, setTnaItems] = useState([]);
-  const [blueprint, setBlueprint] = useState(null);
-  const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
-  const [reportsError, setReportsError] = useState("");
-
-  const internId = intern?.id || null;
-
-  const loadReports = async () => {
-    if (!internId) return;
-    setReportsError("");
-    try {
-      const [tnaRes, blueprintRes, linksRes] = await Promise.all([
-        pmApi.internTna(internId),
-        pmApi.internBlueprint(internId),
-        pmApi.internReportLinks(internId),
-      ]);
-      setTnaItems(tnaRes?.items || []);
-      setBlueprint(blueprintRes?.blueprint || null);
-      setLinks({
-        tnaSheetUrl: linksRes?.links?.tnaSheetUrl || "",
-        blueprintDocUrl: linksRes?.links?.blueprintDocUrl || "",
-      });
-    } catch (e) {
-      setReportsError(e?.message || "Failed to load reports");
-      setTnaItems([]);
-      setBlueprint(null);
-    }
-  };
-
-  useEffect(() => {
-    loadReports();
-  }, [internId]);
-
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-    const onChanged = (payload) => {
-      if (!payload) return;
-      if (payload.internId && internId && payload.internId !== internId) return;
-      if (!["tna", "blueprint", "report_links"].includes(payload.entity)) return;
-      loadReports();
-    };
-    socket.on("itp:changed", onChanged);
-    return () => socket.off("itp:changed", onChanged);
-  }, [internId]);
 
   return (
     <div className="animate-fadeIn">

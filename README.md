@@ -18,6 +18,15 @@
 - Run `supabase/migrations/005_change_hours_to_numeric.sql` in Supabase SQL editor.
 - Run `supabase/migrations/006_add_tna_blueprint_links.sql` in Supabase SQL editor.
 - Run `supabase/migrations/007_add_google_sync_metadata.sql` in Supabase SQL editor.
+- Run `supabase/migrations/007_add_report_links_sync_metadata.sql` in Supabase SQL editor.
+- Run `supabase/migrations/008_add_messaging.sql` in Supabase SQL editor.
+- Run `supabase/migrations/009_add_message_rpc.sql` in Supabase SQL editor.
+- Run `supabase/migrations/010_hr_workflow_upgrade.sql` in Supabase SQL editor.
+
+### 1.3) If you still see table/cache mismatch errors
+- Confirm `public.internship_applications` exists (the backend expects this table first).
+- If Supabase returns "schema cache" errors after creating tables, run:
+  - `NOTIFY pgrst, 'reload schema';`
 
 ### 2) Backend env
 - Copy `backend/.env.example` → `backend/.env` and fill:
@@ -37,6 +46,22 @@
 - Frontend: `cd frontend` then `npm run dev`
 
 The frontend proxies `/api/*` to the backend via `frontend/vite.config.js`.
+
+### 3.1) Separated panel routes
+- Intern panel:
+  - Login: `http://localhost:5173/intern/login`
+  - Dashboard: `http://localhost:5173/intern/dashboard`
+- HR panel:
+  - Login: `http://localhost:5173/hr/login`
+  - Dashboard: `http://localhost:5173/hr/dashboard`
+- PM panel:
+  - Login: `http://localhost:5173/pm/login`
+  - Dashboard: `http://localhost:5173/pm/dashboard`
+- Admin panel:
+  - Login: `http://localhost:5173/admin/login`
+  - Dashboard: `http://localhost:5173/admin/dashboard`
+
+Legacy routes like `/dashboard/intern` still work and now redirect to the separated panel paths.
 
 ### 4) Quick health checks
 - Node running: `GET /api/health`
