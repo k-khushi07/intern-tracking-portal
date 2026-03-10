@@ -48,10 +48,16 @@ export default function AuthPage({ forcedRole = null }) {
 
     try {
       const expectedRole = forcedRole || role;
+      const email = String(loginData.email || "").trim();
+      const password = String(loginData.password || "");
+      if (!email || !password) {
+        setError("Email and password are required.");
+        return;
+      }
 
       const response = await authApi.login({
-        email: loginData.email,
-        password: loginData.password,
+        email,
+        password,
         expectedRole,
         rememberMe,
       });
@@ -223,6 +229,7 @@ export default function AuthPage({ forcedRole = null }) {
                     size={18}
                   />
                   <input
+                    type="email"
                     name="email"
                     value={loginData.email}
                     onChange={handleInput}

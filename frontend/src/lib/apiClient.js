@@ -29,10 +29,15 @@ export async function apiFetch(path, options = {}) {
 }
 
 export const authApi = {
-  login({ email, password, expectedRole, rememberMe }) {
+  login({ email, password, expectedRole, rememberMe } = {}) {
+    const trimmedEmail = String(email || "").trim();
+    const rawPassword = String(password || "");
+    if (!trimmedEmail || !rawPassword) {
+      return Promise.reject(new Error("Email and password are required"));
+    }
     return apiFetch("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password, expectedRole, rememberMe }),
+      body: JSON.stringify({ email: trimmedEmail, password: rawPassword, expectedRole, rememberMe }),
     });
   },
   me() {
@@ -155,6 +160,9 @@ export const hrApi = {
       body: JSON.stringify({ pmCode }),
     });
   },
+  nextInternId() {
+    return apiFetch("/hr/intern-id/next", { method: "GET" });
+  },
   downloadOfferLetter(profileId) {
     return `/api/hr/active-interns/${profileId}/offer-letter.pdf`;
   },
@@ -182,8 +190,20 @@ export const adminApi = {
       body: JSON.stringify(payload || {}),
     });
   },
+  updateUser(userId, payload) {
+    return apiFetch(`/admin/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
   deleteUser(userId) {
     return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
+  },
+  nextInternId() {
+    return apiFetch("/admin/intern-id/next", { method: "GET" });
+  },
+  nextPmCode() {
+    return apiFetch("/admin/pm-code/next", { method: "GET" });
   },
   stats() {
     return apiFetch("/admin/stats", { method: "GET" });

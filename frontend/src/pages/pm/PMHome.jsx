@@ -1,11 +1,10 @@
 // PMHome.jsx - pm dashboard
 import React, { useState, useEffect } from "react";
-import { Menu, Bell, LogOut, Sparkles, X, Users, Home, BookOpen, MessageCircle } from "lucide-react";
+import { Menu, Bell, LogOut, Sparkles, X, Users, Home, MessageCircle } from "lucide-react";
 import MessagesPage from './MessagesPage';
 import OverviewPage from "./OverviewPage";
 import MyInternsPage from './MyInternsPage';
 import InternProfilePage from './InternProfilePage';
-import ReviewLogsPage from './ReviewLogsPage';
 import { authApi, pmApi, announcementsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
@@ -59,6 +58,7 @@ const GlobalStyles = () => (
 const PMHome = () => {
   const [currentPage, setCurrentPage] = useState("overview");
   const [selectedIntern, setSelectedIntern] = useState(null);
+  const [selectedInternSection, setSelectedInternSection] = useState("profile");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -242,7 +242,6 @@ const PMHome = () => {
     { id: "overview", label: "PM Dashboard", icon: Home },
     { id: "interns", label: "My Interns", icon: Users },
     { id: "messages", label: "Messages", icon: MessageCircle },
-    { id: "review-logs", label: "Review Reports", icon: BookOpen },
   ];
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -276,11 +275,19 @@ const PMHome = () => {
 
   const handleViewProfile = (intern) => {
     setSelectedIntern(intern);
+    setSelectedInternSection("profile");
+    setCurrentPage("intern-profile");
+  };
+
+  const handleViewReports = (intern) => {
+    setSelectedIntern(intern);
+    setSelectedInternSection("reports");
     setCurrentPage("intern-profile");
   };
 
   const handleBackToInterns = () => {
     setSelectedIntern(null);
+    setSelectedInternSection("profile");
     setCurrentPage("interns");
   };
 
@@ -312,6 +319,7 @@ const PMHome = () => {
           <MyInternsPage 
             onNavigateToMessages={handleNavigateToMessages}
             onViewProfile={handleViewProfile}
+            onViewReports={handleViewReports}
             interns={interns}
           />
         );
@@ -319,22 +327,13 @@ const PMHome = () => {
         return (
           <InternProfilePage 
             intern={selectedIntern}
+            reports={[...(weeklyReports || []), ...(monthlyReports || [])]}
+            initialSection={selectedInternSection}
             onBack={handleBackToInterns}
           />
         );
       case "messages":
         return <MessagesPage selectedIntern={selectedIntern} />;
-      case "review-logs":
-        return (
-          <ReviewLogsPage 
-            interns={interns}
-            weeklyReports={weeklyReports} 
-            monthlyReports={monthlyReports} 
-            isMobile={isMobile}
-            pmEmail={pmInfo?.email || ""}
-            addNotification={addNotification}
-          />
-        );
       default:
         return (
           <OverviewPage 
