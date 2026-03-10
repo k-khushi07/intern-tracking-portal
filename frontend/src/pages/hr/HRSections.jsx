@@ -74,6 +74,8 @@ const INTERN_STATUS = {
   DISABLED: "disabled",
 };
 
+const DEPARTMENT_OPTIONS = ["SAP", "Oracle", "Accounts", "HR"];
+
 // ==================== DASHBOARD SECTION ====================
 // ==================== DASHBOARD SECTION (PM Style) ====================
 export function DashboardSection({
@@ -655,6 +657,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
   const [department, setDepartment] = useState("");
   const [mentorName, setMentorName] = useState("");
   const [stipend, setStipend] = useState("");
+  const [nextInternId, setNextInternId] = useState("");
+  const [loadingNextInternId, setLoadingNextInternId] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -678,6 +682,24 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setApprovalFeedback({ open: true, title, message, tone });
   };
 
+  const minDate = new Date().toISOString().slice(0, 10);
+
+  const resolveDepartmentValue = () => {
+    return String(department || "").trim();
+  };
+
+  const loadNextInternId = async () => {
+    setLoadingNextInternId(true);
+    try {
+      const res = await hrApi.nextInternId();
+      setNextInternId(res?.internId || "");
+    } catch {
+      setNextInternId("");
+    } finally {
+      setLoadingNextInternId(false);
+    }
+  };
+
   const generatePassword = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$!";
     let output = "";
@@ -693,6 +715,11 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     }
   }, [interns, selectedIntern?.applicationId]);
 
+  useEffect(() => {
+    if (!selectedIntern?.applicationId) return;
+    loadNextInternId();
+  }, [selectedIntern?.applicationId]);
+
   const resetForm = () => {
     setSelectedIntern(null);
     setShowApproveConfirm(false);
@@ -702,14 +729,17 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setDepartment("");
     setMentorName("");
     setStipend("");
+    setNextInternId("");
   };
 
   const handleInternSelect = (intern) => {
+    const inferredDepartment = String(intern?.internshipDomain || intern?.degree || "").trim();
+    const knownDepartment = DEPARTMENT_OPTIONS.find((item) => item.toLowerCase() === inferredDepartment.toLowerCase()) || "";
     setSelectedIntern(intern);
     setPassword(generatePassword());
     setStartDate("");
     setEndDate("");
-    setDepartment(intern?.internshipDomain || intern?.degree || "");
+    setDepartment(knownDepartment || "");
     setMentorName("");
     setStipend("");
   };
@@ -723,10 +753,27 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
       });
       return;
     }
-    if (!startDate || !endDate || !department.trim() || !mentorName.trim()) {
+    const resolvedDepartment = resolveDepartmentValue();
+    if (!startDate || !endDate || !resolvedDepartment || !mentorName.trim()) {
       openApprovalFeedback({
         title: "Missing fields",
         message: "Start date, end date, department, and mentor name are required.",
+        tone: "error",
+      });
+      return;
+    }
+    if (startDate < minDate || endDate < minDate) {
+      openApprovalFeedback({
+        title: "Invalid date",
+        message: "Past dates are not allowed.",
+        tone: "error",
+      });
+      return;
+    }
+    if (endDate < startDate) {
+      openApprovalFeedback({
+        title: "Invalid date range",
+        message: "End date must be on or after start date.",
         tone: "error",
       });
       return;
@@ -747,11 +794,12 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setShowApproveConfirm(false);
     setIsSubmitting(true);
     try {
+      const resolvedDepartment = resolveDepartmentValue();
       const result = await onApprove({
         applicationId: selectedIntern.applicationId,
         startDate,
         endDate,
-        department: department.trim(),
+        department: resolvedDepartment,
         mentorName: mentorName.trim(),
         stipend: stipend.trim() || null,
         password: password.trim(),
@@ -768,6 +816,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
         tone: "success",
       });
       resetForm();
+      await loadNextInternId();
       if (typeof onDataChanged === "function") await onDataChanged();
     } catch (err) {
       openApprovalFeedback({
@@ -826,7 +875,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
 
     const payload = { applicationIds: selectedIds, action };
     if (action === "approve") {
-      if (!startDate || !endDate || !department.trim() || !mentorName.trim()) {
+      const resolvedDepartment = resolveDepartmentValue();
+      if (!startDate || !endDate || !resolvedDepartment || !mentorName.trim()) {
         openApprovalFeedback({
           title: "Missing fields",
           message: "For bulk approve, fill start date, end date, department, and mentor in the right panel first.",
@@ -834,9 +884,25 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
         });
         return;
       }
+      if (startDate < minDate || endDate < minDate) {
+        openApprovalFeedback({
+          title: "Invalid date",
+          message: "Past dates are not allowed.",
+          tone: "error",
+        });
+        return;
+      }
+      if (endDate < startDate) {
+        openApprovalFeedback({
+          title: "Invalid date range",
+          message: "End date must be on or after start date.",
+          tone: "error",
+        });
+        return;
+      }
       payload.startDate = startDate;
       payload.endDate = endDate;
-      payload.department = department.trim();
+      payload.department = resolvedDepartment;
       payload.mentorName = mentorName.trim();
       payload.stipend = stipend.trim() || null;
     }
@@ -1078,18 +1144,43 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Start Date *</label>
-                    <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} style={inputStyle} />
+                    <input
+                      type="date"
+                      value={startDate}
+                      min={minDate}
+                      onChange={(event) => {
+                        const nextStartDate = event.target.value;
+                        setStartDate(nextStartDate);
+                        if (endDate && nextStartDate && endDate < nextStartDate) {
+                          setEndDate(nextStartDate);
+                        }
+                      }}
+                      style={inputStyle}
+                    />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>End Date *</label>
-                    <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} style={inputStyle} />
+                    <input
+                      type="date"
+                      value={endDate}
+                      min={startDate || minDate}
+                      onChange={(event) => setEndDate(event.target.value)}
+                      style={inputStyle}
+                    />
                   </div>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Department *</label>
-                    <input value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="Engineering" style={inputStyle} />
+                    <select value={department} onChange={(event) => setDepartment(event.target.value)} style={inputStyle}>
+                      <option value="">Select department</option>
+                      {DEPARTMENT_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Mentor Name *</label>
@@ -1103,6 +1194,13 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     <input value={stipend} onChange={(event) => setStipend(event.target.value)} placeholder="e.g. 15000" style={inputStyle} />
                   </div>
                   <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Intern ID</label>
+                    <input value={loadingNextInternId ? "Loading..." : nextInternId || "Not available"} readOnly style={{ ...inputStyle, fontFamily: "monospace" }} />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
                     <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>
                       Portal Password *
                       <button onClick={() => setPassword(generatePassword())} type="button" style={{ border: "none", background: "transparent", color: COLORS.emeraldGlow, cursor: "pointer", fontSize: 12 }}>
@@ -1111,10 +1209,11 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     </label>
                     <input value={password} onChange={(event) => setPassword(event.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
                   </div>
+                  <div />
                 </div>
 
                 <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-                  Intern ID is generated by backend in EDCS-YYYY-### format. PM assignment is handled after approval.
+                  Intern ID is generated centrally in EDCS-YYYY-### format and stays in sequence for both HR and Admin creation.
                 </div>
 
                 <div style={{ display: "flex", gap: 10, marginTop: 4 }}>

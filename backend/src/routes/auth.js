@@ -25,18 +25,18 @@ function createAuthRouter() {
       if (!email || !password) throw httpError(400, "Email and password are required", true);
 
       const session = await authPasswordGrant({ email, password });
-      setAuthCookies(
-        res,
-        { accessToken: session.access_token, refreshToken: session.refresh_token },
-        { rememberMe: !!rememberMe }
-      );
-
       const user = await authGetUser({ accessToken: session.access_token });
       const profile = await loadProfile({ userId: user.id, accessToken: session.access_token });
       if (!profile) throw httpError(403, "No profile configured for this user", true);
       if (expectedRole && String(profile.role || "").trim().toLowerCase() !== String(expectedRole).trim().toLowerCase()) {
         throw httpError(403, `This account is not a ${expectedRole} account`, true);
       }
+
+      setAuthCookies(
+        res,
+        { accessToken: session.access_token, refreshToken: session.refresh_token },
+        { rememberMe: !!rememberMe }
+      );
 
       res.status(200).json({ success: true, user: { id: user.id, email: user.email }, profile });
     } catch (err) {
