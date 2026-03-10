@@ -12,6 +12,9 @@ const InternApplicationForm = () => {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [resumeFile, setResumeFile] = useState(null);
+  const todayLocalISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
   
   const [formData, setFormData] = useState({
     // Personal Details
@@ -35,6 +38,7 @@ const InternApplicationForm = () => {
     
     // Internship Preferences
     internshipDomain: '',
+    customInternshipDomain: '',
     preferredDuration: '',
     availableFrom: '',
     
@@ -109,6 +113,9 @@ const InternApplicationForm = () => {
 
   const validateStep = (currentStep) => {
     setError('');
+
+    const preferredDomain =
+      String(formData.customInternshipDomain || '').trim() || String(formData.internshipDomain || '').trim();
     
     switch(currentStep) {
       case 1:
@@ -148,8 +155,12 @@ const InternApplicationForm = () => {
       }
         
       case 3:
-        if (!formData.internshipDomain || !formData.preferredDuration || !formData.availableFrom) {
+        if (!preferredDomain || !formData.preferredDuration || !formData.availableFrom) {
           setError('Please fill all required fields');
+          return false;
+        }
+        if (formData.availableFrom && formData.availableFrom < todayLocalISO) {
+          setError('Available From date cannot be in the past');
           return false;
         }
         return true;
@@ -231,6 +242,8 @@ const InternApplicationForm = () => {
     const pageHeight = doc.internal.pageSize.height;
     const margin = 15;
     let yPos = 15;
+    const preferredDomain =
+      String(formData.customInternshipDomain || '').trim() || String(formData.internshipDomain || '').trim();
 
     const colors = {
       gradientStart: [7, 30, 34],
@@ -573,7 +586,7 @@ const InternApplicationForm = () => {
     yPos += 8;
 
     addSectionTitle('Internship Preferences', 'What are you looking for?');
-    addInputField('Preferred Domain *', formData.internshipDomain);
+    addInputField('Preferred Domain *', preferredDomain);
     addInputFieldRow('Preferred Duration *', formData.preferredDuration, 'Available From *', formData.availableFrom);
     
     yPos += 8;
@@ -674,6 +687,8 @@ const InternApplicationForm = () => {
       const pdfBase64 = generateApplicationPDF();
       const resumeLinkValue = String(formData.resumeLink || '').trim();
       let resolvedResumeLink = resumeLinkValue;
+      const preferredDomain =
+        String(formData.customInternshipDomain || '').trim() || String(formData.internshipDomain || '').trim();
 
       if (!resolvedResumeLink && resumeFile) {
         resolvedResumeLink = await toDataUrl(resumeFile);
@@ -682,6 +697,7 @@ const InternApplicationForm = () => {
       await applicationsApi.create({
         formData: {
           ...formData,
+          internshipDomain: preferredDomain,
           resumeLink: resolvedResumeLink || null,
           resumeFileName: resumeFile?.name || null,
           resumeFileType: resumeFile?.type || null,
@@ -736,7 +752,7 @@ const InternApplicationForm = () => {
             lineHeight: '1.6'
           }}>
             Thank you for applying to EDCS InternHub. We've received your application and will review it shortly.
-            You'll hear from us within 5-7 business days.
+            You'll hear from us shortly.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -1082,6 +1098,7 @@ const InternApplicationForm = () => {
                       <option value="3rd Year">3rd Year</option>
                       <option value="4th Year">4th Year</option>
                       <option value="Graduated">Graduated</option>
+                      <option value="Graduated with Work Experience">Graduated with Work Experience</option>
                     </select>
                   </div>
                   <div>
@@ -1140,9 +1157,11 @@ const InternApplicationForm = () => {
                     value={formData.internshipDomain}
                     onChange={handleInputChange}
                     style={inputStyle}
-                    required
                   >
                     <option value="">Select a domain</option>
+                    <option value="SAP">SAP</option>
+                    <option value="Accounts">Accounts</option>
+                    <option value="Oracle">Oracle</option>
                     <option value="Software Development">Software Development</option>
                     <option value="Web Development">Web Development</option>
                     <option value="Mobile App Development">Mobile App Development</option>
@@ -1157,6 +1176,17 @@ const InternApplicationForm = () => {
                     <option value="Business Development">Business Development</option>
                     <option value="HR">Human Resources</option>
                   </select>
+                  <div style={{ marginTop: '12px' }}>
+                    <label style={labelStyle}>Preferred Domain (manual)</label>
+                    <input
+                      type="text"
+                      name="customInternshipDomain"
+                      value={formData.customInternshipDomain}
+                      onChange={handleInputChange}
+                      style={inputStyle}
+                      placeholder="Type your preferred domain if not listed above"
+                    />
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
@@ -1196,6 +1226,7 @@ const InternApplicationForm = () => {
                       value={formData.availableFrom}
                       onChange={handleInputChange}
                       style={inputStyle}
+                      min={todayLocalISO}
                       required
                     />
                   </div>
