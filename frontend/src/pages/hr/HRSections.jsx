@@ -488,6 +488,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
   const [endDate, setEndDate] = useState("");
   const [department, setDepartment] = useState("");
   const [mentorName, setMentorName] = useState("");
+  const [pmCode, setPmCode] = useState("");
   const [stipend, setStipend] = useState("");
   const [nextInternId, setNextInternId] = useState("");
   const [loadingNextInternId, setLoadingNextInternId] = useState(false);
@@ -501,8 +502,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
   const [bulkRejectError, setBulkRejectError] = useState("");
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsData, setDetailsData] = useState(null);
-  const [notesDraft, setNotesDraft] = useState("");
-  const [notesSaving, setNotesSaving] = useState(false);
+  const [offerLetterAttachment, setOfferLetterAttachment] = useState(null);
   const [approvalFeedback, setApprovalFeedback] = useState({
     open: false,
     title: "",
@@ -533,10 +533,23 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
   };
 
   const generatePassword = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$!";
-    let output = "";
-    for (let index = 0; index < 10; index += 1) output += chars.charAt(Math.floor(Math.random() * chars.length));
-    return output;
+    // Easy-to-share, easy-to-type: 8-digit numeric password.
+    const length = 8;
+    const digits = "0123456789";
+
+    try {
+      const bytes = new Uint8Array(length);
+      window.crypto.getRandomValues(bytes);
+      // First digit non-zero.
+      let output = digits[(bytes[0] % 9) + 1];
+      for (let i = 1; i < length; i += 1) output += digits[bytes[i] % 10];
+      return output;
+    } catch {
+      // Fallback if crypto is unavailable.
+      const min = 10 ** (length - 1);
+      const max = 10 ** length - 1;
+      return String(Math.floor(min + Math.random() * (max - min + 1)));
+    }
   };
 
   useEffect(() => {
@@ -560,8 +573,10 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setEndDate("");
     setDepartment("");
     setMentorName("");
+    setPmCode("");
     setStipend("");
     setNextInternId("");
+    setOfferLetterAttachment(null);
   };
 
   const handleInternSelect = (intern) => {
@@ -573,7 +588,20 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setEndDate("");
     setDepartment(knownDepartment || "");
     setMentorName("");
+    setPmCode("");
     setStipend("");
+    setOfferLetterAttachment(null);
+  };
+
+  const computeOfferDuration = () => {
+    const fallback = String(selectedIntern?.preferredDuration || selectedIntern?.duration || "").trim();
+    if (!startDate || !endDate) return fallback;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return fallback;
+    const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+    if (!Number.isFinite(days) || days <= 0) return fallback;
+    return `${days} days`;
   };
 
   const handleApprove = () => {
@@ -627,6 +655,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setIsSubmitting(true);
     try {
       const resolvedDepartment = resolveDepartmentValue();
+      const resolvedPmCode = String(pmCode || "").trim();
       const result = await onApprove({
         applicationId: selectedIntern.applicationId,
         startDate,
@@ -642,9 +671,20 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
       const resolvedInternId = result?.intern?.internId || "Generated";
       const resolvedPassword = result?.credentials?.password || password;
       const emailStatus = result?.emailSent ? "Approval email sent." : "Approval done (email not sent).";
+      let pmAssignmentLine = "";
+
+      if (resolvedPmCode && result?.intern?.id) {
+        try {
+          await hrApi.assignPm(result.intern.id, resolvedPmCode);
+          pmAssignmentLine = `\nPM assigned: ${resolvedPmCode}`;
+        } catch (error) {
+          pmAssignmentLine = `\nPM assignment failed: ${resolvedPmCode}`;
+          console.error("PM assignment failed:", error);
+        }
+      }
       openApprovalFeedback({
         title: "Approved successfully",
-        message: `Intern ID: ${resolvedInternId}\nPassword: ${resolvedPassword}\n${emailStatus}`,
+        message: `Intern ID: ${resolvedInternId}\nPassword: ${resolvedPassword}\n${emailStatus}${pmAssignmentLine}`,
         tone: "success",
       });
       resetForm();
@@ -790,11 +830,9 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setShowDetails(true);
     setDetailsLoading(true);
     setDetailsData(null);
-    setNotesDraft("");
     try {
       const response = await hrApi.applicationById(intern.applicationId);
       setDetailsData(response || null);
-      setNotesDraft(response?.application?.hrNotes || "");
     } catch (error) {
       openApprovalFeedback({
         title: "Failed to load details",
@@ -804,33 +842,6 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
       setShowDetails(false);
     } finally {
       setDetailsLoading(false);
-    }
-  };
-
-  const saveNotes = async () => {
-    const applicationId = detailsData?.application?.id;
-    if (!applicationId) return;
-    setNotesSaving(true);
-    try {
-      await hrApi.updateApplicationNotes(applicationId, notesDraft);
-      setDetailsData((prev) => ({
-        ...(prev || {}),
-        application: { ...(prev?.application || {}), hrNotes: notesDraft },
-      }));
-      if (typeof onDataChanged === "function") await onDataChanged();
-      openApprovalFeedback({
-        title: "Notes saved",
-        message: "HR notes updated successfully.",
-        tone: "success",
-      });
-    } catch (error) {
-      openApprovalFeedback({
-        title: "Failed to save notes",
-        message: error?.message || "Failed to save notes.",
-        tone: "error",
-      });
-    } finally {
-      setNotesSaving(false);
     }
   };
 
@@ -1020,6 +1031,11 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                   </div>
                 </div>
 
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>PM Assignment (optional)</label>
+                  <input value={pmCode} onChange={(event) => setPmCode(event.target.value)} placeholder="e.g. PM001" style={{ ...inputStyle, fontFamily: "monospace" }} />
+                </div>
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>Stipend (optional)</label>
@@ -1043,6 +1059,19 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                   </div>
                   <div />
                 </div>
+
+                <EmailTemplateManager
+                  internData={{
+                    internName: selectedIntern.fullName || "",
+                    internEmail: selectedIntern.email || "",
+                    internId: nextInternId || selectedIntern.internId || selectedIntern.applicationId || "",
+                    domain: resolveDepartmentValue() || selectedIntern.internshipDomain || selectedIntern.domain || "",
+                    duration: computeOfferDuration(),
+                    startDate: startDate ? new Date(startDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "",
+                    pmCode: String(pmCode || "").trim(),
+                  }}
+                  onTemplateReady={(payload) => setOfferLetterAttachment(payload || null)}
+                />
 
                 <div style={{ fontSize: 12, color: COLORS.textMuted }}>
                   Intern ID is generated centrally in EDCS-YYYY-### format and stays in sequence for both HR and Admin creation.
@@ -1137,44 +1166,6 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     link={detailsData?.application?.resumeUrl || ""}
                   />
                 </div>
-
-                <div style={{ ...glassCardStyle, padding: 14 }}>
-                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 8 }}>HR Notes</div>
-                  <textarea
-                    value={notesDraft}
-                    onChange={(event) => setNotesDraft(event.target.value)}
-                    placeholder="Write review notes..."
-                    rows={5}
-                    style={{ ...inputStyle, resize: "vertical", minHeight: 110 }}
-                  />
-                  <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-                    <button onClick={saveNotes} disabled={notesSaving} style={{ ...primaryButtonStyle, padding: "10px 14px", background: GRADIENTS.accent, opacity: notesSaving ? 0.65 : 1 }}>
-                      {notesSaving ? "Saving..." : "Save Notes"}
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ ...glassCardStyle, padding: 14 }}>
-                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 10 }}>Status Timeline</div>
-                  {(detailsData?.timeline || []).length === 0 ? (
-                    <div style={{ color: COLORS.textMuted, fontSize: 13 }}>No timeline events yet.</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {detailsData.timeline.map((item) => (
-                        <div key={item.id} style={{ padding: 10, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.03)" }}>
-                          <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>
-                            {item.fromStatus || "new"} → {item.toStatus}
-                          </div>
-                          <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                            {item.changedAt ? new Date(item.changedAt).toLocaleString() : "-"}
-                            {item.changedBy?.fullName ? ` • ${item.changedBy.fullName}` : ""}
-                          </div>
-                          {item.reason ? <div style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 4 }}>Reason: {item.reason}</div> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             )}
           </div>
@@ -1201,6 +1192,11 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
             <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Stipend</div>
             <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>{stipend || "N/A"}</div>
           </div>
+          {offerLetterAttachment?.templateName ? (
+            <p style={{ color: COLORS.textMuted, marginTop: 10, marginBottom: 8, fontSize: 12 }}>
+              Offer letter ready: <strong>{offerLetterAttachment.templateName}</strong>
+            </p>
+          ) : null}
           <p style={{ color: COLORS.textMuted, marginTop: 12, marginBottom: 16, fontSize: 12 }}>
             Account credentials will be created automatically.
           </p>
@@ -1426,8 +1422,6 @@ export function NewRegistrationsSection({
   const [showDetails, setShowDetails] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsData, setDetailsData] = useState(null);
-  const [notesDraft, setNotesDraft] = useState("");
-  const [notesSaving, setNotesSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
@@ -1521,11 +1515,9 @@ InternHub`;
     setShowDetails(true);
     setDetailsLoading(true);
     setDetailsData(null);
-    setNotesDraft("");
     try {
       const response = await hrApi.applicationById(intern.applicationId);
       setDetailsData(response || null);
-      setNotesDraft(response?.application?.hrNotes || "");
     } catch (error) {
       openBulkFeedback({
         title: "Failed to load details",
@@ -1535,32 +1527,6 @@ InternHub`;
       setShowDetails(false);
     } finally {
       setDetailsLoading(false);
-    }
-  };
-
-  const saveNotes = async () => {
-    const applicationId = detailsData?.application?.id;
-    if (!applicationId) return;
-    setNotesSaving(true);
-    try {
-      await hrApi.updateApplicationNotes(applicationId, notesDraft);
-      setDetailsData((prev) => ({
-        ...(prev || {}),
-        application: { ...(prev?.application || {}), hrNotes: notesDraft },
-      }));
-      openBulkFeedback({
-        title: "Notes saved",
-        message: "HR notes updated successfully.",
-        tone: "success",
-      });
-    } catch (error) {
-      openBulkFeedback({
-        title: "Failed to save notes",
-        message: error?.message || "Failed to save notes.",
-        tone: "error",
-      });
-    } finally {
-      setNotesSaving(false);
     }
   };
 
@@ -2249,44 +2215,6 @@ InternHub`;
                     link={detailsData?.application?.resumeUrl || ""}
                   />
                 </div>
-
-                <div style={{ ...glassCardStyle, padding: 14 }}>
-                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 8 }}>HR Notes</div>
-                  <textarea
-                    value={notesDraft}
-                    onChange={(event) => setNotesDraft(event.target.value)}
-                    placeholder="Write review notes..."
-                    rows={5}
-                    style={{ ...inputStyle, resize: "vertical", minHeight: 110 }}
-                  />
-                  <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-                    <button onClick={saveNotes} disabled={notesSaving} style={{ ...primaryButtonStyle, padding: "10px 14px", background: GRADIENTS.accent, opacity: notesSaving ? 0.65 : 1 }}>
-                      {notesSaving ? "Saving..." : "Save Notes"}
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ ...glassCardStyle, padding: 14 }}>
-                  <div style={{ color: COLORS.textPrimary, fontWeight: 700, marginBottom: 10 }}>Status Timeline</div>
-                  {(detailsData?.timeline || []).length === 0 ? (
-                    <div style={{ color: COLORS.textMuted, fontSize: 13 }}>No timeline events yet.</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {detailsData.timeline.map((item) => (
-                        <div key={item.id} style={{ padding: 10, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.03)" }}>
-                          <div style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 13 }}>
-                            {item.fromStatus || "new"} → {item.toStatus}
-                          </div>
-                          <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                            {item.changedAt ? new Date(item.changedAt).toLocaleString() : "-"}
-                            {item.changedBy?.fullName ? ` • ${item.changedBy.fullName}` : ""}
-                          </div>
-                          {item.reason ? <div style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 4 }}>Reason: {item.reason}</div> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             )}
           </div>
@@ -2402,12 +2330,34 @@ InternHub`;
 // ==================== PM SECTION ====================
 export function PMSection({ pms, users, onViewInterns, onChat }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [departmentTab, setDepartmentTab] = useState("All");
 
-  const getInternCount = (pmCode) =>
-    users.filter(u => u.role === "intern" && u.pmCode === pmCode).length;
+  const DEPARTMENT_TABS = ["All", "SAP", "ORACLE", "ACCOUNTS", "HR"];
 
-  const totalAssignedInterns = pms.reduce((sum, pm) => sum + getInternCount(pm.pmCode), 0);
-  const activePMs = pms.filter(pm => pm.status === "active").length;
+  const normalizeDepartment = (value) => {
+    const upper = String(value || "").trim().toUpperCase();
+    if (upper === "SAP") return "SAP";
+    if (upper === "ORACLE") return "ORACLE";
+    if (upper === "ACCOUNTS" || upper === "ACCOUNT" || upper === "ACCOUNTING") return "ACCOUNTS";
+    if (upper === "HR" || upper === "HUMAN RESOURCES") return "HR";
+    return "";
+  };
+
+  const getInternDepartment = (intern) =>
+    intern?.department ||
+    intern?.internshipDomain ||
+    intern?.domain ||
+    intern?.internship_domain ||
+    intern?.department_name ||
+    intern?.departmentName ||
+    "";
+
+  const getInternCount = (pmCode) => {
+    const pmKey = String(pmCode || "");
+    const interns = (users || []).filter((u) => u.role === "intern" && String(u.pmCode || u.pm_code || "") === pmKey);
+    if (departmentTab === "All") return interns.length;
+    return interns.filter((intern) => normalizeDepartment(getInternDepartment(intern)) === departmentTab).length;
+  };
 
   const filteredPMs = pms.filter((pm) => {
     const searchLower = searchQuery.toLowerCase();
@@ -2415,12 +2365,17 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
     const email = (pm.email || "").toLowerCase();
     const code = (pm.pmCode || "").toLowerCase();
 
-    return (
+    const matchesSearch = (
       displayName.includes(searchLower) ||
       email.includes(searchLower) ||
       code.includes(searchLower)
     );
+    const matchesDepartment = departmentTab === "All" ? true : getInternCount(pm.pmCode) > 0;
+    return matchesSearch && matchesDepartment;
   });
+
+  const totalAssignedInterns = filteredPMs.reduce((sum, pm) => sum + getInternCount(pm.pmCode), 0);
+  const activePMs = filteredPMs.filter(pm => pm.status === "active").length;
 
   return (
     <div className="animate-fadeIn">
@@ -2447,7 +2402,7 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
                 Total PMs
               </p>
               <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.textPrimary }}>
-                {pms.length}
+                {filteredPMs.length}
               </h3>
             </div>
             <div
@@ -2544,6 +2499,31 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
           marginBottom: "24px",
         }}
       >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+          {DEPARTMENT_TABS.map((tab) => {
+            const selected = tab === departmentTab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setDepartmentTab(tab)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  border: selected ? `1px solid ${COLORS.deepOcean}` : "1px solid rgba(103, 146, 137, 0.25)",
+                  background: selected ? `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})` : "rgba(103, 146, 137, 0.08)",
+                  color: selected ? COLORS.peachGlow : "rgba(255, 229, 217, 0.85)",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  letterSpacing: "0.3px",
+                  cursor: "pointer",
+                }}
+              >
+                {tab}
+              </button>
+            );
+          })}
+        </div>
         <div style={{ position: "relative" }}>
           <Search
             size={18}
@@ -2845,9 +2825,14 @@ export function ReportsSection() {
 }
 
 // ==================== ACTIVE INTERNS FULL PAGE WRAPPER ====================
-export const ActiveInterns = ({ onNavigateToMessages, users }) => (
-  <ActiveInternsPage onNavigateToMessages={onNavigateToMessages} users={users} />
+export const ActiveInterns = ({ onNavigateToMessages, users, initialPmCode, initialPmName, onClearPmFilter }) => (
+  <ActiveInternsPage
+    onNavigateToMessages={onNavigateToMessages}
+    users={users}
+    initialPmCode={initialPmCode}
+    initialPmName={initialPmName}
+    onClearPmFilter={onClearPmFilter}
+  />
 );
-
 
 

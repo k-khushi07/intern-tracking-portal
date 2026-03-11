@@ -2,8 +2,7 @@ const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
-const { generateNextInternId } = require("../services/internId");
-const { createNotifications, listProfilesByRole, toClientNotification } = require("../services/notifications");
+const { generateNextInternId, peekNextInternId } = require("../services/internId");
 
 async function assertInternExists(internId) {
   const rows = await restSelect({
@@ -521,7 +520,7 @@ function createHrRouter({ emailService }) {
 
   router.get("/intern-id/next", async (req, res, next) => {
     try {
-      const internId = await generateNextInternId({ prefix: "EDCS" });
+      const internId = await peekNextInternId({ prefix: "EDCS" });
       res.status(200).json({ success: true, internId });
     } catch (err) {
       next(err);
@@ -1766,31 +1765,6 @@ function createHrRouter({ emailService }) {
       if (io) {
         io.to("role:hr").emit("itp:changed", { entity: "announcements", action: "insert" });
         roles.forEach((r) => io.to(`role:${r}`).emit("itp:changed", { entity: "announcements", action: "insert" }));
-      }
-
-      if (io) {
-        try {
-          const recipientIds = new Set();
-          const roleIds = await Promise.all(roles.map((r) => listProfilesByRole(r)));
-          roleIds.flat().forEach((id) => recipientIds.add(id));
-          const preview = String(content || "").trim().slice(0, 180);
-          const insertedNotifs = await createNotifications({
-            rows: Array.from(recipientIds).map((rid) => ({
-              recipient_profile_id: rid,
-              title: "New announcement",
-              message: `${String(title).trim()}${preview ? ` — ${preview}` : ""}`.slice(0, 220),
-              type: "announcement",
-              category: "announcement",
-              metadata: { announcementId: (inserted?.[0] || inserted)?.id || null },
-            })),
-          });
-          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
-          rows.filter(Boolean).forEach((row) => {
-            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
-          });
-        } catch (err) {
-          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify announcement:", err);
-        }
       }
 
       res.status(201).json({ success: true, announcement: inserted?.[0] || inserted });
