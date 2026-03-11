@@ -16,7 +16,7 @@ const COLORS = {
 
 const InternProfilePage = ({ intern, onBack }) => {
   const params = useParams();
-  const internId = params?.id || params?.internId || intern?.id || null;
+  const internId = params?.internId || params?.id || intern?.id || null;
   const [internData, setInternData] = useState(intern || null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");

@@ -317,12 +317,6 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
         Back to Interns
       </button>
 
-      {internLoadError && (
-        <div style={{ padding: 12, borderRadius: 10, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#fecaca", fontSize: 13 }}>
-          {internLoadError}
-        </div>
-      )}
-
       <div
         style={{
           padding: 22,
