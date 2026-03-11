@@ -1,6 +1,6 @@
 ﻿// HRHome.jsx - FIXED with PM Dashboard colors
 import React, { useState, useEffect } from "react";
-import { Menu, Bell, LogOut, Sparkles, X } from "lucide-react";
+import { Menu, Bell, LogOut, Sparkles, X, Send } from "lucide-react";
 import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
 import {
   DashboardSection,
@@ -8,7 +8,8 @@ import {
   NewRegistrationsSection,
   PMSection,
   ReportsSection,
-  ActiveInterns
+  ActiveInterns,
+  ProjectSubmissionsSection
 } from "./HRSections";
 import {
   Modal,
@@ -218,6 +219,10 @@ export default function HRHome() {
 
   const fallbackStats = getStats();
   const stats = { ...(apiStats || {}), ...fallbackStats };
+  const menuItems = [
+    ...navItems(stats),
+    { id: "project-submissions", label: "Project Submissions", icon: Send },
+  ];
 
   // Handlers
   const handleApprove = async (approval) => {
@@ -560,7 +565,7 @@ export default function HRHome() {
 
           {/* Navigation */}
           <nav style={{ flex: 1, padding: "0 12px", overflowY: "auto", overflowX: "hidden" }}>
-            {navItems(stats).map((item, idx) => (
+            {menuItems.map((item, idx) => (
               <button
                 key={item.id}
                 onClick={() => {
@@ -674,7 +679,7 @@ export default function HRHome() {
             )}
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
-                {navItems(stats).find(n => n.id === activeSection)?.label || "Dashboard"}
+                {menuItems.find(n => n.id === activeSection)?.label || "Dashboard"}
               </h1>
               <p style={{ fontSize: 13, color: COLORS.textMuted, margin: 0 }}>
                 Manage your intern workforce
@@ -962,6 +967,10 @@ export default function HRHome() {
                 setReportsTab={setReportsTab}
                 currentHR={currentHR}
               />
+            )}
+
+            {activeSection === "project-submissions" && (
+              <ProjectSubmissionsSection isMobile={isMobile} />
             )}
           </div>
         </div>

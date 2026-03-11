@@ -2824,6 +2824,86 @@ export function ReportsSection() {
   return <ReportsInbox />;
 }
 
+function ProjectSubmissionsSection({ isMobile }) {
+  const [submissions, setSubmissions] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await hrApi.projectSubmissions();
+        setSubmissions(res?.submissions || []);
+      } catch (err) {
+        setError(err?.message || "Failed to load submissions");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
+  if (error) return <div style={{ color: "#ef4444", padding: 32 }}>{error}</div>;
+  if (!submissions.length) return (
+    <div style={{ color: "rgba(248,250,252,0.6)", padding: 32, textAlign: "center" }}>
+      No project submissions yet.
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      <h2 style={{ color: "white", margin: 0, fontSize: 20, fontWeight: 700 }}>
+        Project Submissions
+      </h2>
+      {submissions.map((s) => (
+        <div key={s.id} style={{
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 16,
+          padding: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: "white", fontWeight: 700, fontSize: 16 }}>{s.title}</span>
+            <span style={{
+              padding: "4px 12px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 600,
+              background: s.status === "submitted" ? "rgba(20,184,166,0.15)" : "rgba(245,158,11,0.15)",
+              color: s.status === "submitted" ? "#14b8a6" : "#f59e0b",
+              border: `1px solid ${s.status === "submitted" ? "#14b8a6" : "#f59e0b"}`,
+            }}>{s.status}</span>
+          </div>
+          <div style={{ color: "rgba(248,250,252,0.7)", fontSize: 13 }}>
+            {s.intern?.full_name || s.intern?.email || "Unknown intern"}
+            {s.intern?.intern_id ? ` • ${s.intern.intern_id}` : ""}
+          </div>
+          <div style={{ color: "rgba(248,250,252,0.6)", fontSize: 13 }}>{s.description}</div>
+          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+            <a href={s.github_link} target="_blank" rel="noreferrer"
+              style={{ color: "#14b8a6", fontSize: 13, textDecoration: "none" }}>
+              GitHub →
+            </a>
+            {s.demo_link && (
+              <a href={s.demo_link} target="_blank" rel="noreferrer"
+                style={{ color: "#a78bfa", fontSize: 13, textDecoration: "none" }}>
+                Live Demo →
+              </a>
+            )}
+          </div>
+          <div style={{ color: "rgba(248,250,252,0.4)", fontSize: 11 }}>
+            Submitted: {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ==================== ACTIVE INTERNS FULL PAGE WRAPPER ====================
 export const ActiveInterns = ({ onNavigateToMessages, users, initialPmCode, initialPmName, onClearPmFilter }) => (
   <ActiveInternsPage
@@ -2834,5 +2914,7 @@ export const ActiveInterns = ({ onNavigateToMessages, users, initialPmCode, init
     onClearPmFilter={onClearPmFilter}
   />
 );
+
+export { ProjectSubmissionsSection };
 
 

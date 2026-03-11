@@ -1,6 +1,6 @@
 // PMHome.jsx - pm dashboard
 import React, { useState, useEffect, useCallback } from "react";
-import { Menu, Bell, LogOut, Sparkles, X, Users, Home, MessageCircle } from "lucide-react";
+import { Menu, Bell, LogOut, Sparkles, X, Users, Home, MessageCircle, Send } from "lucide-react";
 import MessagesPage from './MessagesPage';
 import OverviewPage from "./OverviewPage";
 import MyInternsPage from './MyInternsPage';
@@ -54,6 +54,82 @@ const GlobalStyles = () => (
     ::-webkit-scrollbar-thumb:hover { background: ${COLORS.jungleTeal}; }
   `}</style>
 );
+
+function ProjectSubmissionsSection({ isMobile, pmApi }) {
+  const [submissions, setSubmissions] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await pmApi.projectSubmissions();
+        setSubmissions(res?.submissions || []);
+      } catch (err) {
+        setError(err?.message || "Failed to load submissions");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
+  if (error) return <div style={{ color: "#ef4444", padding: 32 }}>{error}</div>;
+  if (!submissions.length) return (
+    <div style={{ color: "rgba(248,250,252,0.6)", padding: 32, textAlign: "center" }}>
+      No project submissions yet.
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      <h2 style={{ color: "white", margin: 0, fontSize: 20, fontWeight: 700 }}>
+        Project Submissions
+      </h2>
+      {submissions.map((s) => (
+        <div key={s.id} style={{
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 16,
+          padding: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: "white", fontWeight: 700, fontSize: 16 }}>{s.title}</span>
+            <span style={{
+              padding: "4px 12px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 600,
+              background: s.status === "submitted" ? "rgba(20,184,166,0.15)" : "rgba(245,158,11,0.15)",
+              color: s.status === "submitted" ? "#14b8a6" : "#f59e0b",
+              border: `1px solid ${s.status === "submitted" ? "#14b8a6" : "#f59e0b"}`,
+            }}>{s.status}</span>
+          </div>
+          <div style={{ color: "rgba(248,250,252,0.6)", fontSize: 13 }}>{s.description}</div>
+          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+            <a href={s.github_link} target="_blank" rel="noreferrer"
+              style={{ color: "#14b8a6", fontSize: 13, textDecoration: "none" }}>
+              GitHub →
+            </a>
+            {s.demo_link && (
+              <a href={s.demo_link} target="_blank" rel="noreferrer"
+                style={{ color: "#a78bfa", fontSize: 13, textDecoration: "none" }}>
+                Live Demo →
+              </a>
+            )}
+          </div>
+          <div style={{ color: "rgba(248,250,252,0.4)", fontSize: 11 }}>
+            Submitted: {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const PMHome = () => {
   const [currentPage, setCurrentPage] = useState("overview");
@@ -283,6 +359,7 @@ const PMHome = () => {
     { id: "overview", label: "PM Dashboard", icon: Home },
     { id: "interns", label: "My Interns", icon: Users },
     { id: "messages", label: "Messages", icon: MessageCircle },
+    { id: "project-submissions", label: "Project Submissions", icon: Send },
   ];
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -395,6 +472,8 @@ const PMHome = () => {
         );
       case "messages":
         return <MessagesPage selectedIntern={selectedIntern} />;
+      case "project-submissions":
+        return <ProjectSubmissionsSection isMobile={isMobile} pmApi={pmApi} />;
       default:
         return (
           <OverviewPage 

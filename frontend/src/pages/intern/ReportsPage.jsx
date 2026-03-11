@@ -141,7 +141,11 @@ export default function ReportsPage({ isMobile = false }) {
       setTnaDirty(false);
       setBlueprintDirty(false);
     } catch (e) {
-      setError(e?.message || "Failed to load reports");
+      if (e?.status === 403 || String(e?.message || "").includes("Forbidden")) {
+        setError("Session error — please log out and log back in as intern.");
+      } else {
+        setError(e?.message || "Failed to load reports");
+      }
     } finally {
       setLoading(false);
     }

@@ -978,10 +978,24 @@ function ProjectSubmissionPage({ isMobile }) {
   const [demoLink, setDemoLink] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e) => { 
-    e.preventDefault(); 
-    setSubmitted(true); 
-    setTimeout(() => setSubmitted(false), 4000); 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await internApi.submitProject({
+        title: projectTitle,
+        description,
+        githubLink,
+        demoLink: demoLink || null,
+      });
+      setSubmitted(true);
+      setProjectTitle("");
+      setDescription("");
+      setGithubLink("");
+      setDemoLink("");
+      setTimeout(() => setSubmitted(false), 4000);
+    } catch (err) {
+      alert(err?.message || "Failed to submit project");
+    }
   };
   
   const inputStyle = {

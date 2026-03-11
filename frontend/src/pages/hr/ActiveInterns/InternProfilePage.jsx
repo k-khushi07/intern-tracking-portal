@@ -1,6 +1,8 @@
 // InternProfilePage.jsx
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { ArrowLeft, Mail, MapPin, Calendar, Award, TrendingUp, Clock, Phone, Briefcase, GraduationCap, Target, CheckCircle2, AlertCircle } from "lucide-react";
+import { hrApi } from "../../../lib/apiClient";
 
 
 const COLORS = {
@@ -13,7 +15,112 @@ const COLORS = {
 
 
 const InternProfilePage = ({ intern, onBack }) => {
-  if (!intern) {
+  const params = useParams();
+  const internId = params?.id || params?.internId || intern?.id || null;
+  const [internData, setInternData] = useState(intern || null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    if (!intern) return;
+    setInternData(intern);
+  }, [intern]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!internId) return;
+      setLoading(true);
+      setLoadError("");
+      try {
+        const res = await hrApi.getIntern(internId);
+        if (cancelled) return;
+        setInternData(res?.intern || null);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(err?.message || "Failed to load intern profile.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [internId]);
+
+  const profilePayload = useMemo(() => {
+    const raw = internData?.profile_data || internData?.profileData;
+    return raw && typeof raw === "object" ? raw : {};
+  }, [internData]);
+
+  const skills = useMemo(() => {
+    const raw = profilePayload.skills ?? profilePayload.technicalSkills ?? [];
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (typeof raw === "string") {
+      return raw.split(",").map((value) => value.trim()).filter(Boolean);
+    }
+    return [];
+  }, [profilePayload]);
+
+  const profileData = useMemo(
+    () => ({
+      phone: profilePayload.phone || profilePayload.mobile || "",
+      dob: profilePayload.dob || profilePayload.dateOfBirth || "",
+      bloodGroup: profilePayload.bloodGroup || profilePayload.blood_group || "",
+      address: profilePayload.address || "",
+      college: profilePayload.college || profilePayload.collegeName || "",
+      degree: profilePayload.degree || profilePayload.education || "",
+      education: profilePayload.education || profilePayload.degree || "",
+      university: profilePayload.university || profilePayload.college || profilePayload.collegeName || "",
+      expectedGraduation: profilePayload.expectedGraduation || profilePayload.graduationYear || profilePayload.graduationDate || "",
+      internshipDuration: profilePayload.internshipDuration || profilePayload.duration || "",
+      supervisor: profilePayload.supervisor || profilePayload.mentor || "",
+      startDate: profilePayload.startDate || profilePayload.joinDate || internData?.created_at || "",
+      bio: profilePayload.bio || profilePayload.about || "",
+      location:
+        profilePayload.location ||
+        profilePayload.address ||
+        [profilePayload.city, profilePayload.state].filter(Boolean).join(", "),
+      recentActivities: Array.isArray(profilePayload.recentActivities) ? profilePayload.recentActivities : [],
+      currentProjects: Array.isArray(profilePayload.currentProjects) ? profilePayload.currentProjects : [],
+      goals: Array.isArray(profilePayload.goals) ? profilePayload.goals : [],
+      skills,
+      performance: Number(profilePayload.performance ?? internData?.performance ?? 0),
+      tasksCompleted: Number(profilePayload.tasksCompleted ?? internData?.tasksCompleted ?? 0),
+      tasksTotal: Number(profilePayload.tasksTotal ?? internData?.tasksTotal ?? 0),
+      weeklyReports: Number(profilePayload.weeklyReports ?? internData?.weeklyReports ?? 0),
+      monthlyReports: Number(profilePayload.monthlyReports ?? internData?.monthlyReports ?? 0),
+      lastActive: profilePayload.lastActive || internData?.lastActive || "",
+    }),
+    [profilePayload, internData, skills]
+  );
+
+  const internMeta = useMemo(() => {
+    const name = internData?.full_name || internData?.fullName || internData?.name || internData?.email || "Intern";
+    return {
+      name,
+      email: internData?.email || "",
+      status: String(internData?.status || "active").toLowerCase(),
+      role: internData?.role || "Intern",
+      department:
+        profilePayload.department ||
+        profilePayload.domain ||
+        profilePayload.team ||
+        internData?.department ||
+        internData?.internshipDomain ||
+        "",
+      avatar:
+        name
+          .split(" ")
+          .filter(Boolean)
+          .map((n) => n[0])
+          .join("")
+          .toUpperCase() || "IN",
+    };
+  }, [internData, profilePayload]);
+
+  if (!internData && !loading) {
     return (
       <div className="animate-fadeIn" style={{ textAlign: "center", padding: "60px 20px" }}>
         <p style={{ fontSize: "18px", color: "rgba(255, 229, 217, 0.6)" }}>No intern selected</p>
@@ -22,47 +129,23 @@ const InternProfilePage = ({ intern, onBack }) => {
   }
 
 
-  // Enhance profile data with defaults
-  const profileData = {
-    ...intern,
-    phone: intern.phone || "+1 (555) 123-4567",
-    education: intern.education || "Bachelor's in Computer Science",
-    university: intern.university || "University Name",
-    expectedGraduation: intern.expectedGraduation || "May 2025",
-    internshipDuration: intern.internshipDuration || "6 months",
-    supervisor: intern.supervisor || "Not Assigned",
-    startDate: intern.joinDate || new Date().toISOString(),
-    bio: intern.bio || "Passionate about learning and contributing to team success.",
-    avatar: intern.name
-      ?.split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase() || "IN",
-    recentActivities: intern.recentActivities || [
-      { id: 1, action: "Completed weekly report", time: "2 hours ago", type: "report" },
-      { id: 2, action: "Updated TNA Tracker", time: "5 hours ago", type: "tna" },
-      { id: 3, action: "Submitted project", time: "1 day ago", type: "project" },
-    ],
-    currentProjects: intern.currentProjects || [
-      { id: 1, name: "Training Module", progress: 75, status: "In Progress" },
-      { id: 2, name: "Documentation", progress: 50, status: "In Progress" },
-    ],
-    goals: intern.goals || [
-      { id: 1, title: "Complete onboarding", progress: 80, deadline: "Feb 2025" },
-      { id: 2, title: "Master core technologies", progress: 60, deadline: "Mar 2025" },
-    ],
-    skills: intern.skills || ["JavaScript", "React", "Node.js"],
-    performance: intern.performance || 75,
-    tasksCompleted: intern.tasksCompleted || 0,
-    tasksTotal: intern.tasksTotal || 0,
-    weeklyReports: intern.weeklyReports || 0,
-    monthlyReports: intern.monthlyReports || 0,
-    lastActive: intern.lastActive || "Recently",
-  };
-
-
   return (
     <div className="animate-fadeIn">
+      {loadError && (
+        <div
+          className="glass"
+          style={{
+            padding: "12px 16px",
+            borderRadius: "12px",
+            marginBottom: "16px",
+            background: "rgba(217, 4, 41, 0.15)",
+            border: "1px solid rgba(217, 4, 41, 0.35)",
+            color: COLORS.peachGlow,
+          }}
+        >
+          {loadError}
+        </div>
+      )}
       {/* Back Button */}
       <button
         onClick={onBack}
@@ -123,7 +206,7 @@ const InternProfilePage = ({ intern, onBack }) => {
               flexShrink: 0,
             }}
           >
-            {profileData.avatar}
+            {internMeta.avatar}
           </div>
 
 
@@ -137,37 +220,37 @@ const InternProfilePage = ({ intern, onBack }) => {
                   fontFamily: "Outfit",
                 }}
               >
-                {profileData.name}
+                {internMeta.name}
               </h1>
               <span
                 style={{
                   padding: "6px 16px",
                   background:
-                    profileData.status === "active"
+                    internMeta.status === "active"
                       ? "rgba(34, 197, 94, 0.3)"
                       : "rgba(217, 4, 41, 0.3)",
                   border: `1px solid ${
-                    profileData.status === "active" ? "rgba(34, 197, 94, 0.5)" : "rgba(217, 4, 41, 0.5)"
+                    internMeta.status === "active" ? "rgba(34, 197, 94, 0.5)" : "rgba(217, 4, 41, 0.5)"
                   }`,
                   borderRadius: "8px",
                   fontSize: "12px",
                   fontWeight: "600",
-                  color: profileData.status === "active" ? "#22c55e" : COLORS.racingRed,
+                  color: internMeta.status === "active" ? "#22c55e" : COLORS.racingRed,
                   textTransform: "uppercase",
                 }}
               >
-                {profileData.status}
+                {internMeta.status}
               </span>
             </div>
 
 
             <p style={{ fontSize: "18px", color: "rgba(255, 229, 217, 0.9)", marginBottom: "16px" }}>
-              {profileData.role || "Intern"} • {profileData.department || "General"}
+              {internMeta.role || "Intern"} • {internMeta.department || "General"}
             </p>
 
 
             <p style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.8)", lineHeight: "1.6", marginBottom: "20px" }}>
-              {profileData.bio}
+              {profileData.bio || "—"}
             </p>
 
 
@@ -176,13 +259,13 @@ const InternProfilePage = ({ intern, onBack }) => {
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <Mail size={18} color={COLORS.peachGlow} />
                 <span style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.9)" }}>
-                  {profileData.email}
+                  {internMeta.email || "—"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <Phone size={18} color={COLORS.peachGlow} />
                 <span style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.9)" }}>
-                  {profileData.phone}
+                  {profileData.phone || "—"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -194,7 +277,7 @@ const InternProfilePage = ({ intern, onBack }) => {
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <Calendar size={18} color={COLORS.peachGlow} />
                 <span style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.9)" }}>
-                  Joined: {new Date(profileData.startDate).toLocaleDateString()}
+                  Joined: {profileData.startDate ? new Date(profileData.startDate).toLocaleDateString() : "—"}
                 </span>
               </div>
             </div>
@@ -283,7 +366,7 @@ const InternProfilePage = ({ intern, onBack }) => {
             <Clock size={20} color={COLORS.jungleTeal} />
           </div>
           <p style={{ fontSize: "18px", fontWeight: "700", color: COLORS.peachGlow }}>
-            {profileData.lastActive}
+            {profileData.lastActive || "—"}
           </p>
         </div>
       </div>
@@ -383,21 +466,25 @@ const InternProfilePage = ({ intern, onBack }) => {
               Skills
             </h3>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-              {profileData.skills.map((skill, index) => (
-                <span
-                  key={index}
-                  style={{
-                    padding: "8px 16px",
-                    background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: "600",
-                    color: COLORS.peachGlow,
-                  }}
-                >
-                  {skill}
-                </span>
-              ))}
+              {profileData.skills.length > 0 ? (
+                profileData.skills.map((skill, index) => (
+                  <span
+                    key={index}
+                    style={{
+                      padding: "8px 16px",
+                      background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      fontWeight: "600",
+                      color: COLORS.peachGlow,
+                    }}
+                  >
+                    {skill}
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No skills listed.</span>
+              )}
             </div>
           </div>
 
@@ -427,53 +514,57 @@ const InternProfilePage = ({ intern, onBack }) => {
               Current Projects
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {profileData.currentProjects.map((project) => (
-                <div key={project.id}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <span style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                      {project.name}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        color: project.status === "Completed" ? "#22c55e" : COLORS.jungleTeal,
-                      }}
-                    >
-                      {project.progress}%
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "6px",
-                      background: "rgba(103, 146, 137, 0.2)",
-                      borderRadius: "10px",
-                      overflow: "hidden",
-                    }}
-                  >
+              {profileData.currentProjects.length > 0 ? (
+                profileData.currentProjects.map((project) => (
+                  <div key={project.id || project.name}>
                     <div
                       style={{
-                        width: `${project.progress}%`,
-                        height: "100%",
-                        background:
-                          project.status === "Completed"
-                            ? "linear-gradient(90deg, #22c55e, #16a34a)"
-                            : `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                        borderRadius: "10px",
-                        transition: "width 0.5s ease",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "8px",
                       }}
-                    />
+                    >
+                      <span style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
+                        {project.name || "Untitled Project"}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          color: project.status === "Completed" ? "#22c55e" : COLORS.jungleTeal,
+                        }}
+                      >
+                        {project.progress ?? 0}%
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "6px",
+                        background: "rgba(103, 146, 137, 0.2)",
+                        borderRadius: "10px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${project.progress ?? 0}%`,
+                          height: "100%",
+                          background:
+                            project.status === "Completed"
+                              ? "linear-gradient(90deg, #22c55e, #16a34a)"
+                              : `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                          borderRadius: "10px",
+                          transition: "width 0.5s ease",
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No projects yet.</span>
+              )}
             </div>
           </div>
         </div>
@@ -506,49 +597,53 @@ const InternProfilePage = ({ intern, onBack }) => {
               Goals & Milestones
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {profileData.goals.map((goal) => (
-                <div key={goal.id}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500", marginBottom: "4px" }}>
-                        {goal.title}
-                      </p>
-                      <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)" }}>
-                        Deadline: {goal.deadline}
-                      </p>
-                    </div>
-                    <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.jungleTeal }}>
-                      {goal.progress}%
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "6px",
-                      background: "rgba(103, 146, 137, 0.2)",
-                      borderRadius: "10px",
-                      overflow: "hidden",
-                    }}
-                  >
+              {profileData.goals.length > 0 ? (
+                profileData.goals.map((goal) => (
+                  <div key={goal.id || goal.title}>
                     <div
                       style={{
-                        width: `${goal.progress}%`,
-                        height: "100%",
-                        background: `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                        borderRadius: "10px",
-                        transition: "width 0.5s ease",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: "8px",
                       }}
-                    />
+                    >
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500", marginBottom: "4px" }}>
+                          {goal.title || "Goal"}
+                        </p>
+                        <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)" }}>
+                          Deadline: {goal.deadline || "—"}
+                        </p>
+                      </div>
+                      <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.jungleTeal }}>
+                        {goal.progress ?? 0}%
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "6px",
+                        background: "rgba(103, 146, 137, 0.2)",
+                        borderRadius: "10px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${goal.progress ?? 0}%`,
+                          height: "100%",
+                          background: `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+                          borderRadius: "10px",
+                          transition: "width 0.5s ease",
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No goals yet.</span>
+              )}
             </div>
           </div>
 
@@ -578,63 +673,66 @@ const InternProfilePage = ({ intern, onBack }) => {
               Recent Activities
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {profileData.recentActivities.map((activity) => {
-                const getIcon = () => {
-                  switch (activity.type) {
-                    case "report":
-                      return <TrendingUp size={16} color={COLORS.jungleTeal} />;
-                    case "tna":
-                      return <CheckCircle2 size={16} color={COLORS.jungleTeal} />;
-                    case "project":
-                      return <Briefcase size={16} color={COLORS.jungleTeal} />;
-                    case "blueprint":
-                      return <Target size={16} color={COLORS.jungleTeal} />;
-                    case "task":
-                      return <Award size={16} color={COLORS.jungleTeal} />;
-                    default:
-                      return <AlertCircle size={16} color={COLORS.jungleTeal} />;
-                  }
-                };
+              {profileData.recentActivities.length > 0 ? (
+                profileData.recentActivities.map((activity) => {
+                  const getIcon = () => {
+                    switch (activity.type) {
+                      case "report":
+                        return <TrendingUp size={16} color={COLORS.jungleTeal} />;
+                      case "tna":
+                        return <CheckCircle2 size={16} color={COLORS.jungleTeal} />;
+                      case "project":
+                        return <Briefcase size={16} color={COLORS.jungleTeal} />;
+                      case "blueprint":
+                        return <Target size={16} color={COLORS.jungleTeal} />;
+                      case "task":
+                        return <Award size={16} color={COLORS.jungleTeal} />;
+                      default:
+                        return <AlertCircle size={16} color={COLORS.jungleTeal} />;
+                    }
+                  };
 
-
-                return (
-                  <div
-                    key={activity.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "12px",
-                      padding: "12px",
-                      background: "rgba(103, 146, 137, 0.05)",
-                      borderRadius: "10px",
-                      borderLeft: `3px solid ${COLORS.jungleTeal}`,
-                    }}
-                  >
+                  return (
                     <div
+                      key={activity.id || activity.action}
                       style={{
-                        width: "32px",
-                        height: "32px",
-                        background: "rgba(103, 146, 137, 0.2)",
-                        borderRadius: "8px",
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
+                        alignItems: "flex-start",
+                        gap: "12px",
+                        padding: "12px",
+                        background: "rgba(103, 146, 137, 0.05)",
+                        borderRadius: "10px",
+                        borderLeft: `3px solid ${COLORS.jungleTeal}`,
                       }}
                     >
-                      {getIcon()}
+                      <div
+                        style={{
+                          width: "32px",
+                          height: "32px",
+                          background: "rgba(103, 146, 137, 0.2)",
+                          borderRadius: "8px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {getIcon()}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: "13px", color: COLORS.peachGlow, fontWeight: "500", marginBottom: "4px" }}>
+                          {activity.action || "Activity"}
+                        </p>
+                        <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)" }}>
+                          {activity.time || "—"}
+                        </p>
+                      </div>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: "13px", color: COLORS.peachGlow, fontWeight: "500", marginBottom: "4px" }}>
-                        {activity.action}
-                      </p>
-                      <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)" }}>
-                        {activity.time}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No recent activity.</span>
+              )}
             </div>
           </div>
         </div>

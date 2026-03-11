@@ -62,6 +62,9 @@ export const hrApi = {
   users() {
     return apiFetch("/hr/users", { method: "GET" });
   },
+  getIntern(id) {
+    return apiFetch(`/hr/interns/${id}`, { method: "GET" });
+  },
   applications(params = {}) {
     const searchParams = new URLSearchParams();
     Object.entries(params || {}).forEach(([key, value]) => {
@@ -106,6 +109,9 @@ export const hrApi = {
   },
   reports() {
     return apiFetch("/hr/reports", { method: "GET" });
+  },
+  projectSubmissions() {
+    return apiFetch("/hr/project-submissions", { method: "GET" });
   },
   internTna(internId) {
     return apiFetch(`/hr/interns/${internId}/tna`, { method: "GET" });
@@ -224,6 +230,9 @@ export const pmApi = {
   me() {
     return apiFetch("/pm/me", { method: "GET" });
   },
+  getIntern(id) {
+    return apiFetch(`/pm/interns/${id}`, { method: "GET" });
+  },
   interns() {
     return apiFetch("/pm/interns", { method: "GET" });
   },
@@ -241,6 +250,9 @@ export const pmApi = {
   },
   reports() {
     return apiFetch("/pm/reports", { method: "GET" });
+  },
+  projectSubmissions() {
+    return apiFetch("/pm/project-submissions", { method: "GET" });
   },
   reviewReport(reportId, payload) {
     return apiFetch(`/pm/reports/${reportId}/review`, {
@@ -271,6 +283,12 @@ export const internApi = {
   },
   stats() {
     return apiFetch("/intern/stats", { method: "GET" });
+  },
+  submitProject({ title, description, githubLink, demoLink }) {
+    return apiFetch("/intern/project-submission", {
+      method: "POST",
+      body: JSON.stringify({ title, description, githubLink, demoLink }),
+    });
   },
   updateMe({ profileData, profileCompleted }) {
     return apiFetch("/intern/me", {

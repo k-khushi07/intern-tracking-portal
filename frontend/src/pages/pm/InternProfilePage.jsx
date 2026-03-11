@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User } from "lucide-react";
 import { pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
@@ -17,7 +18,8 @@ const COLORS = {
 };
 
 function resolveDepartment(intern) {
-  const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+  const profileDataRaw = intern?.profile_data || intern?.profileData;
+  const profileData = profileDataRaw && typeof profileDataRaw === "object" ? profileDataRaw : {};
   const raw = intern?.department || profileData.department || profileData.domain || profileData.team || "";
   const text = String(raw || "").trim();
   const normalized = text.toLowerCase();
@@ -86,6 +88,11 @@ function getGoogleEmbedUrl(url, type) {
 }
 
 const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile" }) => {
+  const params = useParams();
+  const internIdParam = params?.id || params?.internId || null;
+  const [internDetails, setInternDetails] = useState(intern || null);
+  const [internLoading, setInternLoading] = useState(false);
+  const [internLoadError, setInternLoadError] = useState("");
   const [tnaItems, setTnaItems] = useState([]);
   const [blueprint, setBlueprint] = useState(null);
   const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
@@ -98,7 +105,39 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
   const [activeTab, setActiveTab] = useState(initialSection === "reports" ? "reports" : "profile");
   const [reportTab, setReportTab] = useState("weekly");
 
-  const internId = intern?.id || null;
+  const internId = internIdParam || internDetails?.id || intern?.id || null;
+  const profileData = useMemo(() => {
+    const raw = internDetails?.profile_data || internDetails?.profileData;
+    return raw && typeof raw === "object" ? raw : {};
+  }, [internDetails]);
+
+  useEffect(() => {
+    if (!intern) return;
+    setInternDetails(intern);
+  }, [intern]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadIntern = async () => {
+      if (!internId) return;
+      setInternLoading(true);
+      setInternLoadError("");
+      try {
+        const res = await pmApi.getIntern(internId);
+        if (cancelled) return;
+        setInternDetails(res?.intern || null);
+      } catch (err) {
+        if (cancelled) return;
+        setInternLoadError(err?.message || "Failed to load intern profile.");
+      } finally {
+        if (!cancelled) setInternLoading(false);
+      }
+    };
+    loadIntern();
+    return () => {
+      cancelled = true;
+    };
+  }, [internId]);
 
   useEffect(() => {
     setInternReports(normalizeReportsForIntern(reports, internId));
@@ -224,7 +263,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     }
   }
 
-  if (!intern) {
+  if (!internDetails && !internLoading) {
     return (
       <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,229,217,0.7)" }}>
         No intern selected.
@@ -232,7 +271,15 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     );
   }
 
-  const name = intern.full_name || intern.fullName || intern.name || intern.email || "Intern";
+  const name =
+    profileData.full_name ||
+    profileData.fullName ||
+    profileData.name ||
+    internDetails?.full_name ||
+    internDetails?.fullName ||
+    internDetails?.name ||
+    internDetails?.email ||
+    "Intern";
   const avatar = name
     .split(" ")
     .filter(Boolean)
@@ -240,8 +287,12 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-  const status = String(intern.status || "active").toLowerCase();
-  const department = resolveDepartment(intern);
+  const status = String(internDetails?.status || "active").toLowerCase();
+  const department = resolveDepartment({ ...internDetails, profile_data: profileData });
+  const displayEmail = profileData.email || internDetails?.email || "-";
+  const displayInternId = profileData.internId || profileData.intern_id || internDetails?.intern_id || internDetails?.internId || "-";
+  const joinedAt = profileData.joinedAt || profileData.joinDate || internDetails?.created_at || null;
+  const lastActivity = profileData.lastLogDate || profileData.lastActivity || internDetails?.lastLogDate || null;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -265,6 +316,12 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
         <ArrowLeft size={16} />
         Back to Interns
       </button>
+
+      {internLoadError && (
+        <div style={{ padding: 12, borderRadius: 10, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#fecaca", fontSize: 13 }}>
+          {internLoadError}
+        </div>
+      )}
 
       <div
         style={{
@@ -294,7 +351,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
           <div style={{ minWidth: 260, flex: 1 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "white" }}>{name}</div>
             <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.9)" }}>
-              {intern.email || "-"} | Intern ID: {intern.intern_id || intern.internId || "-"} | Department: {department}
+              {displayEmail} | Intern ID: {displayInternId} | Department: {department}
             </div>
             <div style={{ marginTop: 8 }}>
               <span
@@ -400,11 +457,11 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               Intern Information
             </div>
             <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
-              <ProfileField icon={<Mail size={15} />} label="Email" value={intern.email || "-"} />
-              <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={intern.intern_id || intern.internId || "-"} />
+              <ProfileField icon={<Mail size={15} />} label="Email" value={displayEmail} />
+              <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={displayInternId} />
               <ProfileField icon={<ListChecks size={15} />} label="Department" value={department || "-"} />
-              <ProfileField icon={<Calendar size={15} />} label="Joined" value={intern.created_at ? new Date(intern.created_at).toLocaleDateString() : "-"} />
-              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={intern.lastLogDate ? new Date(intern.lastLogDate).toLocaleDateString() : "No logs"} />
+              <ProfileField icon={<Calendar size={15} />} label="Joined" value={joinedAt ? new Date(joinedAt).toLocaleDateString() : "-"} />
+              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={lastActivity ? new Date(lastActivity).toLocaleDateString() : "No logs"} />
             </div>
           </div>
 

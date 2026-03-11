@@ -211,6 +211,23 @@ function createPmRouter() {
     }
   });
 
+  router.get("/interns/:id", async (req, res, next) => {
+    try {
+      const pmId = req.auth.profile.id;
+      const rows = await restSelect({
+        table: "profiles",
+        select: "id,full_name,email,role,status,intern_id,pm_id,profile_data,profile_completed,created_at",
+        filters: { id: `eq.${req.params.id}`, pm_id: `eq.${pmId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      if (!rows?.[0]) throw httpError(404, "Intern not found", true);
+      res.status(200).json({ success: true, intern: rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get("/me", async (req, res) => {
     const profile = req.auth.profile;
     res.status(200).json({
@@ -626,6 +643,23 @@ function createPmRouter() {
           interns: internsSummary,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/project-submissions", async (req, res, next) => {
+    try {
+      const pmId = req.auth.profile.id;
+      const rows = await restSelect({
+        table: "project_submissions",
+        select:
+          "id,title,description,github_link,demo_link,status,submitted_at,intern_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
+        filters: { pm_profile_id: `eq.${pmId}`, order: "submitted_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, submissions: rows || [] });
     } catch (err) {
       next(err);
     }
