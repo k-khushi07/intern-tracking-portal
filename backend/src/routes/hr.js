@@ -1,7 +1,9 @@
 const express = require("express");
 const { httpError } = require("../errors");
-const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete, restRpc } = require("../services/supabaseRest");
+const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
+const { generateNextInternId } = require("../services/internId");
+const { createNotifications, listProfilesByRole, toClientNotification } = require("../services/notifications");
 
 async function assertInternExists(internId) {
   const rows = await restSelect({
@@ -20,6 +22,32 @@ function normalizeApplicationStatus(value) {
   const status = String(value || "").trim().toLowerCase();
   if (["pending", "under_review", "approved", "rejected"].includes(status)) return status;
   return null;
+}
+
+function isIsoDateString(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function validateApprovalDateRange({ startDate, endDate }) {
+  const normalizedStart = String(startDate || "").trim();
+  const normalizedEnd = String(endDate || "").trim();
+  if (!normalizedStart || !normalizedEnd) {
+    throw httpError(400, "startDate and endDate are required", true);
+  }
+  if (!isIsoDateString(normalizedStart) || !isIsoDateString(normalizedEnd)) {
+    throw httpError(400, "Dates must be in YYYY-MM-DD format", true);
+  }
+
+  const today = todayIsoDate();
+  if (normalizedStart < today) throw httpError(400, "Start date cannot be in the past", true);
+  if (normalizedEnd < today) throw httpError(400, "End date cannot be in the past", true);
+  if (normalizedEnd < normalizedStart) throw httpError(400, "End date must be on or after start date", true);
+
+  return { startDate: normalizedStart, endDate: normalizedEnd };
 }
 
 function isMissingTableError(err, tableName) {
@@ -203,34 +231,6 @@ function createHrRouter({ emailService }) {
     }).catch(() => {});
   }
 
-  async function generateInternId() {
-    try {
-      const rpcRes = await restRpc({
-        fn: "next_intern_id",
-        body: { p_prefix: "EDCS" },
-        accessToken: null,
-        useServiceRole: true,
-      });
-      if (typeof rpcRes === "string" && rpcRes) return rpcRes;
-      if (Array.isArray(rpcRes) && rpcRes[0]?.next_intern_id) return rpcRes[0].next_intern_id;
-      if (rpcRes?.next_intern_id) return rpcRes.next_intern_id;
-    } catch {
-      // Fallback below
-    }
-
-    const currentYear = new Date().getFullYear();
-    const approvedRows = await restSelect({
-      table: "approved_interns",
-      select: "intern_id",
-      filters: { intern_id: `like.EDCS-${currentYear}-%`, order: "intern_id.desc", limit: 1 },
-      accessToken: null,
-      useServiceRole: true,
-    }).catch(() => []);
-    const latest = approvedRows?.[0]?.intern_id || "";
-    const lastNumber = Number(String(latest).split("-").pop()) || 0;
-    return `EDCS-${currentYear}-${String(lastNumber + 1).padStart(3, "0")}`;
-  }
-
   async function approveApplicationRecord({
     applicationId,
     approvedByProfileId,
@@ -242,9 +242,10 @@ function createHrRouter({ emailService }) {
     password,
     sendEmail = true,
   }) {
-    if (!startDate || !endDate || !department || !mentorName) {
+    if (!department || !mentorName) {
       throw httpError(400, "startDate, endDate, department, mentorName are required", true);
     }
+    const validatedDates = validateApprovalDateRange({ startDate, endDate });
 
     const app = await loadApplicationById(applicationId);
     if (!app) throw httpError(404, "Application not found", true);
@@ -252,7 +253,7 @@ function createHrRouter({ emailService }) {
     if (currentStatus === "approved") throw httpError(400, "Application already approved", true);
     if (currentStatus === "rejected") throw httpError(400, "Rejected application cannot be approved", true);
 
-    const generatedInternId = await generateInternId();
+    const generatedInternId = await generateNextInternId({ prefix: "EDCS" });
     const generatedPassword = password || generatePassword();
     const createdAt = new Date().toISOString();
 
@@ -288,8 +289,8 @@ function createHrRouter({ emailService }) {
         intern_id: generatedInternId,
         application_id: app.id,
         profile_id: createdId,
-        start_date: startDate,
-        end_date: endDate,
+        start_date: validatedDates.startDate,
+        end_date: validatedDates.endDate,
         department: String(department).trim(),
         mentor: String(mentorName).trim(),
         stipend: stipend ? String(stipend) : null,
@@ -338,8 +339,8 @@ function createHrRouter({ emailService }) {
 <strong>Password:</strong> ${generatedPassword}</p>
 <p><strong>Department:</strong> ${department}<br/>
 <strong>Mentor:</strong> ${mentorName}<br/>
-<strong>Start Date:</strong> ${startDate}<br/>
-<strong>End Date:</strong> ${endDate}</p>`,
+<strong>Start Date:</strong> ${validatedDates.startDate}<br/>
+<strong>End Date:</strong> ${validatedDates.endDate}</p>`,
         })
         .then(() => {
           emailSent = true;
@@ -513,6 +514,15 @@ function createHrRouter({ emailService }) {
       ];
 
       res.status(200).json({ success: true, users });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/intern-id/next", async (req, res, next) => {
+    try {
+      const internId = await generateNextInternId({ prefix: "EDCS" });
+      res.status(200).json({ success: true, internId });
     } catch (err) {
       next(err);
     }
@@ -1756,6 +1766,31 @@ function createHrRouter({ emailService }) {
       if (io) {
         io.to("role:hr").emit("itp:changed", { entity: "announcements", action: "insert" });
         roles.forEach((r) => io.to(`role:${r}`).emit("itp:changed", { entity: "announcements", action: "insert" }));
+      }
+
+      if (io) {
+        try {
+          const recipientIds = new Set();
+          const roleIds = await Promise.all(roles.map((r) => listProfilesByRole(r)));
+          roleIds.flat().forEach((id) => recipientIds.add(id));
+          const preview = String(content || "").trim().slice(0, 180);
+          const insertedNotifs = await createNotifications({
+            rows: Array.from(recipientIds).map((rid) => ({
+              recipient_profile_id: rid,
+              title: "New announcement",
+              message: `${String(title).trim()}${preview ? ` — ${preview}` : ""}`.slice(0, 220),
+              type: "announcement",
+              category: "announcement",
+              metadata: { announcementId: (inserted?.[0] || inserted)?.id || null },
+            })),
+          });
+          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify announcement:", err);
+        }
       }
 
       res.status(201).json({ success: true, announcement: inserted?.[0] || inserted });

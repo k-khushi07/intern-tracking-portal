@@ -1,497 +1,331 @@
-// MyInternsPage.jsx
-import React, { useState } from "react";
-import { Search, Mail, Eye, MapPin, Calendar, Award, TrendingUp, Clock } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Search, Mail, Eye, MessageCircle, Calendar, Briefcase, Clock, FileText, Users } from "lucide-react";
 
+const DEPARTMENTS = ["SAP", "Oracle", "Accounts", "HR"];
 
 const COLORS = {
-  inkBlack: "#071e22",
-  deepOcean: "#1d7874",
-  jungleTeal: "#679289",
-  peachGlow: "#ffe5d9",
-  racingRed: "#d90429",
+  panel: "rgba(255,255,255,0.06)",
+  border: "rgba(255,255,255,0.14)",
+  text: "#ffe5d9",
+  muted: "rgba(255,229,217,0.65)",
+  accent: "#679289",
+  success: "#4ade80",
+  warning: "#f59e0b",
+  danger: "#ef4444",
 };
 
+function statusColor(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "active") return COLORS.success;
+  if (s === "completed") return COLORS.accent;
+  if (s === "inactive") return COLORS.warning;
+  return COLORS.danger;
+}
 
-const MyInternsPage = ({ onNavigateToMessages, onViewProfile, interns = [] }) => {
-  const [searchQuery, setSearchQuery] = useState("");
+function resolveDepartment(intern) {
+  const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+  const raw =
+    intern?.department ||
+    profileData.department ||
+    profileData.domain ||
+    profileData.team ||
+    "";
+  const text = String(raw || "").trim();
+  const normalized = text.toLowerCase();
+  if (normalized === "sap") return "SAP";
+  if (normalized === "oracle") return "Oracle";
+  if (normalized === "accounts") return "Accounts";
+  if (normalized === "hr") return "HR";
+  if (!text) return "Unassigned";
+  return "Other";
+}
 
+export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onViewReports, interns = [] }) {
+  const [query, setQuery] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("Overall");
 
-  const filteredInterns = interns.filter((intern) => {
-    const internName = (intern.fullName || intern.name || "").toLowerCase();
-    const internEmail = (intern.email || "").toLowerCase();
-    const internRole = (intern.internshipDomain || intern.degree || intern.role || "").toLowerCase();
-    const matchesSearch =
-      internName.includes(searchQuery.toLowerCase()) ||
-      internEmail.includes(searchQuery.toLowerCase()) ||
-      internRole.includes(searchQuery.toLowerCase());
-   
-    return matchesSearch;
-  });
+  const enriched = useMemo(
+    () =>
+      (interns || []).map((intern) => ({
+        ...intern,
+        departmentResolved: resolveDepartment(intern),
+      })),
+    [interns]
+  );
 
+  const totals = useMemo(() => {
+    const all = enriched || [];
+    return {
+      total: all.length,
+      active: all.filter((item) => String(item.status || "").toLowerCase() === "active").length,
+      pendingReports: all.reduce((sum, item) => sum + (Number(item.pendingReports) || 0), 0),
+      totalHours: all.reduce((sum, item) => sum + (Number(item.totalHours) || 0), 0),
+    };
+  }, [enriched]);
 
-  const stats = {
-    total: interns.length,
-    active: interns.filter((i) => i.status === "active").length,
-    avgPerformance:
-      interns.length > 0
-        ? Math.round(interns.reduce((sum, i) => sum + (i.performance || 0), 0) / interns.length)
-        : 0,
-  };
+  const searchFiltered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (enriched || []).filter((intern) => {
+      if (!q) return true;
+      return (
+        String(intern.full_name || intern.fullName || "").toLowerCase().includes(q) ||
+        String(intern.email || "").toLowerCase().includes(q) ||
+        String(intern.intern_id || intern.internId || "").toLowerCase().includes(q) ||
+        String(intern.departmentResolved || "").toLowerCase().includes(q)
+      );
+    });
+  }, [enriched, query]);
 
+  const filteredInterns = useMemo(() => {
+    if (departmentFilter === "Overall") return searchFiltered;
+    return searchFiltered.filter((intern) => intern.departmentResolved === departmentFilter);
+  }, [departmentFilter, searchFiltered]);
 
   return (
-    <div className="animate-fadeIn">
-      {/* Stats Cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <div
-          className="glass hover-lift animate-fadeIn stagger-1"
-          style={{
-            padding: "16px",
-            borderRadius: "12px",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.8)", marginBottom: "4px" }}>
-                Total Interns
-              </p>
-              <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.peachGlow }}>
-                {stats.total}
-              </h3>
-            </div>
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                background: "rgba(255, 229, 217, 0.2)",
-                borderRadius: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Award size={20} color={COLORS.peachGlow} />
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="glass hover-lift animate-fadeIn stagger-2"
-          style={{
-            padding: "16px",
-            borderRadius: "12px",
-            background: `linear-gradient(135deg, rgba(103, 146, 137, 0.3), rgba(29, 120, 116, 0.3))`,
-            border: `1px solid rgba(103, 146, 137, 0.3)`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.8)", marginBottom: "4px" }}>
-                Active Interns
-              </p>
-              <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.peachGlow }}>
-                {stats.active}
-              </h3>
-            </div>
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                background: "rgba(103, 146, 137, 0.3)",
-                borderRadius: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <TrendingUp size={20} color={COLORS.jungleTeal} />
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="glass hover-lift animate-fadeIn stagger-3"
-          style={{
-            padding: "16px",
-            borderRadius: "12px",
-            background: `linear-gradient(135deg, rgba(103, 146, 137, 0.3), rgba(29, 120, 116, 0.3))`,
-            border: `1px solid rgba(103, 146, 137, 0.3)`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.8)", marginBottom: "4px" }}>
-                Avg Performance
-              </p>
-              <h3 style={{ fontSize: "24px", fontWeight: "700", color: COLORS.peachGlow }}>
-                {stats.avgPerformance}%
-              </h3>
-            </div>
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                background: "rgba(103, 146, 137, 0.3)",
-                borderRadius: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Clock size={20} color={COLORS.jungleTeal} />
-            </div>
-          </div>
-        </div>
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        <TopStat label="Total Interns (Overall)" value={totals.total} />
+        <TopStat label="Active" value={totals.active} />
+        <TopStat label="Pending Reports" value={totals.pendingReports} />
+        <TopStat label="Total Hours" value={`${totals.totalHours.toFixed(1)}h`} />
       </div>
 
-
-      {/* Search Bar */}
-      <div
-        className="glass animate-fadeIn stagger-4"
-        style={{
-          padding: "16px",
-          borderRadius: "12px",
-          marginBottom: "24px",
-        }}
-      >
-        {/* Search Input */}
+      <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 12, display: "grid", gap: 10 }}>
         <div style={{ position: "relative" }}>
-          <Search
-            size={18}
-            color="rgba(255, 229, 217, 0.5)"
-            style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)" }}
-          />
+          <Search size={16} color={COLORS.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
           <input
-            type="text"
-            placeholder="Search by name, email, or role..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, email, intern ID, department"
             style={{
               width: "100%",
-              padding: "12px 14px 12px 44px",
-              background: "rgba(103, 146, 137, 0.1)",
-              border: `1px solid rgba(103, 146, 137, 0.3)`,
-              borderRadius: "10px",
-              color: COLORS.peachGlow,
-              fontSize: "14px",
-              transition: "all 0.3s ease",
+              padding: "10px 10px 10px 34px",
+              borderRadius: 10,
+              border: `1px solid ${COLORS.border}`,
+              background: "rgba(255,255,255,0.04)",
+              color: "white",
+              outline: "none",
             }}
           />
         </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {["Overall", ...DEPARTMENTS, "Other", "Unassigned"].map((department) => {
+            const count =
+              department === "Overall"
+                ? searchFiltered.length
+                : searchFiltered.filter((intern) => intern.departmentResolved === department).length;
+            const active = departmentFilter === department;
+            return (
+              <button
+                key={department}
+                onClick={() => setDepartmentFilter(department)}
+                style={{
+                  border: `1px solid ${active ? "rgba(103,146,137,0.65)" : COLORS.border}`,
+                  background: active ? "rgba(103,146,137,0.24)" : "rgba(255,255,255,0.03)",
+                  color: active ? COLORS.text : COLORS.muted,
+                  borderRadius: 999,
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {department} ({count})
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+      {filteredInterns.length > 0 && (
+        <>
+          <style>{`
+            .intern-card {
+              background: rgba(255, 255, 255, 0.03);
+              border: 1px solid rgba(255, 255, 255, 0.08);
+              border-radius: 16px;
+              padding: 20px;
+              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+              position: relative;
+              overflow: hidden;
+              display: flex;
+              flex-direction: column;
+              gap: 16px;
+            }
+            .intern-card:hover {
+              transform: translateY(-4px);
+              border-color: rgba(103, 146, 137, 0.4);
+              background: rgba(255, 255, 255, 0.05);
+              box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(103, 146, 137, 0.1);
+            }
+            .intern-card::before {
+              content: '';
+              position: absolute;
+              top: 0; left: 0; right: 0; height: 4px;
+              background: linear-gradient(90deg, #679289, #1d7874);
+              opacity: 0;
+              transition: opacity 0.3s ease;
+            }
+            .intern-card:hover::before {
+              opacity: 1;
+            }
+            .stat-box {
+              background: rgba(0, 0, 0, 0.2);
+              border: 1px solid rgba(255, 255, 255, 0.04);
+              border-radius: 12px;
+              padding: 10px;
+              text-align: center;
+              transition: background 0.2s;
+            }
+            .intern-card:hover .stat-box {
+              background: rgba(255, 255, 255, 0.02);
+              border-color: rgba(255, 255, 255, 0.08);
+            }
+            .action-btn {
+              flex: 1;
+              display: inline-flex;
+              justify-content: center;
+              align-items: center;
+              gap: 6px;
+              padding: 10px;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 13px;
+              cursor: pointer;
+              transition: all 0.2s ease;
+            }
+            .action-btn.primary {
+              background: linear-gradient(135deg, #679289, #1d7874);
+              color: white;
+              border: none;
+            }
+            .action-btn.primary:hover {
+              background: linear-gradient(135deg, #74a399, #238b87);
+              transform: scale(1.02);
+            }
+            .action-btn.reports {
+              background: rgba(245, 158, 11, 0.15);
+              color: #fde68a;
+              border: 1px solid rgba(245, 158, 11, 0.3);
+            }
+            .action-btn.reports:hover {
+              background: rgba(245, 158, 11, 0.25);
+              transform: scale(1.02);
+            }
+            .action-btn.secondary {
+              background: rgba(255, 255, 255, 0.05);
+              color: #ffe5d9;
+              border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            .action-btn.secondary:hover {
+              background: rgba(255, 255, 255, 0.1);
+              border-color: rgba(255, 255, 255, 0.2);
+              transform: scale(1.02);
+            }
+          `}</style>
 
-      {/* Interns Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
-          gap: "24px",
-        }}
-      >
-        {filteredInterns.map((intern, index) => {
-          const displayName = intern.fullName || intern.name || intern.full_name || "Intern";
-          const avatar = displayName
-            .split(" ")
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((w) => w[0])
-            .join("")
-            .toUpperCase();
-          const roleLabel = intern.internshipDomain || intern.degree || intern.role || "Intern";
-          const locationLabel = intern.location || "-";
-          const joinDateValue = intern.joinDate || intern.created_at || intern.registeredAt || null;
-          const performance = intern.performance || 0;
-          const tasksCompleted = intern.tasksCompleted || 0;
-          const tasksTotal = intern.tasksTotal || 0;
-          const weeklyReports = intern.weeklyReports || 0;
-          const monthlyReports = intern.monthlyReports || 0;
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}>
+            {filteredInterns.map((intern) => {
+              const name = intern.full_name || intern.fullName || intern.name || intern.email || "Intern";
+              const avatar = name
+                .split(" ")
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((value) => value[0])
+                .join("")
+                .toUpperCase();
+              const status = intern.status || "active";
+              const color = statusColor(status);
+              const reportsPending = Number(intern.pendingReports) || 0;
+              const hours = Number(intern.totalHours) || 0;
+              const tasks = Number(intern.tasksCompleted) || 0;
 
-          return (
-            <div
-              key={intern.id}
-              className={`glass hover-lift animate-fadeIn stagger-${(index % 5) + 1}`}
-              style={{
-                padding: "24px",
-                borderRadius: "16px",
-                background: "rgba(29, 120, 116, 0.1)",
-                border: `1px solid rgba(103, 146, 137, 0.3)`,
-              }}
-            >
-            {/* Intern Header */}
-            <div style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px" }}>
-              <div
-                style={{
-                  width: "60px",
-                  height: "60px",
-                  background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: "700",
-                  fontSize: "20px",
-                  color: COLORS.peachGlow,
-                  marginRight: "16px",
-                  flexShrink: 0,
-                }}
-              >
-                {avatar || "IN"}
-              </div>
-              <div style={{ flex: 1 }}>
-                <h3
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: "700",
-                    color: COLORS.peachGlow,
-                    marginBottom: "4px",
-                  }}
-                >
-                  {displayName}
-                </h3>
-                <p style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>
-                  {roleLabel}
-                </p>
-              </div>
-            </div>
+              return (
+                <div key={intern.id} className="intern-card">
 
+                  {/* Header Row */}
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <div style={{ position: "relative" }}>
+                      <div style={{ width: 52, height: 52, borderRadius: "50%", background: `linear-gradient(135deg, ${COLORS.accent}, #1d7874)`, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 18, color: "white", boxShadow: "0 4px 10px rgba(0,0,0,0.3)" }}>
+                        {avatar || "IN"}
+                      </div>
+                      {/* Status Indicator Dot */}
+                      <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderRadius: "50%", background: color, border: `2px solid ${COLORS.panel}` }} title={status} />
+                    </div>
 
-            {/* Intern Details */}
-            <div style={{ marginBottom: "20px" }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "10px",
-                  fontSize: "13px",
-                  color: "rgba(255, 229, 217, 0.7)",
-                }}
-              >
-                <Mail size={16} color={COLORS.jungleTeal} />
-                <span>{intern.email}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "10px",
-                  fontSize: "13px",
-                  color: "rgba(255, 229, 217, 0.7)",
-                }}
-              >
-                <MapPin size={16} color={COLORS.jungleTeal} />
-                <span>{locationLabel}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "13px",
-                  color: "rgba(255, 229, 217, 0.7)",
-                }}
-              >
-                <Calendar size={16} color={COLORS.jungleTeal} />
-                <span>Joined: {joinDateValue ? new Date(joinDateValue).toLocaleDateString() : "—"}</span>
-              </div>
-            </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ color: COLORS.text, fontWeight: 800, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+                      <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 2 }}>{intern.email}</div>
+                    </div>
 
+                    <div style={{ padding: "4px 10px", borderRadius: 8, background: `${color}15`, border: `1px solid ${color}40`, color, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      {status}
+                    </div>
+                  </div>
 
-            {/* Performance Bar */}
-            <div style={{ marginBottom: "20px" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "8px",
-                }}
-              >
-                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.7)" }}>
-                  Performance
-                </span>
-                <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.peachGlow }}>
-                  {performance}%
-                </span>
-              </div>
-              <div
-                style={{
-                  width: "100%",
-                  height: "8px",
-                  background: "rgba(103, 146, 137, 0.2)",
-                  borderRadius: "10px",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${performance}%`,
-                    height: "100%",
-                    background: `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                    borderRadius: "10px",
-                    transition: "width 0.5s ease",
-                  }}
-                />
-              </div>
-            </div>
+                  {/* Info Row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12, color: "rgba(255,255,255,0.7)", background: "rgba(0,0,0,0.15)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.03)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Briefcase size={14} color={COLORS.accent} /> <span>{intern.intern_id || intern.internId || "-"}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Users size={14} color={COLORS.accent} /> <span>{intern.departmentResolved}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Calendar size={14} color={COLORS.accent} /> <span>{intern.created_at ? new Date(intern.created_at).toLocaleDateString() : "-"}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock size={14} color={COLORS.accent} /> <span>{intern.lastLogDate ? new Date(intern.lastLogDate).toLocaleDateString() : "No logs"}</span></div>
+                  </div>
 
+                  {/* Stats Grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                    <div className="stat-box">
+                      <div style={{ color: COLORS.muted, fontSize: 10, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.5px" }}>Hours</div>
+                      <div style={{ marginTop: 4, color: COLORS.text, fontWeight: 800, fontSize: 15 }}>{hours.toFixed(1)}</div>
+                    </div>
+                    <div className="stat-box">
+                      <div style={{ color: COLORS.muted, fontSize: 10, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.5px" }}>Tasks</div>
+                      <div style={{ marginTop: 4, color: COLORS.text, fontWeight: 800, fontSize: 15 }}>{tasks}</div>
+                    </div>
+                    <div className="stat-box">
+                      <div style={{ color: COLORS.muted, fontSize: 10, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.5px" }}>Reports</div>
+                      <div style={{ marginTop: 4, color: COLORS.text, fontWeight: 800, fontSize: 15 }}>{reportsPending}</div>
+                    </div>
+                    <div className="stat-box">
+                      <div style={{ color: COLORS.muted, fontSize: 10, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.5px" }}>Perform</div>
+                      <div style={{ marginTop: 4, color: COLORS.success, fontWeight: 800, fontSize: 15 }}>{Math.max(0, Math.min(100, Number(intern.performance) || 0))}%</div>
+                    </div>
+                  </div>
 
-            {/* Quick Stats */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "12px",
-                marginBottom: "20px",
-              }}
-            >
-              <div
-                style={{
-                  padding: "12px",
-                  background: "rgba(103, 146, 137, 0.1)",
-                  borderRadius: "10px",
-                  textAlign: "center",
-                }}
-              >
-                <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  Tasks Progress
-                </p>
-                <p style={{ fontSize: "16px", fontWeight: "700", color: COLORS.peachGlow }}>
-                  {tasksCompleted}/{tasksTotal}
-                </p>
-              </div>
-              <div
-                style={{
-                  padding: "12px",
-                  background: "rgba(103, 146, 137, 0.1)",
-                  borderRadius: "10px",
-                  textAlign: "center",
-                }}
-              >
-                <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  Reports
-                </p>
-                <p style={{ fontSize: "16px", fontWeight: "700", color: COLORS.peachGlow }}>
-                  {weeklyReports + monthlyReports}
-                </p>
-              </div>
-            </div>
-
-
-            {/* Action Buttons */}
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={() => onViewProfile(intern)}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                  border: "none",
-                  borderRadius: "10px",
-                  color: COLORS.peachGlow,
-                  fontSize: "14px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  transition: "all 0.3s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(103, 146, 137, 0.4)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              >
-                <Eye size={18} />
-                View Profile
-              </button>
-              <button
-                onClick={() => onNavigateToMessages(intern)}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  background: "rgba(103, 146, 137, 0.2)",
-                  border: `1px solid ${COLORS.jungleTeal}`,
-                  borderRadius: "10px",
-                  color: COLORS.peachGlow,
-                  fontSize: "14px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  transition: "all 0.3s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(103, 146, 137, 0.3)";
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "rgba(103, 146, 137, 0.2)";
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-              >
-                <Mail size={18} />
-                Send Message
-              </button>
-            </div>
-            </div>
-          );
-        })}
-      </div>
-
-
-      {/* Empty State */}
-      {filteredInterns.length === 0 && (
-        <div
-          className="glass animate-fadeIn"
-          style={{
-            padding: "60px 40px",
-            borderRadius: "16px",
-            textAlign: "center",
-          }}
-        >
-          <div
-            style={{
-              width: "80px",
-              height: "80px",
-              background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 20px",
-            }}
-          >
-            <Search size={36} color={COLORS.peachGlow} />
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
+                    <button onClick={() => onViewProfile?.(intern)} className="action-btn primary">
+                      <Eye size={15} /> Profile
+                    </button>
+                    <button onClick={() => onViewReports?.(intern)} className="action-btn reports">
+                      <FileText size={15} /> Reports
+                    </button>
+                    <button onClick={() => onNavigateToMessages?.(intern)} className="action-btn secondary">
+                      <MessageCircle size={15} /> Message
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <h3 style={{ fontSize: "20px", fontWeight: "700", color: COLORS.peachGlow, marginBottom: "8px" }}>
-            No Interns Found
-          </h3>
-          <p style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.6)" }}>
-            Try adjusting your search criteria
-          </p>
+        </>
+      )}
+
+      {filteredInterns.length === 0 && (
+        <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 20, color: COLORS.muted, textAlign: "center" }}>
+          No interns found.
         </div>
       )}
+
     </div>
   );
-};
+}
 
-
-export default MyInternsPage;
+function TopStat({ label, value }) {
+  return (
+    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 }}>
+      <div style={{ color: COLORS.muted, fontSize: 11 }}>{label}</div>
+      <div style={{ marginTop: 6, color: COLORS.text, fontSize: 22, fontWeight: 800 }}>{value}</div>
+    </div>
+  );
+}

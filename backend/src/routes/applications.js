@@ -1,6 +1,7 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { restInsert } = require("../services/supabaseRest");
+const { createNotifications, listProfilesByRole, toClientNotification } = require("../services/notifications");
 
 function splitSkills(raw) {
   if (!raw) return [];
@@ -108,6 +109,31 @@ function createApplicationsRouter() {
         application: inserted?.[0] || inserted,
         legacyTableUsed: usedLegacyTable,
       });
+
+      const io = req.app.get("io");
+      if (io) {
+        try {
+          const hrIds = await listProfilesByRole("hr");
+          const applicant = formData.fullName || formData.email || "New intern";
+          const insertedNotifs = await createNotifications({
+            rows: (hrIds || []).map((rid) => ({
+              recipient_profile_id: rid,
+              title: "New intern registration",
+              message: `${String(applicant).trim()} has registered.`,
+              type: "info",
+              category: "registration",
+              metadata: { applicantEmail: formData.email || null },
+            })),
+          });
+          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+          io.to("role:hr").emit("itp:changed", { entity: "applications", action: "insert" });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify new registration:", err);
+        }
+      }
     } catch (err) {
       next(err);
     }

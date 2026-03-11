@@ -18,6 +18,7 @@ const { createPmRouter } = require("./src/routes/pm");
 const { createInternRouter } = require("./src/routes/intern");
 const { createAnnouncementsRouter } = require("./src/routes/announcements");
 const { createMessagesRouter } = require("./src/routes/messages");
+const { createNotificationsRouter } = require("./src/routes/notifications");
 const { createSocketAuthMiddleware } = require("./src/realtime/socketAuth");
 
 const app = express();
@@ -103,6 +104,7 @@ app.use("/api/pm", auth.requireAuth, createPmRouter());
 app.use("/api/intern", auth.requireAuth, createInternRouter());
 app.use("/api/announcements", createAnnouncementsRouter());
 app.use("/api/messages", auth.requireAuth, createMessagesRouter());
+app.use("/api/notifications", auth.requireAuth, createNotificationsRouter());
 app.use("/api", auth.requireAuthOptional, createEmailRouter({ emailService }));
 
 const io = new Server(httpServer, {

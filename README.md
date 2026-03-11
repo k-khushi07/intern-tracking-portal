@@ -47,6 +47,22 @@
 
 The frontend proxies `/api/*` to the backend via `frontend/vite.config.js`.
 
+### 3.1) Separated panel routes
+- Intern panel:
+  - Login: `http://localhost:5173/intern/login`
+  - Dashboard: `http://localhost:5173/intern/dashboard`
+- HR panel:
+  - Login: `http://localhost:5173/hr/login`
+  - Dashboard: `http://localhost:5173/hr/dashboard`
+- PM panel:
+  - Login: `http://localhost:5173/pm/login`
+  - Dashboard: `http://localhost:5173/pm/dashboard`
+- Admin panel:
+  - Login: `http://localhost:5173/admin/login`
+  - Dashboard: `http://localhost:5173/admin/dashboard`
+
+Legacy routes like `/dashboard/intern` still work and now redirect to the separated panel paths.
+
 ### 4) Quick health checks
 - Node running: `GET /api/health`
 - Supabase reachable + schema present: `GET /api/health/supabase`

@@ -14,14 +14,22 @@ const COLORS = {
   borderGlass: "rgba(255, 255, 255, 0.12)",
 };
 
-export default function AuthPage() {
-  const [role, setRole] = useState("intern");
+export default function AuthPage({ forcedRole = null }) {
+  const [selectedRole, setSelectedRole] = useState("intern");
   const [isMobile, setIsMobile] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const role = forcedRole || selectedRole;
+
+  const dashboardPathByRole = {
+    intern: "/intern/dashboard",
+    hr: "/hr/dashboard",
+    pm: "/pm/dashboard",
+    admin: "/admin/dashboard",
+  };
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 900);
@@ -39,10 +47,18 @@ export default function AuthPage() {
     setError("");
 
     try {
+      const expectedRole = forcedRole || role;
+      const email = String(loginData.email || "").trim();
+      const password = String(loginData.password || "");
+      if (!email || !password) {
+        setError("Email and password are required.");
+        return;
+      }
+
       const response = await authApi.login({
-        email: loginData.email,
-        password: loginData.password,
-        expectedRole: role,
+        email,
+        password,
+        expectedRole,
         rememberMe,
       });
 
@@ -64,10 +80,10 @@ export default function AuthPage() {
       }
 
       if (currentUser.role === "intern" && !currentUser.profileCompleted) {
-        navigate("/profile-setup");
+        navigate("/intern/profile-setup");
         return;
       }
-      navigate(`/dashboard/${currentUser.role}`);
+      navigate(dashboardPathByRole[currentUser.role] || "/");
     } catch (requestError) {
       localStorage.removeItem("currentUser");
       setError(requestError?.message || "Login failed.");
@@ -170,33 +186,35 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-                {["intern", "hr", "pm"].map((roleOption) => (
-                  <button
-                    key={roleOption}
-                    onClick={() => {
-                      setRole(roleOption);
-                      setError("");
-                    }}
-                    type="button"
-                    style={{
-                      flex: 1,
-                      padding: "10px 14px",
-                      borderRadius: 999,
-                      border: "none",
-                      cursor: "pointer",
-                      fontWeight: 700,
-                      background: role === roleOption ? COLORS.jungleTeal : "transparent",
-                      color: "white",
-                      boxShadow: role === roleOption ? "0 6px 18px rgba(20, 184, 166, 0.4)" : "none",
-                      textTransform: "capitalize",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    {roleOption === "pm" ? "PM" : roleOption}
-                  </button>
-                ))}
-              </div>
+              {!forcedRole && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+                  {["intern", "hr", "pm"].map((roleOption) => (
+                    <button
+                      key={roleOption}
+                      onClick={() => {
+                        setSelectedRole(roleOption);
+                        setError("");
+                      }}
+                      type="button"
+                      style={{
+                        flex: 1,
+                        padding: "10px 14px",
+                        borderRadius: 999,
+                        border: "none",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        background: role === roleOption ? COLORS.jungleTeal : "transparent",
+                        color: "white",
+                        boxShadow: role === roleOption ? "0 6px 18px rgba(20, 184, 166, 0.4)" : "none",
+                        textTransform: "capitalize",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      {roleOption === "pm" ? "PM" : roleOption}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <div style={{ position: "relative" }}>
@@ -211,6 +229,7 @@ export default function AuthPage() {
                     size={18}
                   />
                   <input
+                    type="email"
                     name="email"
                     value={loginData.email}
                     onChange={handleInput}

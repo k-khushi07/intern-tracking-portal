@@ -1,6 +1,7 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restInsert, restUpdate, restRpc } = require("../services/supabaseRest");
+const { createNotifications, toClientNotification, isMissingTableError } = require("../services/notifications");
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -84,6 +85,8 @@ async function getAllowedContacts({ requester }) {
     contacts.push(...hrs);
     const interns = await listInternsByPm(requester.id);
     contacts.push(...interns);
+    const pms = await listProfilesByRole("pm");
+    contacts.push(...pms.filter((p) => p.id !== requester.id));
     const seen = new Set();
     return contacts.filter((c) => {
       if (!c?.id) return false;
@@ -448,7 +451,7 @@ function createMessagesRouter() {
 
       let finalMembers = [...new Set(members)];
       if (role === "pm") {
-        // PM can only group with their interns; may add HR explicitly.
+        // PM can group with assigned interns, HR, and other PMs allowed by policy.
         finalMembers = finalMembers.filter((id) => allowedIds.has(id) || hrIds.has(id));
         finalMembers.push(requester.id);
       } else if (role === "hr" || role === "admin") {
@@ -497,12 +500,15 @@ function createMessagesRouter() {
       const removeIds = Array.isArray(remove) ? remove.filter(Boolean) : [];
 
       if (role === "pm") {
-        // PM exception: can add HR to their own group.
+        // PM can manage members in their own groups (except removing self).
         if (String(conv.owner_profile_id) !== String(requester.id)) throw httpError(403, "Forbidden", true);
-        if (removeIds.length) throw httpError(403, "Only HR can remove members", true);
-        const hrIds = new Set((await listProfilesByRole("hr")).map((h) => h.id));
-        const toAdd = addIds.filter((id) => hrIds.has(id));
-        if (!toAdd.length) throw httpError(400, "PM can only add HR", true);
+        const allowed = new Set((await getAllowedContacts({ requester })).map((p) => p.id));
+        const toAdd = addIds.filter((id) => allowed.has(id));
+        const toRemove = removeIds.filter((id) => String(id) !== String(requester.id));
+
+        if (!toAdd.length && !toRemove.length) {
+          throw httpError(400, "No valid members to add/remove", true);
+        }
 
         const now = isoNow();
         for (const pid of toAdd) {
@@ -529,6 +535,16 @@ function createMessagesRouter() {
               useServiceRole: true,
             });
           }
+        }
+
+        for (const pid of toRemove) {
+          await restUpdate({
+            table: "conversation_members",
+            patch: { is_active: false, left_at: now, can_send: false },
+            matchQuery: { conversation_id: `eq.${convId}`, profile_id: `eq.${pid}` },
+            accessToken: null,
+            useServiceRole: true,
+          });
         }
 
         res.status(200).json({ success: true });
@@ -681,6 +697,33 @@ function createMessagesRouter() {
         (members || []).forEach((m) => {
           io.to(`user:${m.profile_id}`).emit("chat:conversation", { conversationId: convId });
         });
+
+        // Lightweight notification for other members (for bell dropdowns).
+        try {
+          const senderLabel = requester.full_name || requester.email || "Someone";
+          const title = conv.type === "group" ? `New message in ${conv.name || "Group"}` : `New message from ${senderLabel}`;
+          const preview = String(msgRow.body || "").trim().slice(0, 140);
+          const notifRows = (members || [])
+            .filter((m) => String(m.profile_id) !== String(requester.id))
+            .map((m) => ({
+              recipient_profile_id: m.profile_id,
+              title,
+              message: preview,
+              type: "message",
+              category: "message",
+              link: null,
+              metadata: { conversationId: convId, senderProfileId: requester.id },
+              created_at: now,
+            }));
+
+          const insertedNotifs = await createNotifications({ rows: notifRows });
+          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to create message notifications:", err);
+        }
       }
 
       res.status(201).json({ success: true, message: { id: msgRow.id, createdAt: msgRow.created_at || now } });

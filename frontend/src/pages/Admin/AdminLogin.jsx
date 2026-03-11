@@ -24,9 +24,16 @@ export default function AdminLogin() {
     setError("");
 
     try {
+      const trimmedEmail = String(email || "").trim();
+      const rawPassword = String(password || "");
+      if (!trimmedEmail || !rawPassword) {
+        setError("Email and password are required.");
+        return;
+      }
+
       const res = await authApi.login({
-        email,
-        password,
+        email: trimmedEmail,
+        password: rawPassword,
         expectedRole: "admin",
         rememberMe: false,
       });
@@ -39,8 +46,9 @@ export default function AdminLogin() {
           email: res.profile.email,
         })
       );
-      navigate("/admin");
+      navigate("/admin/dashboard");
     } catch (err) {
+      localStorage.removeItem("currentUser");
       setError(err.message || "Error. Please try again.");
     }
   };

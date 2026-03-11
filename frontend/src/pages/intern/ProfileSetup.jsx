@@ -240,7 +240,7 @@ export default function InternProfileSetup() {
 
       setSuccess("Profile setup complete! Redirecting to dashboard...");
       setTimeout(() => {
-        window.location.href = "/dashboard/intern";
+        window.location.href = "/intern/dashboard";
       }, 1500);
     } catch (error) {
       console.error("Error saving profile:", error);

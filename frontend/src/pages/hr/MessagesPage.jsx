@@ -481,11 +481,9 @@ const MessagesPage = ({ selectedIntern }) => {
     <div
       style={{
         display: "flex",
-        height: "calc(100vh - 160px)", // Adjust based on your header height
+        height: "100%",
         background: COLORS.inkBlack,
-        borderRadius: "16px",
         overflow: "hidden",
-        border: `1px solid rgba(103, 146, 137, 0.2)`,
       }}
     >
       {/* CHAT SIDEBAR - FIXED */}

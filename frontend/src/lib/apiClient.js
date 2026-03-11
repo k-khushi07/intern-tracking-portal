@@ -29,16 +29,22 @@ export async function apiFetch(path, options = {}) {
 }
 
 export const authApi = {
-  login({ email, password, expectedRole, rememberMe }) {
+  login({ email, password, expectedRole, rememberMe } = {}) {
+    const trimmedEmail = String(email || "").trim();
+    const rawPassword = String(password || "");
+    if (!trimmedEmail || !rawPassword) {
+      return Promise.reject(new Error("Email and password are required"));
+    }
     return apiFetch("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password, expectedRole, rememberMe }),
+      body: JSON.stringify({ email: trimmedEmail, password: rawPassword, expectedRole, rememberMe }),
     });
   },
   me() {
     return apiFetch("/auth/me", { method: "GET" });
   },
   logout() {
+    console.trace("LOGOUT TRIGGERED");
     return apiFetch("/auth/logout", { method: "POST" });
   },
 };
@@ -155,6 +161,9 @@ export const hrApi = {
       body: JSON.stringify({ pmCode }),
     });
   },
+  nextInternId() {
+    return apiFetch("/hr/intern-id/next", { method: "GET" });
+  },
   downloadOfferLetter(profileId) {
     return `/api/hr/active-interns/${profileId}/offer-letter.pdf`;
   },
@@ -167,10 +176,46 @@ export const hrApi = {
 };
 
 export const adminApi = {
-  createUser({ email, password, role, fullName, pmCode }) {
+  users(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/admin/users${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  createUser(payload) {
     return apiFetch("/admin/users", {
       method: "POST",
-      body: JSON.stringify({ email, password, role, fullName, pmCode }),
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  updateUser(userId, payload) {
+    return apiFetch(`/admin/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  deleteUser(userId) {
+    return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
+  },
+  nextInternId() {
+    return apiFetch("/admin/intern-id/next", { method: "GET" });
+  },
+  nextPmCode() {
+    return apiFetch("/admin/pm-code/next", { method: "GET" });
+  },
+  stats() {
+    return apiFetch("/admin/stats", { method: "GET" });
+  },
+  internProgress() {
+    return apiFetch("/admin/intern-progress", { method: "GET" });
+  },
+  setInternStatus(internId, status) {
+    return apiFetch(`/admin/interns/${internId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   },
 };
@@ -197,11 +242,26 @@ export const pmApi = {
   reports() {
     return apiFetch("/pm/reports", { method: "GET" });
   },
-  reviewReport(reportId, { status, reason }) {
+  reviewReport(reportId, payload) {
     return apiFetch(`/pm/reports/${reportId}/review`, {
       method: "PATCH",
-      body: JSON.stringify({ status, reason }),
+      body: JSON.stringify(payload || {}),
     });
+  },
+  createAnnouncement({ title, content, priority, audienceRoles, pinned }) {
+    return apiFetch("/pm/announcements", {
+      method: "POST",
+      body: JSON.stringify({ title, content, priority, audienceRoles, pinned }),
+    });
+  },
+  updateAnnouncement(announcementId, patch) {
+    return apiFetch(`/pm/announcements/${announcementId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  },
+  deleteAnnouncement(announcementId) {
+    return apiFetch(`/pm/announcements/${announcementId}`, { method: "DELETE" });
   },
 };
 
@@ -335,5 +395,23 @@ export const messagesApi = {
   },
   deleteMessage(messageId) {
     return apiFetch(`/messages/messages/${messageId}`, { method: "DELETE" });
+  },
+};
+
+export const notificationsApi = {
+  list({ limit } = {}) {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return apiFetch(`/notifications${qs ? `?${qs}` : ""}`, { method: "GET" });
+  },
+  unreadCount() {
+    return apiFetch("/notifications/unread-count", { method: "GET" });
+  },
+  markRead(notificationId) {
+    return apiFetch(`/notifications/${notificationId}/read`, { method: "POST" });
+  },
+  markAllRead() {
+    return apiFetch("/notifications/read-all", { method: "POST" });
   },
 };

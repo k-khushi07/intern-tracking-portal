@@ -1,7 +1,5 @@
 import React from "react";
-//import { Routes, Route } from "react-router-dom";
-
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import AuthPage from "./pages/AuthPage";
 
@@ -21,23 +19,32 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<AuthPage />} />
-
       <Route path="/apply" element={<InternApplicationForm />} />
 
+      {/* Separated portals */}
+      <Route path="/intern/login" element={<AuthPage forcedRole="intern" />} />
+      <Route path="/intern/dashboard" element={<InternHome />} />
+      <Route path="/intern/profile-setup" element={<ProfileSetup />} />
 
-      {/* Admin */}
-      <Route path="/login" element={<AdminLogin />} />
+      <Route path="/hr/login" element={<AuthPage forcedRole="hr" />} />
+      <Route path="/hr/dashboard" element={<HRHome />} />
+
+      <Route path="/pm/login" element={<AuthPage forcedRole="pm" />} />
+      <Route path="/pm/dashboard" element={<PMHome />} />
+
       <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<AdminHome />} />
+      <Route path="/admin/dashboard" element={<AdminHome />} />
+      <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
 
-      {/* Dashboards */}
-      <Route path="/dashboard/admin" element={<AdminHome />} />
-      <Route path="/dashboard/pm" element={<PMHome />} />
-      <Route path="/dashboard/hr" element={<HRHome />} />
-      <Route path="/dashboard/intern" element={<InternHome />} />
+      {/* Backward-compatibility redirects */}
+      <Route path="/login" element={<Navigate to="/admin/login" replace />} />
+      <Route path="/dashboard/admin" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/dashboard/pm" element={<Navigate to="/pm/dashboard" replace />} />
+      <Route path="/dashboard/hr" element={<Navigate to="/hr/dashboard" replace />} />
+      <Route path="/dashboard/intern" element={<Navigate to="/intern/dashboard" replace />} />
+      <Route path="/profile-setup" element={<Navigate to="/intern/profile-setup" replace />} />
 
-      {/* Other */}
-      <Route path="/profile-setup" element={<ProfileSetup />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

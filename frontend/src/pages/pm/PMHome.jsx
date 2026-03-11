@@ -1,12 +1,11 @@
 // PMHome.jsx - pm dashboard
-import React, { useState, useEffect } from "react";
-import { Menu, Bell, LogOut, Sparkles, X, Users, Home, BookOpen, MessageCircle } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Menu, Bell, LogOut, Sparkles, X, Users, Home, MessageCircle } from "lucide-react";
 import MessagesPage from './MessagesPage';
 import OverviewPage from "./OverviewPage";
 import MyInternsPage from './MyInternsPage';
 import InternProfilePage from './InternProfilePage';
-import ReviewLogsPage from './ReviewLogsPage';
-import { authApi, pmApi, announcementsApi } from "../../lib/apiClient";
+import { authApi, pmApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
 const COLORS = {
@@ -59,6 +58,7 @@ const GlobalStyles = () => (
 const PMHome = () => {
   const [currentPage, setCurrentPage] = useState("overview");
   const [selectedIntern, setSelectedIntern] = useState(null);
+  const [selectedInternSection, setSelectedInternSection] = useState("profile");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -84,11 +84,45 @@ const PMHome = () => {
   }, []);
 
   // Notifications State
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: "New Weekly Report", message: "John Doe submitted Week 2 report", time: "5m ago", read: false, type: "report", internEmail: "john.doe@company.com" },
-    { id: 2, title: "TNA Tracker Updated", message: "Jane Smith updated TNA progress", time: "1h ago", read: false, type: "tna", internEmail: "jane.smith@company.com" },
-    { id: 3, title: "Project Milestone", message: "Mike Johnson completed UI mockups", time: "2h ago", read: true, type: "project", internEmail: "mike.johnson@company.com" },
-  ]);
+  const [notifications, setNotifications] = useState([]);
+
+  const formatTimeAgo = useCallback((iso) => {
+    const t = new Date(iso || "").getTime();
+    if (!Number.isFinite(t)) return "";
+    const diff = Date.now() - t;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }, []);
+
+  const mapApiNotification = useCallback(
+    (n) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message || "",
+      time: formatTimeAgo(n.createdAt),
+      read: !!n.read,
+      type: n.type || "info",
+      link: n.link || null,
+      category: n.category || null,
+      createdAt: n.createdAt || null,
+    }),
+    [formatTimeAgo]
+  );
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const res = await notificationsApi.list({ limit: 60 });
+      const rows = res?.notifications || [];
+      setNotifications(rows.map(mapApiNotification));
+    } catch {
+      setNotifications([]);
+    }
+  }, [mapApiNotification]);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +224,12 @@ const PMHome = () => {
         if (!cancelled) setSharedAnnouncements([]);
       }
 
+      try {
+        await loadNotifications();
+      } catch {
+        // ignore
+      }
+
       if (!cancelled) setLoading(false);
     };
 
@@ -229,6 +269,7 @@ const PMHome = () => {
       }).catch(() => {});
 
       announcementsApi.list().then((r) => setSharedAnnouncements(r?.announcements || [])).catch(() => {});
+      loadNotifications().catch(() => {});
     };
 
     socket.on("itp:changed", onChanged);
@@ -242,12 +283,12 @@ const PMHome = () => {
     { id: "overview", label: "PM Dashboard", icon: Home },
     { id: "interns", label: "My Interns", icon: Users },
     { id: "messages", label: "Messages", icon: MessageCircle },
-    { id: "review-logs", label: "Review Reports", icon: BookOpen },
   ];
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const markNotificationAsRead = (id) => {
+    notificationsApi.markRead(id).catch(() => {});
     setNotifications(prev => 
       prev.map(notif => 
         notif.id === id ? { ...notif, read: true } : notif
@@ -256,18 +297,37 @@ const PMHome = () => {
   };
 
   const markAllAsRead = () => {
+    notificationsApi.markAllRead().catch(() => {});
     setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
   };
 
-  const addNotification = (notification) => {
-    const newNotif = {
-      id: Date.now(),
-      ...notification,
-      time: "Just now",
-      read: false
+  const addNotification = useCallback(
+    (notification) => {
+      if (!notification) return;
+      const next = {
+        ...notification,
+        id: notification.id || `local_${Date.now()}`,
+        time: notification.time || formatTimeAgo(notification.createdAt) || "Just now",
+        read: !!notification.read,
+      };
+      setNotifications((prev) => {
+        if (prev.some((n) => String(n.id) === String(next.id))) return prev;
+        return [next, ...prev].slice(0, 60);
+      });
+    },
+    [formatTimeAgo]
+  );
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onNotification = (payload) => {
+      const row = payload?.notification;
+      if (!row?.id) return;
+      addNotification(mapApiNotification(row));
     };
-    setNotifications(prev => [newNotif, ...prev]);
-  };
+    socket.on("itp:notification", onNotification);
+    return () => socket.off("itp:notification", onNotification);
+  }, [addNotification, mapApiNotification]);
 
   const handleNavigateToMessages = (intern) => {
     setSelectedIntern(intern);
@@ -276,11 +336,19 @@ const PMHome = () => {
 
   const handleViewProfile = (intern) => {
     setSelectedIntern(intern);
+    setSelectedInternSection("profile");
+    setCurrentPage("intern-profile");
+  };
+
+  const handleViewReports = (intern) => {
+    setSelectedIntern(intern);
+    setSelectedInternSection("reports");
     setCurrentPage("intern-profile");
   };
 
   const handleBackToInterns = () => {
     setSelectedIntern(null);
+    setSelectedInternSection("profile");
     setCurrentPage("interns");
   };
 
@@ -312,6 +380,7 @@ const PMHome = () => {
           <MyInternsPage 
             onNavigateToMessages={handleNavigateToMessages}
             onViewProfile={handleViewProfile}
+            onViewReports={handleViewReports}
             interns={interns}
           />
         );
@@ -319,22 +388,13 @@ const PMHome = () => {
         return (
           <InternProfilePage 
             intern={selectedIntern}
+            reports={[...(weeklyReports || []), ...(monthlyReports || [])]}
+            initialSection={selectedInternSection}
             onBack={handleBackToInterns}
           />
         );
       case "messages":
         return <MessagesPage selectedIntern={selectedIntern} />;
-      case "review-logs":
-        return (
-          <ReviewLogsPage 
-            interns={interns}
-            weeklyReports={weeklyReports} 
-            monthlyReports={monthlyReports} 
-            isMobile={isMobile}
-            pmEmail={pmInfo?.email || ""}
-            addNotification={addNotification}
-          />
-        );
       default:
         return (
           <OverviewPage 
@@ -481,7 +541,7 @@ const PMHome = () => {
                   // ignore
                 }
                 localStorage.removeItem("currentUser");
-                window.location.href = "/";
+                window.location.href = "/pm/login";
               }}
               style={{
                 width: "100%",
@@ -662,33 +722,45 @@ const PMHome = () => {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 700, color: "white", cursor: "pointer",
               }}>
-                {pmInfo?.avatar || "PM"}
+              {pmInfo?.avatar || "PM"}
               </div>
             </div>
           </header>
 
           {/* PAGE CONTENT - SCROLLABLE */}
-          <div style={{ 
-            flex: 1, 
-            padding: 24, 
-            overflowY: "auto",
-            overflowX: "hidden",
-            background: COLORS.bgPrimary,
-          }}>
-            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-              {loading && (
-                <div style={{ padding: 20, color: COLORS.textSecondary }}>
-                  Loading…
-                </div>
-              )}
-              {!loading && loadError && (
-                <div style={{ padding: 20, color: COLORS.red }}>
-                  {loadError}
-                </div>
-              )}
+          {currentPage === "messages" ? (
+            <div style={{
+              flex: 1,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              background: COLORS.bgPrimary,
+            }}>
               {!loading && !loadError && renderPage()}
             </div>
-          </div>
+          ) : (
+            <div style={{
+              flex: 1,
+              padding: 24,
+              overflowY: "auto",
+              overflowX: "hidden",
+              background: COLORS.bgPrimary,
+            }}>
+              <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+                {loading && (
+                  <div style={{ padding: 20, color: COLORS.textSecondary }}>
+                    Loading…
+                  </div>
+                )}
+                {!loading && loadError && (
+                  <div style={{ padding: 20, color: COLORS.red }}>
+                    {loadError}
+                  </div>
+                )}
+                {!loading && !loadError && renderPage()}
+              </div>
+            </div>
+          )}
         </main>
 
         {/* Mobile Overlay */}
