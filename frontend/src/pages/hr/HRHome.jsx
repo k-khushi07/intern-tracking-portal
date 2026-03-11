@@ -48,6 +48,7 @@ export default function HRHome() {
   const [rejectReason, setRejectReason] = useState("");
   const [profileTab, setProfileTab] = useState("personal");
   const [reportsTab, setReportsTab] = useState("review");
+  const [activeInternsPmFilter, setActiveInternsPmFilter] = useState(null);
 
   // Responsive Handler
   useEffect(() => {
@@ -364,8 +365,16 @@ export default function HRHome() {
   };
 
   const handleViewPMInterns = (pm) => {
-    showNotice(`Viewing interns under ${pm.fullName}`, "info");
-    console.log("PM clicked:", pm);
+    const pmCode = pm?.pmCode || pm?.pm_code;
+    const pmName = pm?.fullName || pm?.name || pm?.full_name || pm?.email || pmCode;
+
+    if (!pmCode) {
+      showNotice("PM code missing for selected project manager.", "error");
+      return;
+    }
+
+    setActiveInternsPmFilter({ code: pmCode, name: pmName });
+    setActiveSection("active");
   };
 
   const handleNavigateToMessages = (user) => {
@@ -557,7 +566,10 @@ export default function HRHome() {
             {navItems(stats).map((item, idx) => (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => {
+                  setActiveSection(item.id);
+                  setActiveInternsPmFilter(null);
+                }}
                 style={{
                   width: "100%",
                   display: "flex",
@@ -912,7 +924,13 @@ export default function HRHome() {
             )}
 
             {activeSection === "active" && (
-              <ActiveInterns onNavigateToMessages={handleNavigateToMessages} users={users} />
+              <ActiveInterns
+                onNavigateToMessages={handleNavigateToMessages}
+                users={users}
+                initialPmCode={activeInternsPmFilter?.code || ""}
+                initialPmName={activeInternsPmFilter?.name || ""}
+                onClearPmFilter={() => setActiveInternsPmFilter(null)}
+              />
             )}
 
             {activeSection === "new" && (

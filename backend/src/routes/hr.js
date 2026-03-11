@@ -2,7 +2,7 @@ const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
-const { generateNextInternId } = require("../services/internId");
+const { generateNextInternId, peekNextInternId } = require("../services/internId");
 
 async function assertInternExists(internId) {
   const rows = await restSelect({
@@ -520,7 +520,7 @@ function createHrRouter({ emailService }) {
 
   router.get("/intern-id/next", async (req, res, next) => {
     try {
-      const internId = await generateNextInternId({ prefix: "EDCS" });
+      const internId = await peekNextInternId({ prefix: "EDCS" });
       res.status(200).json({ success: true, internId });
     } catch (err) {
       next(err);
