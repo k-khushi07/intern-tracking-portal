@@ -56,6 +56,35 @@ function statusColor(status) {
   return COLORS.warning;
 }
 
+function getGoogleEmbedUrl(url, type) {
+  if (!url) return null;
+  try {
+    const isDoc = !!url.match(/\/document\//i);
+    const isSheet = !!url.match(/\/spreadsheets\//i);
+    const idMatch = url.match(/\/(?:d|e)\/([a-zA-Z0-9_-]+)/);
+    if (!idMatch) return url;
+
+    const id = idMatch[1];
+    const isPublished = url.includes('/e/');
+    
+    const gidMatch = url.match(/[?&]gid=([0-9]+)/);
+    const gid = gidMatch ? `&gid=${gidMatch[1]}` : '';
+
+    if (isDoc || type === 'doc') {
+      if (isPublished) return `https://docs.google.com/document/d/e/${id}/pub?embedded=true`;
+      return `https://docs.google.com/document/d/${id}/preview`;
+    }
+    
+    if (isSheet || type === 'sheet') {
+      if (isPublished) return `https://docs.google.com/spreadsheets/d/e/${id}/pubhtml?widget=true&headers=false${gid}`;
+      return `https://docs.google.com/spreadsheets/d/${id}/htmlembed?widget=true${gid}`;
+    }
+  } catch(e) {
+    return url;
+  }
+  return url;
+}
+
 const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile" }) => {
   const [tnaItems, setTnaItems] = useState([]);
   const [blueprint, setBlueprint] = useState(null);
@@ -67,6 +96,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
   const [internReports, setInternReports] = useState([]);
   const reportsSectionRef = useRef(null);
   const [activeTab, setActiveTab] = useState(initialSection === "reports" ? "reports" : "profile");
+  const [reportTab, setReportTab] = useState("weekly");
 
   const internId = intern?.id || null;
 
@@ -99,15 +129,13 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
 
   useEffect(() => {
     if (!internId) return;
-    if (activeTab !== "reports") return;
     const timeoutId = window.setTimeout(() => {
       loadInternArtifacts();
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [internId, loadInternArtifacts, activeTab]);
+  }, [internId, loadInternArtifacts]);
 
   useEffect(() => {
-    if (activeTab !== "reports") return;
     const socket = getRealtimeSocket();
     const onChanged = (payload) => {
       if (!payload) return;
@@ -117,7 +145,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     };
     socket.on("itp:changed", onChanged);
     return () => socket.off("itp:changed", onChanged);
-  }, [internId, loadInternArtifacts, activeTab]);
+  }, [internId, loadInternArtifacts]);
 
   useEffect(() => {
     setActiveTab(initialSection === "reports" ? "reports" : "profile");
@@ -180,11 +208,11 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
         prev.map((report) =>
           report.id === reportId
             ? {
-                ...report,
-                status: statusValue,
-                reviewReason: text || null,
-                reviewedAt: new Date().toISOString(),
-              }
+              ...report,
+              status: statusValue,
+              reviewReason: text || null,
+              reviewedAt: new Date().toISOString(),
+            }
             : report
         )
       );
@@ -310,6 +338,42 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
           Profile
         </button>
         <button
+          onClick={() => setActiveTab("tracking")}
+          style={{
+            border: `1px solid ${activeTab === "tracking" ? "rgba(103,146,137,0.55)" : COLORS.border}`,
+            background: activeTab === "tracking" ? "rgba(103,146,137,0.18)" : "rgba(255,255,255,0.04)",
+            color: activeTab === "tracking" ? "#a7f3d0" : "rgba(255,229,217,0.75)",
+            borderRadius: 999,
+            padding: "10px 14px",
+            fontWeight: 900,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <ListChecks size={16} />
+          Tracking Sheet
+        </button>
+        <button
+          onClick={() => setActiveTab("blueprint")}
+          style={{
+            border: `1px solid ${activeTab === "blueprint" ? "rgba(103,146,137,0.55)" : COLORS.border}`,
+            background: activeTab === "blueprint" ? "rgba(103,146,137,0.18)" : "rgba(255,255,255,0.04)",
+            color: activeTab === "blueprint" ? "#e0e7ff" : "rgba(255,229,217,0.75)",
+            borderRadius: 999,
+            padding: "10px 14px",
+            fontWeight: 900,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <FileText size={16} />
+          Blueprint
+        </button>
+        <button
           onClick={() => setActiveTab("reports")}
           style={{
             border: `1px solid ${activeTab === "reports" ? "rgba(20,184,166,0.55)" : COLORS.border}`,
@@ -330,17 +394,205 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
       </div>
 
       {activeTab === "profile" && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
+            <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
+              Intern Information
+            </div>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+              <ProfileField icon={<Mail size={15} />} label="Email" value={intern.email || "-"} />
+              <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={intern.intern_id || intern.internId || "-"} />
+              <ProfileField icon={<ListChecks size={15} />} label="Department" value={department || "-"} />
+              <ProfileField icon={<Calendar size={15} />} label="Joined" value={intern.created_at ? new Date(intern.created_at).toLocaleDateString() : "-"} />
+              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={intern.lastLogDate ? new Date(intern.lastLogDate).toLocaleDateString() : "No logs"} />
+            </div>
+          </div>
+
+          <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
+                TNA & Blueprint
+              </div>
+              <button
+                onClick={loadInternArtifacts}
+                style={{
+                  border: `1px solid rgba(103,146,137,0.45)`,
+                  background: "rgba(103,146,137,0.18)",
+                  color: "white",
+                  borderRadius: 9,
+                  padding: "8px 12px",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Refresh Data
+              </button>
+            </div>
+
+            {profileError && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#fecaca", fontSize: 12 }}>
+                {profileError}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
+              {/* Links Card */}
+              <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, background: "rgba(255,255,255,0.03)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,229,217,0.75)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                  <Link2 size={14} color={COLORS.jungleTeal} />
+                  External Links
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13 }}>
+                    <span style={{ color: "rgba(255,229,217,0.9)" }}>TNA Sheet</span>
+                    {links.tnaSheetUrl ? (
+                      <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ↗</a>
+                    ) : <span style={{ color: COLORS.muted }}>Not set</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13 }}>
+                    <span style={{ color: "rgba(255,229,217,0.9)" }}>Blueprint Doc</span>
+                    {links.blueprintDocUrl ? (
+                      <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ↗</a>
+                    ) : <span style={{ color: COLORS.muted }}>Not set</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Blueprint Summary Card */}
+              <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, background: "rgba(255,255,255,0.03)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,229,217,0.75)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                  <FileText size={14} color={COLORS.jungleTeal} />
+                  Blueprint Details
+                </div>
+                <div style={{ color: "rgba(255,229,217,0.9)", fontSize: 13, lineHeight: 1.6, display: "grid", gap: 8 }}>
+                  <div>
+                    <strong style={{ color: COLORS.peachGlow }}>Objective:</strong>
+                    <div style={{ color: COLORS.muted, marginTop: 2 }}>{blueprint?.data?.objective || "No objective defined yet."}</div>
+                  </div>
+                  <div>
+                    <strong style={{ color: COLORS.peachGlow }}>Scope:</strong>
+                    <div style={{ color: COLORS.muted, marginTop: 2 }}>{blueprint?.data?.scope || "No scope defined yet."}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* TNA Tracker */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,229,217,0.75)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+                <ListChecks size={14} color={COLORS.jungleTeal} />
+                TNA Phased Tracking
+              </div>
+
+              {tnaByWeek.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", background: "rgba(0,0,0,0.15)", borderRadius: 12, color: COLORS.muted, fontSize: 13 }}>
+                  No TNA progress rows available.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {tnaByWeek.map((bucket) => (
+                    <div key={bucket.label} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+                      <div style={{ background: "rgba(255,255,255,0.05)", padding: "10px 14px", borderBottom: `1px solid ${COLORS.border}`, color: COLORS.peachGlow, fontWeight: 800, fontSize: 14 }}>
+                        {bucket.label}
+                      </div>
+                      <div style={{ background: "rgba(0,0,0,0.15)", padding: 0 }}>
+                        <div style={{ overflowX: "auto" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                            <thead>
+                              <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                                <th style={{ textAlign: "left", padding: 12, color: "rgba(255,255,255,0.7)", fontWeight: 800 }}>Task</th>
+                                <th style={{ textAlign: "left", padding: 12, color: "rgba(255,255,255,0.7)", fontWeight: 800 }}>Planned Date</th>
+                                <th style={{ textAlign: "right", padding: 12, color: "rgba(255,255,255,0.7)", fontWeight: 800 }}>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {bucket.items.map((item, idx) => (
+                                <tr key={item.id} style={{ borderBottom: idx < bucket.items.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
+                                  <td style={{ padding: "12px", color: "white", fontWeight: 600, minWidth: 200 }}>
+                                    {item.task || "Unnamed Task"}
+                                  </td>
+                                  <td style={{ padding: "12px", color: COLORS.muted, fontSize: 12, minWidth: 120 }}>
+                                    {item.planned_date || "Not set"}
+                                  </td>
+                                  <td style={{ padding: "12px", textAlign: "right", minWidth: 120 }}>
+                                    <span style={{
+                                      padding: "4px 8px",
+                                      borderRadius: 6,
+                                      fontSize: 10,
+                                      fontWeight: 800,
+                                      textTransform: "uppercase",
+                                      background: item.status === "completed" ? "rgba(74,222,128,0.15)" : item.status === "blocked" ? "rgba(245,158,11,0.15)" : "rgba(103,146,137,0.15)",
+                                      color: item.status === "completed" ? COLORS.success : item.status === "blocked" ? COLORS.warning : COLORS.peachGlow,
+                                      border: `1px solid ${item.status === "completed" ? "rgba(74,222,128,0.3)" : item.status === "blocked" ? "rgba(245,158,11,0.3)" : "rgba(103,146,137,0.3)"}`
+                                    }}>
+                                      {(item.status || "pending").replace(/_/g, " ")}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "tracking" && (
         <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
-          <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
-            Intern Profile
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
+              TNA Tracking Sheet
+            </div>
+            {links.tnaSheetUrl && (
+              <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ↗</a>
+            )}
           </div>
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
-            <ProfileField icon={<Mail size={15} />} label="Email" value={intern.email || "-"} />
-            <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={intern.intern_id || intern.internId || "-"} />
-            <ProfileField icon={<ListChecks size={15} />} label="Department" value={department || "-"} />
-            <ProfileField icon={<Calendar size={15} />} label="Joined" value={intern.created_at ? new Date(intern.created_at).toLocaleDateString() : "-"} />
-            <ProfileField icon={<Clock size={15} />} label="Last Activity" value={intern.lastLogDate ? new Date(intern.lastLogDate).toLocaleDateString() : "No logs"} />
+          {links.tnaSheetUrl ? (
+            <div style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${COLORS.border}` }}>
+              <iframe
+                src={getGoogleEmbedUrl(links.tnaSheetUrl, "sheet")}
+                style={{ width: "100%", height: "70vh", minHeight: 600, border: "none" }}
+                title="TNA Tracking Sheet"
+              />
+            </div>
+          ) : (
+            <div style={{ padding: 40, textAlign: "center", color: COLORS.muted }}>
+              No Tracking Sheet link set for this intern yet.
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "blueprint" && (
+        <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
+              Blueprint Document
+            </div>
+            {links.blueprintDocUrl && (
+              <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ↗</a>
+            )}
           </div>
+          {links.blueprintDocUrl ? (
+            <div style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${COLORS.border}` }}>
+              <iframe
+                src={getGoogleEmbedUrl(links.blueprintDocUrl, "doc")}
+                style={{ width: "100%", height: "70vh", minHeight: 600, border: "none" }}
+                title="Blueprint Document"
+              />
+            </div>
+          ) : (
+            <div style={{ padding: 40, textAlign: "center", color: COLORS.muted }}>
+              No Blueprint Document link set for this intern yet.
+            </div>
+          )}
         </div>
       )}
 
@@ -358,155 +610,114 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               Reports (This Intern)
             </div>
 
-            {reviewError ? (
-              <div style={{ marginBottom: 10, color: "#fecaca", fontSize: 12 }}>{reviewError}</div>
-            ) : null}
+            {reviewError && (
+              <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#fecaca", fontSize: 13 }}>
+                {reviewError}
+              </div>
+            )}
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <ReportsSection
-                title="Weekly Reports"
-                reports={weeklyReports}
-                remarks={remarks}
-                setRemarks={setRemarks}
-                savingReviewId={savingReviewId}
-                onApprove={(id) => reviewReport(id, "approved")}
-                onReject={(id) => reviewReport(id, "rejected")}
-              />
-              <ReportsSection
-                title="Monthly Reports"
-                reports={monthlyReports}
-                remarks={remarks}
-                setRemarks={setRemarks}
-                savingReviewId={savingReviewId}
-                onApprove={(id) => reviewReport(id, "approved")}
-                onReject={(id) => reviewReport(id, "rejected")}
-              />
-            </div>
-          </div>
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{ display: "flex", gap: 10, marginBottom: 4, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 16 }}>
+                <button
+                  onClick={() => setReportTab("weekly")}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 12,
+                    border: "none",
+                    background: reportTab === "weekly" ? "rgba(103,146,137,0.2)" : "transparent",
+                    color: reportTab === "weekly" ? COLORS.jungleTeal : "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    fontWeight: reportTab === "weekly" ? 800 : 600,
+                    fontSize: 14,
+                    transition: "all 0.2s"
+                  }}
+                >
+                  Weekly Reports
+                </button>
+                <button
+                  onClick={() => setReportTab("monthly")}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 12,
+                    border: "none",
+                    background: reportTab === "monthly" ? "rgba(245,158,11,0.2)" : "transparent",
+                    color: reportTab === "monthly" ? COLORS.warning : "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    fontWeight: reportTab === "monthly" ? 800 : 600,
+                    fontSize: 14,
+                    transition: "all 0.2s"
+                  }}
+                >
+                  Monthly Reports
+                </button>
+              </div>
 
-      <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ color: COLORS.peachGlow, fontWeight: 800, fontSize: 17 }}>
-            TNA & Blueprint
-          </div>
-          <button
-            onClick={loadInternArtifacts}
-            style={{
-              border: `1px solid rgba(103,146,137,0.45)`,
-              background: "rgba(103,146,137,0.18)",
-              color: "white",
-              borderRadius: 9,
-              padding: "8px 12px",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Refresh
-          </button>
-        </div>
+              {reportTab === "weekly" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                  {(() => {
+                    const weeklies = weeklyReports;
+                    if (weeklies.length === 0) return <div style={{ color: "rgba(255,255,255,0.6)", textAlign: "center", padding: 20 }}>No weekly reports found.</div>;
 
-        {profileError ? (
-          <div style={{ marginTop: 10, color: "#fecaca", fontSize: 12 }}>{profileError}</div>
-        ) : null}
+                    const byMonth = weeklies.reduce((acc, r) => {
+                      const m = r.month || "Unknown Month";
+                      if (!acc[m]) acc[m] = [];
+                      acc[m].push(r);
+                      return acc;
+                    }, {});
 
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "rgba(255,255,255,0.03)" }}>
-            <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 11, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
-              <Link2 size={13} />
-              External Links
-            </div>
-            <div style={{ color: "rgba(255,229,217,0.85)", fontSize: 12 }}>
-              TNA Sheet:{" "}
-              {links.tnaSheetUrl ? (
-                <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 700 }}>
-                  Open
-                </a>
-              ) : "—"}
-            </div>
-            <div style={{ color: "rgba(255,229,217,0.85)", fontSize: 12, marginTop: 6 }}>
-              Blueprint Doc:{" "}
-              {links.blueprintDocUrl ? (
-                <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 700 }}>
-                  Open
-                </a>
-              ) : "—"}
-            </div>
-          </div>
-
-          <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "rgba(255,255,255,0.03)" }}>
-            <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 11, marginBottom: 7 }}>
-              Blueprint Summary
-            </div>
-            <div style={{ color: "rgba(255,229,217,0.9)", fontSize: 12, lineHeight: 1.6 }}>
-              <div><strong>Objective:</strong> {blueprint?.data?.objective || "—"}</div>
-              <div style={{ marginTop: 6 }}><strong>Scope:</strong> {blueprint?.data?.scope || "—"}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 11, marginBottom: 7 }}>
-            TNA Phases (Week Wise)
-          </div>
-
-          {tnaByWeek.length === 0 ? (
-            <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 12 }}>
-              No TNA rows yet.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {tnaByWeek.map((bucket) => (
-                <div key={bucket.label} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.03)" }}>
-                  <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 13 }}>{bucket.label}</div>
-                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                    {bucket.items.map((item) => (
-                      <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 8 }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ color: "rgba(255,229,217,0.95)", fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {item.task || "-"}
-                          </div>
-                          <div style={{ color: "rgba(255,229,217,0.65)", fontSize: 11, marginTop: 2 }}>
-                            Planned: {item.planned_date || "-"}
-                          </div>
-                        </div>
-                        <div style={{ color: item.status === "completed" ? COLORS.success : item.status === "blocked" ? COLORS.warning : COLORS.jungleTeal, fontWeight: 900, fontSize: 11, textTransform: "uppercase" }}>
-                          {(item.status || "pending").replace(/_/g, " ")}
+                    return Object.entries(byMonth).map(([monthName, monthReports]) => (
+                      <div key={monthName}>
+                        <h3 style={{ fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,0.7)", marginBottom: 12, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 8 }}>
+                          {monthName}
+                        </h3>
+                        <div style={{ display: "grid", gap: 16 }}>
+                          {monthReports.map(report => (
+                            <ReportCard
+                              key={report.id}
+                              report={report}
+                              remarks={remarks}
+                              setRemarks={setRemarks}
+                              savingReviewId={savingReviewId}
+                              onApprove={(id) => reviewReport(id, "approved")}
+                              onReject={(id) => reviewReport(id, "rejected")}
+                            />
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    ));
+                  })()}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              )}
 
-        <div style={{ marginTop: 12 }}>
-          <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 11, marginBottom: 7 }}>
-            Latest TNA Rows
+              {reportTab === "monthly" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {(() => {
+                    const monthlies = monthlyReports;
+                    if (monthlies.length === 0) return <div style={{ color: "rgba(255,255,255,0.6)", textAlign: "center", padding: 20 }}>No monthly reports found.</div>;
+
+                    return (
+                      <div style={{ display: "grid", gap: 16 }}>
+                        {monthlies.map(report => (
+                          <ReportCard
+                            key={report.id}
+                            report={report}
+                            remarks={remarks}
+                            setRemarks={setRemarks}
+                            savingReviewId={savingReviewId}
+                            onApprove={(id) => reviewReport(id, "approved")}
+                            onReject={(id) => reviewReport(id, "rejected")}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+            </div>
           </div>
-          {(tnaItems || []).slice(0, 8).map((item) => (
-            <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ color: "rgba(255,229,217,0.9)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {item.task || "—"}
-                </div>
-                <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 11, marginTop: 3 }}>
-                  Week {item.week_number || "—"} | Planned: {item.planned_date || "—"}
-                </div>
-              </div>
-              <div style={{ color: item.status === "completed" ? COLORS.success : item.status === "blocked" ? COLORS.warning : COLORS.jungleTeal, fontWeight: 800, fontSize: 11 }}>
-                {(item.status || "pending").replace("_", " ")}
-              </div>
-            </div>
-          ))}
-          {(tnaItems || []).length === 0 && (
-            <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 12 }}>
-              No TNA rows yet.
-            </div>
-          )}
-        </div>
-      </div>
+
+
         </>
       )}
     </div>
@@ -527,38 +738,40 @@ function ProfileField({ icon, label, value }) {
   );
 }
 
-function ReportsSection({ title, reports = [], remarks, setRemarks, savingReviewId, onApprove, onReject }) {
+function ReportsSection({ title, bgAccent, borderAccent, reports = [], remarks, setRemarks, savingReviewId, onApprove, onReject }) {
   const items = Array.isArray(reports) ? reports : [];
   return (
-    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.03)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 14 }}>
+    <div style={{ border: `1px solid ${borderAccent || COLORS.border}`, borderRadius: 14, overflow: "hidden", background: "rgba(255,255,255,0.02)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: bgAccent || "rgba(255,255,255,0.05)", borderBottom: `1px solid ${borderAccent || COLORS.border}` }}>
+        <div style={{ color: "white", fontWeight: 800, fontSize: 15, letterSpacing: "0.3px" }}>
           {title}
         </div>
-        <div style={{ color: "rgba(255,229,217,0.65)", fontSize: 12, fontWeight: 800 }}>
-          {items.length}
+        <div style={{ background: "rgba(0,0,0,0.3)", color: "rgba(255,229,217,0.9)", fontSize: 12, fontWeight: 900, padding: "4px 10px", borderRadius: 999 }}>
+          {items.length} {items.length === 1 ? 'Report' : 'Reports'}
         </div>
       </div>
 
-      {items.length === 0 ? (
-        <div style={{ marginTop: 10, color: "rgba(255,229,217,0.65)", fontSize: 12 }}>
-          No {title.toLowerCase()} submitted yet.
-        </div>
-      ) : (
-        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-          {items.map((report) => (
-            <ReportCard
-              key={report.id}
-              report={report}
-              remarks={remarks}
-              setRemarks={setRemarks}
-              savingReviewId={savingReviewId}
-              onApprove={onApprove}
-              onReject={onReject}
-            />
-          ))}
-        </div>
-      )}
+      <div style={{ padding: 16 }}>
+        {items.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", background: "rgba(0,0,0,0.15)", borderRadius: 12, color: "rgba(255,229,217,0.6)", fontSize: 13 }}>
+            No matching reports found for this intern.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            {items.map((report) => (
+              <ReportCard
+                key={report.id}
+                report={report}
+                remarks={remarks}
+                setRemarks={setRemarks}
+                savingReviewId={savingReviewId}
+                onApprove={onApprove}
+                onReject={onReject}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -570,111 +783,136 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const label = isWeekly ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
 
   const meta = [
-    report.periodStart && report.periodEnd ? `Period: ${report.periodStart} to ${report.periodEnd}` : null,
+    report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
     report.submittedAt ? `Submitted: ${new Date(report.submittedAt).toLocaleDateString()}` : null,
+  ].filter(Boolean).join(" • ");
+
+  const statsList = [
     `Hours: ${Number(report.totalHours || 0)}`,
     report.daysWorked != null ? `Days: ${report.daysWorked}` : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
+  ].filter(Boolean).join(" | ");
 
   return (
-    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, background: "rgba(0,0,0,0.12)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <div>
-          <div style={{ color: COLORS.peachGlow, fontWeight: 800, fontSize: 14 }}>{label}</div>
-          <div style={{ color: "rgba(255,229,217,0.65)", fontSize: 11 }}>{meta || "-"}</div>
+    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, background: "rgba(0,0,0,0.2)", position: "relative", overflow: "hidden" }}>
+      {/* Top Status Accent Bar */}
+      <div style={{ position: "absolute", top: 0, left: 0, width: "4px", height: "100%", background: currentStatusColor }}></div>
+
+      <div style={{ padding: 16, paddingLeft: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ color: "white", fontWeight: 900, fontSize: 16 }}>{label}</div>
+              <span
+                style={{
+                  border: `1px solid ${currentStatusColor}66`,
+                  background: `${currentStatusColor}20`,
+                  color: currentStatusColor,
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  fontSize: 10,
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                }}
+              >
+                {report.status || "pending"}
+              </span>
+            </div>
+            <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 12, marginTop: 4 }}>{meta || "-"}</div>
+          </div>
+          <div style={{ background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 8, color: COLORS.peachGlow, fontSize: 12, fontWeight: 700, border: `1px solid ${COLORS.border}` }}>
+            {statsList}
+          </div>
         </div>
-        <span
-          style={{
-            border: `1px solid ${currentStatusColor}66`,
-            background: `${currentStatusColor}20`,
-            color: currentStatusColor,
-            borderRadius: 999,
-            padding: "4px 10px",
-            fontSize: 11,
-            fontWeight: 900,
-            textTransform: "uppercase",
-          }}
-        >
-          {report.status || "pending"}
-        </span>
-      </div>
 
-      <div style={{ marginTop: 8, color: "rgba(255,229,217,0.92)", fontSize: 13, whiteSpace: "pre-wrap" }}>
-        {report.summary || "No summary provided."}
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ color: "rgba(255,229,217,0.75)", fontSize: 11, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-          <MessageSquare size={13} />
-          PM Remarks
+        <div style={{ marginTop: 14, background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Intern Summary</div>
+          <div style={{ color: "rgba(255,229,217,0.95)", fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+            {report.summary || "No summary provided."}
+          </div>
         </div>
-        <textarea
-          value={remarks?.[report.id] ?? report.reviewReason ?? ""}
-          onChange={(event) => setRemarks((prev) => ({ ...prev, [report.id]: event.target.value }))}
-          disabled={readOnly}
-          rows={3}
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            borderRadius: 10,
-            border: `1px solid ${COLORS.border}`,
-            background: "rgba(255,255,255,0.04)",
-            color: "white",
-            padding: "9px 10px",
-            outline: "none",
-            resize: "vertical",
-            opacity: readOnly ? 0.75 : 1,
-          }}
-          placeholder={readOnly ? "Already reviewed" : "Add remarks (optional)"}
-        />
-      </div>
 
-      {!readOnly && (
-        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            onClick={() => onApprove?.(report.id)}
-            disabled={savingReviewId === report.id}
+        <div style={{ marginTop: 16 }}>
+          <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 11, marginBottom: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+            <MessageSquare size={13} />
+            PM Feedback Remarks
+          </div>
+          <textarea
+            value={remarks?.[report.id] ?? report.reviewReason ?? ""}
+            onChange={(event) => setRemarks((prev) => ({ ...prev, [report.id]: event.target.value }))}
+            disabled={readOnly}
+            rows={3}
             style={{
-              border: "1px solid rgba(74,222,128,0.45)",
-              background: "rgba(74,222,128,0.2)",
-              color: "#dcfce7",
-              borderRadius: 9,
-              padding: "8px 11px",
-              fontWeight: 900,
-              fontSize: 12,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
+              width: "100%",
+              boxSizing: "border-box",
+              borderRadius: 10,
+              border: `1px solid ${readOnly ? "transparent" : COLORS.border}`,
+              background: readOnly ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.3)",
+              color: "white",
+              padding: "12px",
+              fontSize: 13,
+              outline: "none",
+              resize: "vertical",
+              transition: "border 0.2s ease",
             }}
-          >
-            <CheckCircle2 size={14} />
-            {savingReviewId === report.id ? "Saving..." : "Approve"}
-          </button>
-          <button
-            onClick={() => onReject?.(report.id)}
-            disabled={savingReviewId === report.id}
-            style={{
-              border: "1px solid rgba(239,68,68,0.45)",
-              background: "rgba(239,68,68,0.2)",
-              color: "#fecaca",
-              borderRadius: 9,
-              padding: "8px 11px",
-              fontWeight: 900,
-              fontSize: 12,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
+            placeholder={readOnly ? "None provided." : "Add remarks here before approving or rejecting..."}
+            onFocus={(e) => {
+              if (!readOnly) e.target.style.border = `1px solid ${COLORS.jungleTeal}`;
             }}
-          >
-            <XCircle size={14} />
-            {savingReviewId === report.id ? "Saving..." : "Reject"}
-          </button>
+            onBlur={(e) => {
+              if (!readOnly) e.target.style.border = `1px solid ${COLORS.border}`;
+            }}
+          />
         </div>
-      )}
+
+        {!readOnly && (
+          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
+            <button
+              onClick={() => onApprove?.(report.id)}
+              disabled={savingReviewId === report.id}
+              style={{
+                background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(74,222,128,0.1))",
+                border: "1px solid rgba(74,222,128,0.4)",
+                color: "#dcfce7",
+                borderRadius: 9,
+                padding: "8px 16px",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                flex: "1 1 auto",
+                justifyContent: "center"
+              }}
+            >
+              <CheckCircle2 size={15} />
+              {savingReviewId === report.id ? "Saving..." : "Approve Report"}
+            </button>
+            <button
+              onClick={() => onReject?.(report.id)}
+              disabled={savingReviewId === report.id}
+              style={{
+                background: "linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1))",
+                border: "1px solid rgba(239,68,68,0.4)",
+                color: "#fecaca",
+                borderRadius: 9,
+                padding: "8px 16px",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                flex: "1 1 auto",
+                justifyContent: "center"
+              }}
+            >
+              <XCircle size={15} />
+              {savingReviewId === report.id ? "Saving..." : "Reject Report"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

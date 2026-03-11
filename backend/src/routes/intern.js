@@ -3,6 +3,7 @@ const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { syncTnaFromPublicGoogle, syncBlueprintFromPublicGoogle } = require("../services/googlePublicSync");
+const { createNotifications, listProfilesByRole, toClientNotification, isMissingTableError } = require("../services/notifications");
 
 function createInternRouter() {
   const router = express.Router();
@@ -53,6 +54,22 @@ function createInternRouter() {
       const internId = req.auth.profile.id;
       const { profileData, profileCompleted } = req.body || {};
 
+      let prevCompleted = null;
+      if (profileCompleted !== undefined) {
+        try {
+          const prevRows = await restSelect({
+            table: "profiles",
+            select: "profile_completed",
+            filters: { id: `eq.${internId}`, limit: 1 },
+            accessToken: null,
+            useServiceRole: true,
+          });
+          prevCompleted = prevRows?.[0]?.profile_completed ?? null;
+        } catch {
+          prevCompleted = null;
+        }
+      }
+
       const patch = {
         updated_at: new Date().toISOString(),
       };
@@ -80,6 +97,39 @@ function createInternRouter() {
           });
         } else {
           throw err;
+        }
+      }
+
+      const io = req.app.get("io");
+      const pmId = req.auth.profile.pm_id;
+      if (io) {
+        io.to(`user:${internId}`).emit("itp:changed", { entity: "profiles", action: "update" });
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "profiles", action: "update", internId });
+        io.to("role:hr").emit("itp:changed", { entity: "profiles", action: "update", internId });
+      }
+
+      // Notify PM + HR when intern completes profile.
+      if (io && profileCompleted === true && prevCompleted === false) {
+        try {
+          const hrIds = await listProfilesByRole("hr");
+          const recipients = new Set([...(pmId ? [pmId] : []), ...(hrIds || [])].filter(Boolean));
+          const internLabel = req.auth.profile.full_name || req.auth.profile.email || "An intern";
+          const inserted = await createNotifications({
+            rows: Array.from(recipients).map((rid) => ({
+              recipient_profile_id: rid,
+              title: "Profile completed",
+              message: `${internLabel} completed their profile.`,
+              type: "success",
+              category: "profile",
+              metadata: { internId },
+            })),
+          });
+          const rows = Array.isArray(inserted) ? inserted : [inserted];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify profile completion:", err);
         }
       }
 
@@ -195,6 +245,30 @@ function createInternRouter() {
         if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "daily_logs", action: "upsert" });
       }
 
+      if (io) {
+        try {
+          const hrIds = await listProfilesByRole("hr");
+          const recipients = new Set([...(pmId ? [pmId] : []), ...(hrIds || [])].filter(Boolean));
+          const internLabel = req.auth.profile.full_name || req.auth.profile.email || "An intern";
+          const inserted = await createNotifications({
+            rows: Array.from(recipients).map((rid) => ({
+              recipient_profile_id: rid,
+              title: "Daily log submitted",
+              message: `${internLabel} submitted a daily log for ${actualDate}.`,
+              type: "info",
+              category: "daily_log",
+              metadata: { internId, logDate: actualDate },
+            })),
+          });
+          const rows = Array.isArray(inserted) ? inserted : [inserted];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify daily log:", err);
+        }
+      }
+
       res.status(existing?.[0]?.id ? 200 : 201).json({ success: true, log: saved?.[0] || saved });
     } catch (err) {
       next(err);
@@ -293,6 +367,40 @@ function createInternRouter() {
         io.to(`user:${internId}`).emit("itp:changed", { entity: "reports", action: "insert" });
         if (pmId && roles.includes("pm")) io.to(`user:${pmId}`).emit("itp:changed", { entity: "reports", action: "insert" });
         if (roles.includes("hr")) io.to("role:hr").emit("itp:changed", { entity: "reports", action: "insert" });
+      }
+
+      if (io) {
+        try {
+          const recipients = new Set();
+          if (pmId && roles.includes("pm")) recipients.add(pmId);
+          if (roles.includes("hr")) {
+            const hrIds = await listProfilesByRole("hr");
+            (hrIds || []).forEach((id) => recipients.add(id));
+          }
+          const internLabel = req.auth.profile.full_name || req.auth.profile.email || "An intern";
+          const reportLabel =
+            reportType === "weekly"
+              ? `Week ${weekNumber || ""} report`
+              : reportType === "monthly"
+                ? `${month || "Monthly"} report`
+                : "report";
+          const insertedNotifs = await createNotifications({
+            rows: Array.from(recipients).map((rid) => ({
+              recipient_profile_id: rid,
+              title: "New report submitted",
+              message: `${internLabel} submitted a ${reportLabel}.`,
+              type: "report",
+              category: "report",
+              metadata: { internId, reportType, reportId: (inserted?.[0] || inserted)?.id || null },
+            })),
+          });
+          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify report submission:", err);
+        }
       }
 
       res.status(201).json({ success: true, report: inserted?.[0] || inserted });

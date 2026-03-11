@@ -1,6 +1,7 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restInsert, restUpdate, restRpc } = require("../services/supabaseRest");
+const { createNotifications, toClientNotification, isMissingTableError } = require("../services/notifications");
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -696,6 +697,33 @@ function createMessagesRouter() {
         (members || []).forEach((m) => {
           io.to(`user:${m.profile_id}`).emit("chat:conversation", { conversationId: convId });
         });
+
+        // Lightweight notification for other members (for bell dropdowns).
+        try {
+          const senderLabel = requester.full_name || requester.email || "Someone";
+          const title = conv.type === "group" ? `New message in ${conv.name || "Group"}` : `New message from ${senderLabel}`;
+          const preview = String(msgRow.body || "").trim().slice(0, 140);
+          const notifRows = (members || [])
+            .filter((m) => String(m.profile_id) !== String(requester.id))
+            .map((m) => ({
+              recipient_profile_id: m.profile_id,
+              title,
+              message: preview,
+              type: "message",
+              category: "message",
+              link: null,
+              metadata: { conversationId: convId, senderProfileId: requester.id },
+              created_at: now,
+            }));
+
+          const insertedNotifs = await createNotifications({ rows: notifRows });
+          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to create message notifications:", err);
+        }
       }
 
       res.status(201).json({ success: true, message: { id: msgRow.id, createdAt: msgRow.created_at || now } });

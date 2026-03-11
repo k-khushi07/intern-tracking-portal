@@ -44,6 +44,7 @@ export const authApi = {
     return apiFetch("/auth/me", { method: "GET" });
   },
   logout() {
+    console.trace("LOGOUT TRIGGERED");
     return apiFetch("/auth/logout", { method: "POST" });
   },
 };
@@ -394,5 +395,23 @@ export const messagesApi = {
   },
   deleteMessage(messageId) {
     return apiFetch(`/messages/messages/${messageId}`, { method: "DELETE" });
+  },
+};
+
+export const notificationsApi = {
+  list({ limit } = {}) {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return apiFetch(`/notifications${qs ? `?${qs}` : ""}`, { method: "GET" });
+  },
+  unreadCount() {
+    return apiFetch("/notifications/unread-count", { method: "GET" });
+  },
+  markRead(notificationId) {
+    return apiFetch(`/notifications/${notificationId}/read`, { method: "POST" });
+  },
+  markAllRead() {
+    return apiFetch("/notifications/read-all", { method: "POST" });
   },
 };

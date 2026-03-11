@@ -54,6 +54,7 @@ const STATUS_OPTIONS = [
 
 export default function ReportsPage({ isMobile = false }) {
   const [tab, setTab] = useState("tna");
+  const [reportTab, setReportTab] = useState("weekly");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -200,7 +201,7 @@ export default function ReportsPage({ isMobile = false }) {
       await loadAll();
     } catch (e) {
       alert(e?.message || "Failed to sync from Google");
-      await loadAll().catch(() => {});
+      await loadAll().catch(() => { });
     } finally {
       setSyncing((s) => ({ ...s, tnaFrom: false }));
     }
@@ -222,7 +223,7 @@ export default function ReportsPage({ isMobile = false }) {
       await loadAll();
     } catch (e) {
       alert(e?.message || "Failed to sync from Google");
-      await loadAll().catch(() => {});
+      await loadAll().catch(() => { });
     } finally {
       setSyncing((s) => ({ ...s, blueprintFrom: false }));
     }

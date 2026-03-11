@@ -1,4 +1,4 @@
-﻿// HRHome.jsx - FIXED with PM Dashboard colors
+// HRHome.jsx - FIXED with PM Dashboard colors
 import React, { useState, useEffect } from "react";
 import { Menu, Bell, LogOut, Sparkles, X } from "lucide-react";
 import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
@@ -879,77 +879,85 @@ export default function HRHome() {
         </header>
 
         {/* Page content */}
-        <div style={{ 
-          flex: 1, 
-          padding: 24, 
-          overflowY: "auto",
-          overflowX: "hidden",
-          background: COLORS.bgPrimary,
-        }}>
-          <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-            {activeSection === "dashboard" && (
-              <DashboardSection
-                stats={stats}
-                analytics={analytics}
-                currentHR={currentHR}
-                getGreeting={getGreeting}
-                announcements={announcements}
-                onCreateAnnouncement={() => setShowAnnouncementModal(true)}
-                onDeleteAnnouncement={handleDeleteAnnouncement}
-                onPinAnnouncement={handlePinAnnouncement}
-              />
-            )}
-
-            {activeSection === "approval" && (
-              <ApprovalSection
-                interns={filteredInterns("pending")}
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
-                onApprove={handleApprove}
-                onReject={handleRejectClick}
-                onDataChanged={refreshHrData}
-              />
-            )}
-
-            {activeSection === "active" && (
-              <ActiveInterns onNavigateToMessages={handleNavigateToMessages} users={users} />
-            )}
-
-            {activeSection === "new" && (
-              <NewRegistrationsSection
-                interns={filteredInterns("new")}
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
-                onApprove={handleMoveToApproval}
-                onReject={handleRejectClick}
-                onBulkMoveToApproval={handleBulkMoveToApproval}
-                onBulkReject={handleBulkRejectInterns}
-              />
-            )}
-
-            {activeSection === 'projectManagers' && (
-              <PMSection
-                pms={allPMs}
-                users={users}
-                onViewInterns={handleViewPMInterns}
-                onChat={handlePMChat}
-              />
-            )}
-
-            {activeSection === "messages" && (
-              <MessagesPage selectedIntern={selectedUser} />
-            )}
-
-            {activeSection === "reports" && (
-              <ReportsSection
-                users={users}
-                reportsTab={reportsTab}
-                setReportsTab={setReportsTab}
-                currentHR={currentHR}
-              />
-            )}
+        {activeSection === "messages" ? (
+          <div style={{
+            flex: 1,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            background: COLORS.bgPrimary,
+          }}>
+            <MessagesPage selectedIntern={selectedUser} />
           </div>
-        </div>
+        ) : (
+          <div style={{
+            flex: 1,
+            padding: 24,
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: COLORS.bgPrimary,
+          }}>
+            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+              {activeSection === "dashboard" && (
+                <DashboardSection
+                  stats={stats}
+                  analytics={analytics}
+                  currentHR={currentHR}
+                  getGreeting={getGreeting}
+                  announcements={announcements}
+                  onCreateAnnouncement={() => setShowAnnouncementModal(true)}
+                  onDeleteAnnouncement={handleDeleteAnnouncement}
+                  onPinAnnouncement={handlePinAnnouncement}
+                />
+              )}
+
+              {activeSection === "approval" && (
+                <ApprovalSection
+                  interns={filteredInterns("pending")}
+                  searchTerm={searchTerm}
+                  setSearchTerm={setSearchTerm}
+                  onApprove={handleApprove}
+                  onReject={handleRejectClick}
+                  onDataChanged={refreshHrData}
+                />
+              )}
+
+              {activeSection === "active" && (
+                <ActiveInterns onNavigateToMessages={handleNavigateToMessages} users={users} />
+              )}
+
+              {activeSection === "new" && (
+                <NewRegistrationsSection
+                  interns={filteredInterns("new")}
+                  searchTerm={searchTerm}
+                  setSearchTerm={setSearchTerm}
+                  onApprove={handleMoveToApproval}
+                  onReject={handleRejectClick}
+                  onBulkMoveToApproval={handleBulkMoveToApproval}
+                  onBulkReject={handleBulkRejectInterns}
+                />
+              )}
+
+              {activeSection === 'projectManagers' && (
+                <PMSection
+                  pms={allPMs}
+                  users={users}
+                  onViewInterns={handleViewPMInterns}
+                  onChat={handlePMChat}
+                />
+              )}
+
+              {activeSection === "reports" && (
+                <ReportsSection
+                  users={users}
+                  reportsTab={reportsTab}
+                  setReportsTab={setReportsTab}
+                  currentHR={currentHR}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Modals */}

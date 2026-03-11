@@ -229,7 +229,7 @@ export default function InternDashboard() {
     { id: "overview", label: "Overview", icon: Home },
     { id: "daily-log", label: "Daily Log", icon: BookOpen },
     { id: "reports", label: "Reports", icon: ClipboardList },
-    { id: "chat", label: "Messages", icon: MessageCircle, badge: 5 },
+    { id: "chat", label: "Messages", icon: MessageCircle },
     { id: "profile", label: "My Profile", icon: User },
     { id: "project-submission", label: "Submit Project", icon: Send },
   ];
@@ -621,44 +621,53 @@ export default function InternDashboard() {
             </div>
           </header>
 
-          {/* PAGE CONTENT - SCROLLABLE */}
-          <div style={{ 
-            flex: 1, 
-            padding: 24, 
-            overflowY: "auto",
-            overflowX: "hidden",
-            background: COLORS.bgPrimary,
-          }}>
-            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-              {activePage === "overview" && (
-                <OverviewPage 
-                  intern={currentIntern} 
-                  pm={assignedPM} 
-                  hr={assignedHR} 
-                  announcements={announcements} 
-                  stats={stats} 
-                  isMobile={isMobile} 
-                />
-              )}
-              {activePage === "daily-log" && (
-                <DailyLogPage isMobile={isMobile} assignedPM={assignedPM} />
-              )}
-              {activePage === "reports" && <ReportsPage isMobile={isMobile} />}
-              {activePage === "chat" && (
-                <MessagesPage 
-                  isMobile={isMobile} 
-                  assignedPM={assignedPM} 
-                  assignedHR={assignedHR} 
-                />
-              )}
-              {activePage === "profile" && (
-                <ProfilePage intern={currentIntern} isMobile={isMobile} />
-              )}
-              {activePage === "project-submission" && (
-                <ProjectSubmissionPage isMobile={isMobile} />
-              )}
+          {/* PAGE CONTENT */}
+          {activePage === "chat" ? (
+            <div style={{
+              flex: 1,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              background: COLORS.bgPrimary,
+            }}>
+              <MessagesPage
+                isMobile={isMobile}
+                assignedPM={assignedPM}
+                assignedHR={assignedHR}
+              />
             </div>
-          </div>
+          ) : (
+            <div style={{
+              flex: 1,
+              padding: 24,
+              overflowY: "auto",
+              overflowX: "hidden",
+              background: COLORS.bgPrimary,
+            }}>
+              <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+                {activePage === "overview" && (
+                  <OverviewPage
+                    intern={currentIntern}
+                    pm={assignedPM}
+                    hr={assignedHR}
+                    announcements={announcements}
+                    stats={stats}
+                    isMobile={isMobile}
+                  />
+                )}
+                {activePage === "daily-log" && (
+                  <DailyLogPage isMobile={isMobile} assignedPM={assignedPM} />
+                )}
+                {activePage === "reports" && <ReportsPage isMobile={isMobile} />}
+                {activePage === "profile" && (
+                  <ProfilePage intern={currentIntern} isMobile={isMobile} />
+                )}
+                {activePage === "project-submission" && (
+                  <ProjectSubmissionPage isMobile={isMobile} />
+                )}
+              </div>
+            </div>
+          )}
         </main>
 
         {/* Mobile Overlay */}

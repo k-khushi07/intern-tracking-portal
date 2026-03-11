@@ -2,6 +2,7 @@ const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
+const { createNotifications, toClientNotification, isMissingTableError } = require("../services/notifications");
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -486,6 +487,35 @@ function createPmRouter() {
       if (io) {
         io.to(`user:${pmId}`).emit("itp:changed", { entity: "reports", action: "update" });
         if (internId) io.to(`user:${internId}`).emit("itp:changed", { entity: "reports", action: "update" });
+      }
+
+      if (io && internId) {
+        try {
+          const title = status === "approved" ? "Report approved" : "Report needs revision";
+          const message =
+            status === "approved"
+              ? "Your report has been approved."
+              : finalRemarks
+                ? `Remarks: ${String(finalRemarks).slice(0, 180)}`
+                : "Your report was rejected. Please review remarks and resubmit.";
+
+          const insertedNotifs = await createNotifications({
+            rows: {
+              recipient_profile_id: internId,
+              title,
+              message,
+              type: status === "approved" ? "success" : "warning",
+              category: "report",
+              metadata: { reportId: reportRow?.id || null, status, pmId },
+            },
+          });
+          const row = Array.isArray(insertedNotifs) ? insertedNotifs[0] : insertedNotifs;
+          if (row?.recipient_profile_id) {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          }
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify report review:", err);
+        }
       }
 
       res.status(200).json({ success: true, report: reportRow ? mapReportRow(reportRow) : null });
