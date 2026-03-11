@@ -1,4 +1,4 @@
-const { restRpc, restSelect } = require("./supabaseRest");
+const { restSelect } = require("./supabaseRest");
 
 function parseInternSequence(internId, { prefix, year }) {
   const value = String(internId || "").trim();
@@ -15,11 +15,11 @@ function parseInternSequence(internId, { prefix, year }) {
   return Number.isFinite(seq) ? seq : null;
 }
 
-function parseRpcResponse(rpcRes) {
-  if (typeof rpcRes === "string" && rpcRes.trim()) return rpcRes.trim();
-  if (Array.isArray(rpcRes) && rpcRes[0]?.next_intern_id) return String(rpcRes[0].next_intern_id).trim();
-  if (rpcRes?.next_intern_id) return String(rpcRes.next_intern_id).trim();
-  return null;
+function formatInternId({ prefix, year, seq }) {
+  const normalizedPrefix = String(prefix || "EDCS").trim().toUpperCase();
+  const normalizedYear = Number(year) || new Date().getFullYear();
+  const normalizedSeq = Number(seq) || 0;
+  return `${normalizedPrefix}-${normalizedYear}-${String(normalizedSeq).padStart(3, "0")}`;
 }
 
 async function loadLatestSequence({ prefix, year, table, extraFilters = {} }) {
@@ -40,22 +40,9 @@ async function loadLatestSequence({ prefix, year, table, extraFilters = {} }) {
   return parseInternSequence(latest, { prefix, year }) || 0;
 }
 
-async function generateNextInternId({ prefix = "EDCS", year = new Date().getFullYear() } = {}) {
+async function loadMaxInternSequence({ prefix, year }) {
   const normalizedPrefix = String(prefix || "EDCS").trim().toUpperCase();
   const normalizedYear = Number(year) || new Date().getFullYear();
-
-  try {
-    const rpcRes = await restRpc({
-      fn: "next_intern_id",
-      body: { p_prefix: normalizedPrefix },
-      accessToken: null,
-      useServiceRole: true,
-    });
-    const fromRpc = parseRpcResponse(rpcRes);
-    if (fromRpc) return fromRpc;
-  } catch {
-    // Fall back to table scan.
-  }
 
   const [latestFromProfiles, latestFromApproved] = await Promise.all([
     loadLatestSequence({
@@ -71,8 +58,7 @@ async function generateNextInternId({ prefix = "EDCS", year = new Date().getFull
     }),
   ]);
 
-  const next = Math.max(latestFromProfiles, latestFromApproved) + 1;
-  return `${normalizedPrefix}-${normalizedYear}-${String(next).padStart(3, "0")}`;
+  return Math.max(latestFromProfiles, latestFromApproved) || 0;
 }
 
 async function checkInternIdUsage(internId, { excludeProfileId = null } = {}) {
@@ -113,4 +99,30 @@ async function checkInternIdUsage(internId, { excludeProfileId = null } = {}) {
   };
 }
 
-module.exports = { generateNextInternId, checkInternIdUsage };
+async function generateNextInternId({ prefix = "EDCS", year = new Date().getFullYear() } = {}) {
+  const normalizedPrefix = String(prefix || "EDCS").trim().toUpperCase();
+  const normalizedYear = Number(year) || new Date().getFullYear();
+
+  const maxSeq = await loadMaxInternSequence({ prefix: normalizedPrefix, year: normalizedYear });
+  const startSeq = maxSeq + 1;
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const candidateSeq = startSeq + attempt;
+    const candidateId = formatInternId({ prefix: normalizedPrefix, year: normalizedYear, seq: candidateSeq });
+    const check = await checkInternIdUsage(candidateId);
+    if (!check.exists) return candidateId;
+  }
+
+  throw new Error("Unable to generate a unique intern ID (too many collisions)");
+}
+
+async function peekNextInternId({ prefix = "EDCS", year = new Date().getFullYear() } = {}) {
+  const normalizedPrefix = String(prefix || "EDCS").trim().toUpperCase();
+  const normalizedYear = Number(year) || new Date().getFullYear();
+
+  const maxSeq = await loadMaxInternSequence({ prefix: normalizedPrefix, year: normalizedYear });
+  const next = maxSeq + 1;
+  return formatInternId({ prefix: normalizedPrefix, year: normalizedYear, seq: next });
+}
+
+module.exports = { generateNextInternId, peekNextInternId, checkInternIdUsage };

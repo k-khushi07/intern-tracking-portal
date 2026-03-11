@@ -42,7 +42,6 @@ function resolveDepartment(intern) {
 
 export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onViewReports, interns = [] }) {
   const [query, setQuery] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("Overall");
 
   const enriched = useMemo(
     () =>
@@ -76,10 +75,7 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
     });
   }, [enriched, query]);
 
-  const filteredInterns = useMemo(() => {
-    if (departmentFilter === "Overall") return searchFiltered;
-    return searchFiltered.filter((intern) => intern.departmentResolved === departmentFilter);
-  }, [departmentFilter, searchFiltered]);
+  const filteredInterns = searchFiltered;
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -109,33 +105,6 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
           />
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {["Overall", ...DEPARTMENTS, "Other", "Unassigned"].map((department) => {
-            const count =
-              department === "Overall"
-                ? searchFiltered.length
-                : searchFiltered.filter((intern) => intern.departmentResolved === department).length;
-            const active = departmentFilter === department;
-            return (
-              <button
-                key={department}
-                onClick={() => setDepartmentFilter(department)}
-                style={{
-                  border: `1px solid ${active ? "rgba(103,146,137,0.65)" : COLORS.border}`,
-                  background: active ? "rgba(103,146,137,0.24)" : "rgba(255,255,255,0.03)",
-                  color: active ? COLORS.text : COLORS.muted,
-                  borderRadius: 999,
-                  padding: "8px 12px",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                {department} ({count})
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {filteredInterns.length > 0 && (

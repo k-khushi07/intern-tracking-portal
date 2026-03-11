@@ -173,6 +173,12 @@ export const hrApi = {
     const query = params.toString();
     return `/api/hr/active-interns/${profileId}/certificate.pdf${query ? `?${query}` : ""}`;
   },
+  reviewReport(reportId, payload) {
+    return apiFetch(`/hr/reports/${reportId}/review`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
 };
 
 export const adminApi = {

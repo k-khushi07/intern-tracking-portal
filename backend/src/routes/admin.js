@@ -2,7 +2,7 @@ const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, adminDeleteUser, restInsert, restSelect, restUpdate } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
-const { generateNextInternId, checkInternIdUsage } = require("../services/internId");
+const { generateNextInternId, peekNextInternId, checkInternIdUsage } = require("../services/internId");
 const { generateNextPmCode, checkPmCodeUsage } = require("../services/pmCode");
 
 const ALLOWED_ROLES = new Set(["admin", "hr", "pm", "intern"]);
@@ -496,7 +496,7 @@ function createAdminRouter() {
 
   router.get("/intern-id/next", async (req, res, next) => {
     try {
-      const internId = await generateNextInternId({ prefix: "EDCS" });
+      const internId = await peekNextInternId({ prefix: "EDCS" });
       res.status(200).json({ success: true, internId });
     } catch (err) {
       next(err);

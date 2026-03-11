@@ -2,8 +2,7 @@ const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
-const { generateNextInternId } = require("../services/internId");
-const { createNotifications, listProfilesByRole, toClientNotification } = require("../services/notifications");
+const { generateNextInternId, peekNextInternId } = require("../services/internId");
 
 async function assertInternExists(internId) {
   const rows = await restSelect({
@@ -253,7 +252,6 @@ function createHrRouter({ emailService }) {
     if (currentStatus === "approved") throw httpError(400, "Application already approved", true);
     if (currentStatus === "rejected") throw httpError(400, "Rejected application cannot be approved", true);
 
-    const generatedInternId = await generateNextInternId({ prefix: "EDCS" });
     const generatedPassword = password || generatePassword();
     const createdAt = new Date().toISOString();
 
@@ -264,6 +262,8 @@ function createHrRouter({ emailService }) {
     });
     const createdId = created?.id || created?.user?.id;
     if (!createdId) throw httpError(502, "Unexpected Supabase response (missing user id)", true);
+
+    const generatedInternId = await generateNextInternId({ prefix: "EDCS" });
 
     await restInsert({
       table: "profiles",
@@ -464,7 +464,7 @@ function createHrRouter({ emailService }) {
 
       const interns = await restSelect({
         table: "profiles",
-        select: "id,email,full_name,role,status,intern_id,pm_id,pm:pm_id(id,email,full_name,pm_code)",
+        select: "id,email,full_name,role,status,intern_id,pm_id,hr_id,pm:pm_id(id,email,full_name,pm_code),hr:hr_id(id,email,full_name)",
         filters: { role: "eq.intern" },
         accessToken: null,
         useServiceRole: true,
@@ -494,6 +494,8 @@ function createHrRouter({ emailService }) {
           internId: p.intern_id,
           pmId: p.pm_id,
           pmCode: p.pm?.pm_code || null,
+          hrId: p.hr_id || null,
+          hrName: p.hr?.full_name || p.hr?.email || null,
           approvedIntern: approvedByProfileId.get(p.id) || null,
           department: approvedByProfileId.get(p.id)?.department || null,
           mentor: approvedByProfileId.get(p.id)?.mentor || null,
@@ -521,7 +523,7 @@ function createHrRouter({ emailService }) {
 
   router.get("/intern-id/next", async (req, res, next) => {
     try {
-      const internId = await generateNextInternId({ prefix: "EDCS" });
+      const internId = await peekNextInternId({ prefix: "EDCS" });
       res.status(200).json({ success: true, internId });
     } catch (err) {
       next(err);
@@ -1766,31 +1768,6 @@ function createHrRouter({ emailService }) {
       if (io) {
         io.to("role:hr").emit("itp:changed", { entity: "announcements", action: "insert" });
         roles.forEach((r) => io.to(`role:${r}`).emit("itp:changed", { entity: "announcements", action: "insert" }));
-      }
-
-      if (io) {
-        try {
-          const recipientIds = new Set();
-          const roleIds = await Promise.all(roles.map((r) => listProfilesByRole(r)));
-          roleIds.flat().forEach((id) => recipientIds.add(id));
-          const preview = String(content || "").trim().slice(0, 180);
-          const insertedNotifs = await createNotifications({
-            rows: Array.from(recipientIds).map((rid) => ({
-              recipient_profile_id: rid,
-              title: "New announcement",
-              message: `${String(title).trim()}${preview ? ` — ${preview}` : ""}`.slice(0, 220),
-              type: "announcement",
-              category: "announcement",
-              metadata: { announcementId: (inserted?.[0] || inserted)?.id || null },
-            })),
-          });
-          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
-          rows.filter(Boolean).forEach((row) => {
-            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
-          });
-        } catch (err) {
-          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify announcement:", err);
-        }
       }
 
       res.status(201).json({ success: true, announcement: inserted?.[0] || inserted });

@@ -269,6 +269,7 @@ export const EmailTemplateManager = ({
   const [generatedPDF, setGeneratedPDF] = useState(null);
   const [pdfBase64, setPdfBase64] = useState(null);
   const lastNotifiedDataRef = useRef(null);
+  const lastGeneratedKeyRef = useRef("");
   
   // Edit mode states
   const [isEditMode, setIsEditMode] = useState(false);
@@ -293,9 +294,24 @@ export const EmailTemplateManager = ({
     setNotice({ open: true, title, message, tone });
   };
 
+  const internDataKey = JSON.stringify({
+    internName: internData?.internName || "",
+    internEmail: internData?.internEmail || "",
+    internId: internData?.internId || "",
+    domain: internData?.domain || "",
+    duration: internData?.duration || "",
+    startDate: internData?.startDate || "",
+    pmCode: internData?.pmCode || "",
+    hrName: internData?.hrName || "",
+  });
+
   const generatePDF = useCallback(async () => {
     const template = allTemplates.find(t => t.id === selectedTemplateId);
     if (!template) return;
+
+    const generationKey = `${selectedTemplateId}|${internDataKey}`;
+    lastGeneratedKeyRef.current = generationKey;
+    const internDataForPdf = JSON.parse(internDataKey);
 
     if (template.customPDF) {
       setPdfBase64(template.customPDF);
@@ -303,12 +319,12 @@ export const EmailTemplateManager = ({
       return;
     }
 
-    const pdf = generateOfferLetterPDF(template, internData || {});
+    const pdf = generateOfferLetterPDF(template, internDataForPdf);
     setGeneratedPDF(pdf);
 
     const base64 = await pdfToBase64(pdf);
     setPdfBase64(base64);
-  }, [allTemplates, selectedTemplateId, internData]);
+  }, [allTemplates, selectedTemplateId, internDataKey]);
 
 
   // ✅ FIXED: Only regenerate when template ID actually changes
@@ -317,33 +333,28 @@ export const EmailTemplateManager = ({
       void generatePDF();
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [generatePDF]); // Removed internData from dependencies
+  }, [generatePDF]);
   
   // ✅ FIXED: Separate effect to notify parent only when PDF changes
   useEffect(() => {
     if (!pdfBase64) return;
     
-    // Create a stable identifier for current data
-    const currentDataKey = JSON.stringify({
-      templateId: selectedTemplateId,
-      internName: internData?.internName,
-      timestamp: Math.floor(Date.now() / 1000) // Round to seconds to prevent rapid changes
-    });
-    
-    // Only notify if data actually changed
-    if (currentDataKey !== lastNotifiedDataRef.current) {
-      lastNotifiedDataRef.current = currentDataKey;
-      
-      const template = allTemplates.find(t => t.id === selectedTemplateId);
-      if (onTemplateReady && template) {
-        onTemplateReady({
-          templateName: template.name,
-          pdfBase64: pdfBase64,
-          filename: `Offer_Letter_${internData?.internName?.replace(/\s+/g, '_')}_${Date.now()}.pdf`
-        });
-      }
+    const expectedKey = `${selectedTemplateId}|${internDataKey}`;
+    if (lastGeneratedKeyRef.current !== expectedKey) return;
+
+    const notifyKey = `${expectedKey}|${pdfBase64.length}`;
+    if (notifyKey === lastNotifiedDataRef.current) return;
+    lastNotifiedDataRef.current = notifyKey;
+
+    const template = allTemplates.find(t => t.id === selectedTemplateId);
+    if (onTemplateReady && template) {
+      onTemplateReady({
+        templateName: template.name,
+        pdfBase64: pdfBase64,
+        filename: `Offer_Letter_${String(internData?.internName || "Intern").replace(/\\s+/g, '_')}_${Date.now()}.pdf`
+      });
     }
-  }, [pdfBase64, selectedTemplateId, internData?.internName, allTemplates, onTemplateReady]);
+  }, [pdfBase64, selectedTemplateId, internDataKey, allTemplates, onTemplateReady, internData?.internName]);
 
   const handleTemplateSelect = (templateId) => {
     setSelectedTemplateId(templateId);
