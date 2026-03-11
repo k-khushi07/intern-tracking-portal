@@ -225,12 +225,7 @@ export function DashboardSection({
             <Megaphone size={20} color={COLORS.jungleTeal} /> Announcements
           </h3>
           <button 
-            onClick={() => {
-              setEditingAnnouncement(null);
-              setFormError("");
-              setNewAnnouncement({ title: "", content: "", priority: "medium" });
-              setShowAddModal(true);
-            }} 
+            onClick={onCreateAnnouncement}
             style={{ 
               padding: "10px 20px", 
               background: GRADIENTS.accent,
@@ -266,7 +261,7 @@ export function DashboardSection({
                 key={ann.id} 
                 announcement={ann} 
                 onDelete={() => handleDeleteAnnouncement(ann.id)}
-                onEdit={() => handleEditAnnouncement(ann)}
+                onEdit={onCreateAnnouncement}
                 onPin={() => handlePinAnnouncement(ann.id)}
               />
             ))
@@ -280,169 +275,6 @@ export function DashboardSection({
         </div>
       </div>
 
-      {/* Add/Edit Announcement Modal - PM Style */}
-      {showAddModal && (
-        <div 
-          onClick={() => {
-            setShowAddModal(false);
-            setEditingAnnouncement(null);
-          }}
-          style={{ 
-            position: "fixed", inset: 0, 
-            background: "rgba(0,0,0,0.7)", 
-            backdropFilter: "blur(8px)", 
-            display: "flex", alignItems: "center", 
-            justifyContent: "center", zIndex: 2000, padding: 20 
-          }}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{ 
-              width: "100%", 
-              maxWidth: 500, 
-              borderRadius: 20,
-              background: GRADIENTS.primary,
-              border: `1px solid ${COLORS.borderGlass}`,
-              padding: 28
-            }}
-          >
-            <div style={{ paddingBottom: 24, borderBottom: `1px solid ${COLORS.borderGlass}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ color: COLORS.textPrimary, margin: 0, fontSize: 22, fontWeight: 700, fontFamily: "'Inter', system-ui, sans-serif" }}>
-                {editingAnnouncement ? "Edit Announcement" : "New Announcement"}
-              </h2>
-              <button 
-                onClick={() => {
-                  setShowAddModal(false);
-                  setEditingAnnouncement(null);
-                }} 
-                style={{ background: COLORS.surfaceGlass, border: "none", borderRadius: 10, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: COLORS.textPrimary }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div style={{ paddingTop: 24 }}>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", color: COLORS.textPrimary, marginBottom: 8, fontWeight: 500, fontSize: 14, fontFamily: "'Inter', system-ui, sans-serif" }}>Title *</label>
-                <input 
-                  type="text" 
-                  value={newAnnouncement.title} 
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })} 
-                  placeholder="e.g., Team Meeting Tomorrow" 
-                  style={{ 
-                    width: "100%", 
-                    padding: "12px 16px", 
-                    borderRadius: 12, 
-                    border: `1px solid ${COLORS.borderGlass}`, 
-                    background: COLORS.surfaceGlass, 
-                    color: COLORS.textPrimary, 
-                    fontSize: 14, 
-                    outline: "none",
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }} 
-                />
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", color: COLORS.textPrimary, marginBottom: 8, fontWeight: 500, fontSize: 14, fontFamily: "'Inter', system-ui, sans-serif" }}>Message *</label>
-                <textarea 
-                  value={newAnnouncement.content} 
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })} 
-                  placeholder="Write your message..." 
-                  rows={4} 
-                  style={{ 
-                    width: "100%", 
-                    padding: "12px 16px", 
-                    borderRadius: 12, 
-                    border: `1px solid ${COLORS.borderGlass}`, 
-                    background: COLORS.surfaceGlass, 
-                    color: COLORS.textPrimary, 
-                    fontSize: 14, 
-                    outline: "none", 
-                    resize: "vertical", 
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }} 
-                />
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: "block", color: COLORS.textPrimary, marginBottom: 8, fontWeight: 500, fontSize: 14, fontFamily: "'Inter', system-ui, sans-serif" }}>Priority</label>
-                <div style={{ display: "flex", gap: 12 }}>
-                  {["high", "medium", "low"].map(priority => (
-                    <button 
-                      key={priority} 
-                      onClick={() => setNewAnnouncement({ ...newAnnouncement, priority })} 
-                      style={{ 
-                        flex: 1, 
-                        padding: "10px 16px", 
-                        borderRadius: 10, 
-                        border: `2px solid ${newAnnouncement.priority === priority ? (priority === "high" ? COLORS.red : priority === "medium" ? COLORS.orange : COLORS.jungleTeal) : COLORS.borderGlass}`, 
-                        background: newAnnouncement.priority === priority ? `${priority === "high" ? COLORS.red : priority === "medium" ? COLORS.orange : COLORS.jungleTeal}20` : "transparent", 
-                        color: COLORS.textPrimary, 
-                        cursor: "pointer", 
-                        fontSize: 13, 
-                        fontWeight: 600, 
-                        textTransform: "capitalize", 
-                        transition: "all 0.2s",
-                        fontFamily: "'Inter', system-ui, sans-serif"
-                      }}
-                    >
-                      {priority}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {formError ? (
-                <div style={{ marginBottom: 14, color: COLORS.red, fontSize: 13 }}>
-                  {formError}
-                </div>
-              ) : null}
-
-              <div style={{ display: "flex", gap: 12 }}>
-                <button 
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setFormError("");
-                    setEditingAnnouncement(null);
-                  }} 
-                  style={{ 
-                    flex: 1, 
-                    padding: "14px 20px", 
-                    background: COLORS.surfaceGlass, 
-                    color: COLORS.textSecondary, 
-                    border: `1px solid ${COLORS.borderGlass}`, 
-                    borderRadius: 12, 
-                    fontWeight: 600, 
-                    cursor: "pointer", 
-                    fontSize: 14,
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleAddAnnouncement} 
-                  style={{ 
-                    flex: 1, 
-                    padding: "14px 20px", 
-                    background: GRADIENTS.accent, 
-                    color: "white", 
-                    border: "none", 
-                    borderRadius: 12, 
-                    fontWeight: 600, 
-                    cursor: "pointer", 
-                    fontSize: 14,
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }}
-                >
-                  {editingAnnouncement ? "Update" : "Create"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
