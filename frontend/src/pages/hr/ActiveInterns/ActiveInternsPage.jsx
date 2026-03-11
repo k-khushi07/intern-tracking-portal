@@ -12,12 +12,34 @@ const COLORS = {
   racingRed: "#d90429",
 };
 
-const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
+const DEPARTMENT_TABS = ["All", "SAP", "ORACLE", "ACCOUNTS", "HR"];
+
+const normalizeDepartment = (value) => {
+  const upper = String(value || "").trim().toUpperCase();
+  if (upper === "SAP") return "SAP";
+  if (upper === "ORACLE") return "ORACLE";
+  if (upper === "ACCOUNTS" || upper === "ACCOUNT" || upper === "ACCOUNTING") return "ACCOUNTS";
+  if (upper === "HR" || upper === "HUMAN RESOURCES") return "HR";
+  return "";
+};
+
+const getInternDepartment = (intern) =>
+  intern?.department ||
+  intern?.internshipDomain ||
+  intern?.domain ||
+  intern?.internship_domain ||
+  intern?.department_name ||
+  "";
+
+const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp, initialPmCode = "", initialPmName = "", onClearPmFilter }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [allUsers, setAllUsers] = useState(usersProp || []);
   const [activeInterns, setActiveInterns] = useState([]);
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
+  const [departmentTab, setDepartmentTab] = useState("All");
+  const [pmFilterCode, setPmFilterCode] = useState(initialPmCode || "");
+  const [pmFilterName, setPmFilterName] = useState(initialPmName || "");
 
   const [pmSelections, setPmSelections] = useState({});
   const [savingAssign, setSavingAssign] = useState({});
@@ -34,6 +56,21 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
   const openFeedback = ({ title, message, tone = "info" }) => {
     setFeedback({ open: true, title, message, tone });
   };
+
+  useEffect(() => {
+    const nextCode = initialPmCode || "";
+    const nextName = initialPmName || "";
+
+    setPmFilterCode(nextCode);
+    setPmFilterName(nextName);
+
+    if (nextCode) {
+      setDepartmentTab("All");
+      setSearchQuery("");
+      setViewMode("grid");
+      setSelectedIntern(null);
+    }
+  }, [initialPmCode, initialPmName]);
 
   useEffect(() => {
     if (Array.isArray(usersProp) && usersProp.length) {
@@ -141,7 +178,16 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
     }
   };
 
-  const filteredInterns = activeInterns.filter((intern) => {
+  const internsForPm = pmFilterCode
+    ? activeInterns.filter((intern) => (intern?.pmCode || intern?.pm_code || "") === pmFilterCode)
+    : activeInterns;
+
+  const internsForTab =
+    departmentTab === "All"
+      ? internsForPm
+      : internsForPm.filter((intern) => normalizeDepartment(getInternDepartment(intern)) === departmentTab);
+
+  const filteredInterns = internsForTab.filter((intern) => {
     const searchLower = searchQuery.toLowerCase();
     return (
       intern.name?.toLowerCase().includes(searchLower) ||
@@ -153,11 +199,11 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
   });
 
   const stats = {
-    total: activeInterns.length,
-    active: activeInterns.filter((i) => i.status === "active").length,
-    avgPerformance: activeInterns.length > 0
+    total: internsForTab.length,
+    active: internsForTab.filter((i) => i.status === "active").length,
+    avgPerformance: internsForTab.length > 0
       ? Math.round(
-          activeInterns.reduce((sum, i) => sum + (i.performance || 0), 0) / activeInterns.length
+          internsForTab.reduce((sum, i) => sum + (i.performance || 0), 0) / internsForTab.length
         )
       : 0,
   };
@@ -301,6 +347,89 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
             </div>
           </div>
         </div>
+      </div>
+
+      {pmFilterCode && (
+        <div
+          className="glass animate-fadeIn"
+          style={{
+            padding: "12px 14px",
+            borderRadius: "12px",
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            background: "rgba(29, 120, 116, 0.12)",
+            border: "1px solid rgba(103, 146, 137, 0.3)",
+          }}
+        >
+          <div style={{ color: COLORS.peachGlow, fontSize: 13, fontWeight: 700 }}>
+            Showing interns under{" "}
+            <span style={{ color: "rgba(255, 229, 217, 0.9)", fontWeight: 800 }}>
+              {pmFilterName ? `${pmFilterName} (${pmFilterCode})` : pmFilterCode}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setPmFilterCode("");
+              setPmFilterName("");
+              onClearPmFilter && onClearPmFilter();
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid rgba(103, 146, 137, 0.45)",
+              background: "rgba(103, 146, 137, 0.12)",
+              color: COLORS.peachGlow,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
+
+      {/* Department Tabs */}
+      <div
+        className="glass animate-fadeIn"
+        style={{
+          padding: "10px",
+          borderRadius: "12px",
+          marginBottom: "16px",
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        {DEPARTMENT_TABS.map((tab) => {
+          const selected = tab === departmentTab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setDepartmentTab(tab)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: selected ? `1px solid ${COLORS.deepOcean}` : "1px solid rgba(103, 146, 137, 0.25)",
+                background: selected ? `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})` : "rgba(103, 146, 137, 0.08)",
+                color: selected ? COLORS.peachGlow : "rgba(255, 229, 217, 0.85)",
+                fontSize: "12px",
+                fontWeight: 700,
+                letterSpacing: "0.3px",
+                cursor: "pointer",
+              }}
+            >
+              {tab}
+            </button>
+          );
+        })}
       </div>
 
       {/* Search Bar */}
@@ -748,7 +877,11 @@ const ActiveInternsPage = ({ onNavigateToMessages, users: usersProp }) => {
             No Active Interns Found
           </h3>
           <p style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.6)" }}>
-            {searchQuery ? "Try adjusting your search criteria" : "No active interns in the system yet"}
+            {pmFilterCode
+              ? "No active interns are assigned to this project manager."
+              : searchQuery
+                ? "Try adjusting your search criteria"
+                : "No active interns in the system yet"}
           </p>
         </div>
       )}

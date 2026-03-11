@@ -75,6 +75,44 @@ async function generateNextInternId({ prefix = "EDCS", year = new Date().getFull
   return `${normalizedPrefix}-${normalizedYear}-${String(next).padStart(3, "0")}`;
 }
 
+async function peekNextInternId({ prefix = "EDCS", year = new Date().getFullYear() } = {}) {
+  const normalizedPrefix = String(prefix || "EDCS").trim().toUpperCase();
+  const normalizedYear = Number(year) || new Date().getFullYear();
+
+  // Prefer the sequence table used by `public.next_intern_id` (no mutation).
+  const sequenceRows = await restSelect({
+    table: "intern_id_sequences",
+    select: "year,last_number",
+    filters: { year: `eq.${normalizedYear}`, limit: 1 },
+    accessToken: null,
+    useServiceRole: true,
+  }).catch(() => []);
+
+  const lastNumber = Number(sequenceRows?.[0]?.last_number || 0);
+  if (Number.isFinite(lastNumber) && lastNumber >= 0) {
+    const next = lastNumber + 1;
+    return `${normalizedPrefix}-${normalizedYear}-${String(next).padStart(3, "0")}`;
+  }
+
+  // Fallback: scan existing IDs without incrementing anything.
+  const [latestFromProfiles, latestFromApproved] = await Promise.all([
+    loadLatestSequence({
+      prefix: normalizedPrefix,
+      year: normalizedYear,
+      table: "profiles",
+      extraFilters: { role: "eq.intern" },
+    }),
+    loadLatestSequence({
+      prefix: normalizedPrefix,
+      year: normalizedYear,
+      table: "approved_interns",
+    }),
+  ]);
+
+  const next = Math.max(latestFromProfiles, latestFromApproved) + 1;
+  return `${normalizedPrefix}-${normalizedYear}-${String(next).padStart(3, "0")}`;
+}
+
 async function checkInternIdUsage(internId, { excludeProfileId = null } = {}) {
   const normalizedInternId = String(internId || "").trim();
   if (!normalizedInternId) return { exists: false, profileMatch: null, approvedMatch: null };
@@ -113,4 +151,4 @@ async function checkInternIdUsage(internId, { excludeProfileId = null } = {}) {
   };
 }
 
-module.exports = { generateNextInternId, checkInternIdUsage };
+module.exports = { generateNextInternId, peekNextInternId, checkInternIdUsage };

@@ -90,7 +90,7 @@ export const navItems = (stats) => [
   { id: "approval", icon: Clock, label: "Approval Center", badge: stats?.pending || 0 },
   { id: "active", icon: UserCheck, label: "Active Interns", badge: 0 },
   { id: "projectManagers", icon: Briefcase, label: "Project Managers", badge: 0 },
-  { id: "reports", icon: BarChart3, label: "Reports", badge: 0 },
+  { id: "reports", icon: BarChart3, label: "My Interns", badge: 0 },
 ];
 
 export const glassCardStyle = {
