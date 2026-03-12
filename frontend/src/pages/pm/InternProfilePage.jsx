@@ -87,7 +87,24 @@ function getGoogleEmbedUrl(url, type) {
   return url;
 }
 
-const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile" }) => {
+function resolveMonthLabel(report) {
+  const raw = String(report?.month || "").trim();
+  if (raw) return raw;
+
+  const iso =
+    report?.submittedAt ||
+    report?.submitted_at ||
+    report?.createdAt ||
+    report?.created_at ||
+    null;
+
+  if (!iso) return "Unknown Month";
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return "Unknown Month";
+  return dt.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile", api = pmApi }) => {
   const params = useParams();
   const internIdParam = params?.id || params?.internId || null;
   const [internDetails, setInternDetails] = useState(intern || null);
@@ -123,7 +140,8 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
       setInternLoading(true);
       setInternLoadError("");
       try {
-        const res = await pmApi.getIntern(internId);
+        if (typeof api?.getIntern !== "function") throw new Error("getIntern is not available");
+        const res = await api.getIntern(internId);
         if (cancelled) return;
         setInternDetails(res?.intern || null);
       } catch (err) {
@@ -137,20 +155,46 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     return () => {
       cancelled = true;
     };
-  }, [internId]);
+  }, [internId, api]);
 
   useEffect(() => {
-    setInternReports(normalizeReportsForIntern(reports, internId));
-  }, [reports, internId]);
+    let cancelled = false;
+
+    const fromProps = Array.isArray(reports) ? reports : [];
+    if (fromProps.length > 0) {
+      setInternReports(normalizeReportsForIntern(fromProps, internId));
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const load = async () => {
+      if (!internId) return;
+      if (typeof api?.getInternReports !== "function") return;
+      try {
+        const res = await api.getInternReports(internId);
+        if (cancelled) return;
+        const rows = Array.isArray(res?.reports) ? res.reports : [];
+        setInternReports(normalizeReportsForIntern(rows, internId));
+      } catch {
+        // ignore
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [reports, internId, api]);
 
   const loadInternArtifacts = useCallback(async () => {
     if (!internId) return;
     setProfileError("");
     try {
       const [tnaRes, blueprintRes, linksRes] = await Promise.all([
-        pmApi.internTna(internId),
-        pmApi.internBlueprint(internId),
-        pmApi.internReportLinks(internId),
+        api.internTna(internId),
+        api.internBlueprint(internId),
+        api.internReportLinks(internId),
       ]);
       setTnaItems(tnaRes?.items || []);
       setBlueprint(blueprintRes?.blueprint || null);
@@ -164,7 +208,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
       setBlueprint(null);
       setLinks({ tnaSheetUrl: "", blueprintDocUrl: "" });
     }
-  }, [internId]);
+  }, [internId, api]);
 
   useEffect(() => {
     if (!internId) return;
@@ -242,7 +286,8 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
       setSavingReviewId(reportId);
       setReviewError("");
       const text = String(remarks[reportId] || "").trim();
-      await pmApi.reviewReport(reportId, { status: statusValue, remarks: text || null });
+      if (typeof api?.reviewReport !== "function") throw new Error("reviewReport is not available");
+      await api.reviewReport(reportId, { status: statusValue, remarks: text || null });
       setInternReports((prev) =>
         prev.map((report) =>
           report.id === reportId
@@ -342,9 +387,9 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
           >
             {avatar || "IN"}
           </div>
-          <div style={{ minWidth: 260, flex: 1 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "white" }}>{name}</div>
-            <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.9)" }}>
+            <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.9)", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.4 }}>
               {displayEmail} | Intern ID: {displayInternId} | Department: {department}
             </div>
             <div style={{ marginTop: 8 }}>
@@ -710,7 +755,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                     if (weeklies.length === 0) return <div style={{ color: "rgba(255,255,255,0.6)", textAlign: "center", padding: 20 }}>No weekly reports found.</div>;
 
                     const byMonth = weeklies.reduce((acc, r) => {
-                      const m = r.month || "Unknown Month";
+                      const m = resolveMonthLabel(r);
                       if (!acc[m]) acc[m] = [];
                       acc[m].push(r);
                       return acc;
@@ -782,7 +827,7 @@ function ProfileField({ icon, label, value }) {
         {icon}
         {label}
       </div>
-      <div style={{ marginTop: 8, color: "white", fontWeight: 800, fontSize: 13 }}>
+      <div style={{ marginTop: 8, color: "white", fontWeight: 800, fontSize: 13, overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.4 }}>
         {value}
       </div>
     </div>
@@ -831,7 +876,7 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const readOnly = String(report.status || "").toLowerCase() !== "pending";
   const currentStatusColor = statusColor(report.status);
   const isWeekly = String(report.reportType || "").toLowerCase() === "weekly";
-  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
+  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
 
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,

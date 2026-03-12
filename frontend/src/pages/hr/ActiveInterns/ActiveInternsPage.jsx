@@ -61,6 +61,7 @@ const ActiveInternsPage = ({
   const [activeInterns, setActiveInterns] = useState([]);
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
+  const [internProfileSection, setInternProfileSection] = useState("profile");
   const [departmentFilter, setDepartmentFilter] = useState("Overall");
   const [pmFilterCode, setPmFilterCode] = useState(initialPmCode || "");
   const [pmFilterName, setPmFilterName] = useState(initialPmName || "");
@@ -81,24 +82,9 @@ const ActiveInternsPage = ({
     setFeedback({ open: true, title, message, tone });
   };
 
-  // Reports modal state
-  const [reportsModal, setReportsModal] = useState(null); // { intern, reports, loading, error, selected }
-
-  const openReportsModal = useCallback(async (intern) => {
-    setReportsModal({ intern, reports: [], loading: true, error: "", selected: null });
-    try {
-      const res = await hrApi.reports();
-      const all = res?.reports || [];
-      const filtered = all.filter((r) => {
-        if (r.internId && intern.id) return String(r.internId) === String(intern.id);
-        if (r.internEmail && intern.email) return r.internEmail === intern.email;
-        return false;
-      });
-      setReportsModal((prev) => prev ? { ...prev, reports: filtered, loading: false } : null);
-    } catch (e) {
-      setReportsModal((prev) => prev ? { ...prev, error: e?.message || "Failed to load reports", loading: false } : null);
-    }
-  }, []);
+  // Legacy inline reports modal (replaced by PM-style intern profile "Reports" tab).
+  // Kept disabled to avoid a huge diff in this file.
+  const reportsModal = null;
 
 
   useEffect(() => {
@@ -272,16 +258,24 @@ const ActiveInternsPage = ({
 
   const handleViewProfile = (intern) => {
     setSelectedIntern(intern);
+    setInternProfileSection("profile");
+    setViewMode("profile");
+  };
+
+  const handleViewReports = (intern) => {
+    setSelectedIntern(intern);
+    setInternProfileSection("reports");
     setViewMode("profile");
   };
 
   const handleBackToGrid = () => {
     setSelectedIntern(null);
+    setInternProfileSection("profile");
     setViewMode("grid");
   };
 
   if (viewMode === "profile" && selectedIntern) {
-    return <InternProfilePage intern={selectedIntern} onBack={handleBackToGrid} />;
+    return <InternProfilePage intern={selectedIntern} onBack={handleBackToGrid} initialSection={internProfileSection} />;
   }
 
   return (
@@ -579,6 +573,41 @@ const ActiveInternsPage = ({
           gap: 10,
         }}
       >
+        {/* Department chips */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {["Overall", ...DEPARTMENTS].map((dept) => {
+            const active = departmentFilter === dept;
+            const label = dept === "Overall" ? "All" : String(dept).toUpperCase();
+            return (
+              <button
+                key={dept}
+                type="button"
+                onClick={() => setDepartmentFilter(dept)}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 14,
+                  border: active ? "none" : "1px solid rgba(255, 255, 255, 0.12)",
+                  background: active
+                    ? `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`
+                    : "rgba(255, 255, 255, 0.04)",
+                  color: active ? COLORS.peachGlow : "rgba(255, 229, 217, 0.92)",
+                  fontWeight: 800,
+                  fontSize: 14,
+                  letterSpacing: 0.4,
+                  cursor: "pointer",
+                  boxShadow: active ? "0 10px 24px rgba(0,0,0,0.35)" : "none",
+                  transition: "transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
+                }}
+                onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
+                onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+                onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Search */}
         <div style={{ position: "relative" }}>
           <Search
@@ -603,8 +632,6 @@ const ActiveInternsPage = ({
             }}
           />
         </div>
-
-        {/* Department Filters (PM-style chips) */}
       </div>
 
 
@@ -757,7 +784,7 @@ const ActiveInternsPage = ({
               <button type="button" onClick={() => handleViewProfile(intern)} className="action-btn profile-btn">
                 <Eye size={15} /> Profile
               </button>
-              <button type="button" onClick={() => openReportsModal(intern)} className="action-btn reports-btn">
+              <button type="button" onClick={() => handleViewReports(intern)} className="action-btn reports-btn">
                 <FileText size={15} /> Reports
               </button>
               <button type="button" onClick={() => onNavigateToMessages && onNavigateToMessages(intern)} className="action-btn msg-btn">

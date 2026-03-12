@@ -651,6 +651,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
   const [endDate, setEndDate] = useState("");
   const [department, setDepartment] = useState("");
   const [mentorName, setMentorName] = useState("");
+  const [approvalCc, setApprovalCc] = useState("");
+  const [approvalBcc, setApprovalBcc] = useState("");
   const [pmCode, setPmCode] = useState("");
   const [stipend, setStipend] = useState("");
   const [nextInternId, setNextInternId] = useState("");
@@ -736,6 +738,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setEndDate("");
     setDepartment("");
     setMentorName("");
+    setApprovalCc("");
+    setApprovalBcc("");
     setPmCode("");
     setStipend("");
     setNextInternId("");
@@ -751,6 +755,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setEndDate("");
     setDepartment(knownDepartment || "");
     setMentorName("");
+    setApprovalCc("");
+    setApprovalBcc("");
     setPmCode("");
     setStipend("");
     setOfferLetterAttachment(null);
@@ -772,6 +778,22 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
       openApprovalFeedback({
         title: "No selection",
         message: "Please select an application first.",
+        tone: "error",
+      });
+      return;
+    }
+    if (approvalCc && !validateMultipleEmails(approvalCc)) {
+      openApprovalFeedback({
+        title: "Invalid CC",
+        message: "Use comma-separated emails.\nExample: example1@mail.com, example2@mail.com",
+        tone: "error",
+      });
+      return;
+    }
+    if (approvalBcc && !validateMultipleEmails(approvalBcc)) {
+      openApprovalFeedback({
+        title: "Invalid BCC",
+        message: "Use comma-separated emails.\nExample: example1@mail.com, example2@mail.com",
         tone: "error",
       });
       return;
@@ -837,6 +859,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
         stipend: stipend.trim() || null,
         password: password.trim(),
         pmCode: normalizedPmCode || undefined,
+        cc: approvalCc.trim() || undefined,
+        bcc: approvalBcc.trim() || undefined,
         offerLetterAttachment: resolvedOfferLetterAttachment || undefined,
         sendEmail: true,
         showAlert: false,
@@ -1256,6 +1280,27 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     <input value={password} onChange={(event) => setPassword(event.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
                   </div>
                   <div />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>CC (optional, comma-separated)</label>
+                    <input
+                      value={approvalCc}
+                      onChange={(event) => setApprovalCc(event.target.value)}
+                      placeholder="e.g. manager@company.com, hr@company.com"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>BCC (optional, comma-separated)</label>
+                    <input
+                      value={approvalBcc}
+                      onChange={(event) => setApprovalBcc(event.target.value)}
+                      placeholder="e.g. audit@company.com"
+                      style={inputStyle}
+                    />
+                  </div>
                 </div>
 
                 <EmailTemplateManager
@@ -1797,8 +1842,16 @@ InternHub`;
         }),
       });
 
-      if (!res.ok) throw new Error("Email failed");
-     
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const serverMessage =
+          body?.message ||
+          body?.error ||
+          (typeof body === "string" ? body : null) ||
+          null;
+        throw new Error(serverMessage || `Email failed (HTTP ${res.status})`);
+      }
+      
       openBulkFeedback({
         title: "Email sent",
         message: `Email sent successfully to ${selectedIntern.fullName}.`,

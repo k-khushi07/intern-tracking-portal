@@ -408,6 +408,8 @@ function createHrRouter({ emailService }) {
     stipend,
     password,
     pmCode,
+    cc,
+    bcc,
     offerLetterAttachment,
     sendEmail = true,
   }) {
@@ -532,6 +534,8 @@ function createHrRouter({ emailService }) {
 
         await emailService.sendEmail({
           to: app.email,
+          cc: cc || undefined,
+          bcc: bcc || undefined,
           subject: "🎉 InternHub Selection - Offer Letter Attached",
           html: buildApprovalEmailHtml({
             name: app.applicant_name,
@@ -1059,7 +1063,7 @@ function createHrRouter({ emailService }) {
 
   router.post("/applications/:id/approve", async (req, res, next) => {
     try {
-      const { startDate, endDate, department, mentorName, stipend, password, pmCode, offerLetterAttachment, sendEmail } = req.body || {};
+      const { startDate, endDate, department, mentorName, stipend, password, pmCode, cc, bcc, offerLetterAttachment, sendEmail } = req.body || {};
       const approval = await approveApplicationRecord({
         applicationId: req.params.id,
         approvedByProfileId: req.auth.profile.id,
@@ -1070,6 +1074,8 @@ function createHrRouter({ emailService }) {
         stipend,
         password,
         pmCode,
+        cc,
+        bcc,
         offerLetterAttachment,
         sendEmail,
       });
@@ -1703,6 +1709,41 @@ function createHrRouter({ emailService }) {
     }
   });
 
+  router.patch("/reports/:id/review", async (req, res, next) => {
+    try {
+      const hrId = req.auth.profile.id;
+      const { status, reason, remarks, reviewReason } = req.body || {};
+      const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
+      if (!status || !["approved", "rejected"].includes(status)) {
+        throw httpError(400, "status must be approved or rejected", true);
+      }
+
+      await restUpdate({
+        table: "reports",
+        patch: {
+          status,
+          reviewed_by: hrId,
+          reviewed_at: new Date().toISOString(),
+          review_reason: finalRemarks || null,
+          updated_at: new Date().toISOString(),
+        },
+        matchQuery: { id: `eq.${req.params.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user:${hrId}`).emit("itp:changed", { entity: "reports", action: "update" });
+        io.to("role:hr").emit("itp:changed", { entity: "reports", action: "update" });
+      }
+
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ==================== Messaging moderation (privacy-first) ====================
   router.get("/message-reports", async (req, res, next) => {
     try {
@@ -2120,7 +2161,8 @@ function createHrRouter({ emailService }) {
       await assertInternExists(req.params.id);
       const rows = await restSelect({
         table: "reports",
-        select: "id,report_type,status,submitted_at,created_at",
+        select:
+          "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,created_at",
         filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
         accessToken: null,
         useServiceRole: true,
