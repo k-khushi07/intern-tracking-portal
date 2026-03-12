@@ -36,10 +36,10 @@ async function loadSession(req, res) {
     const profile = await loadProfile({ userId: user.id, accessToken });
     return profile ? { user, profile, accessToken, refreshToken } : null;
   } catch (err) {
-    if (!refreshToken) throw err;
+    if (!refreshToken) return null;
     const status = Number(err?.status || 0);
     const shouldRefresh = status === 401 || isJwtAuthError(err);
-    if (!shouldRefresh) throw err;
+    if (!shouldRefresh) return null;
 
     try {
       const refreshed = await authRefresh({ refreshToken });
@@ -53,13 +53,7 @@ async function loadSession(req, res) {
       return profile
         ? { user, profile, accessToken: refreshed.access_token, refreshToken: refreshed.refresh_token }
         : null;
-    } catch (refreshErr) {
-      // If refresh fails (expired/invalid refresh token), clear cookies and treat as anonymous.
-      try {
-        clearAuthCookies(res);
-      } catch {
-        // ignore
-      }
+    } catch {
       return null;
     }
   }
@@ -74,14 +68,7 @@ function createAuthMiddleware() {
       return next();
     } catch (err) {
       const status = Number(err?.status || 0);
-      if (status === 401 || isJwtAuthError(err)) {
-        try {
-          clearAuthCookies(res);
-        } catch {
-          // ignore
-        }
-        return next(httpError(401, "Not authenticated", true));
-      }
+      if (status === 401 || isJwtAuthError(err)) return next(httpError(401, "Not authenticated", true));
       return next(err);
     }
   }

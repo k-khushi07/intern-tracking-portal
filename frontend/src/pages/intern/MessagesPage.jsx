@@ -98,6 +98,7 @@ const MessagesPage = ({ selectedIntern }) => {
 
     setInterns(mapped);
     setLoadError("");
+    return mapped;
   }, []);
 
   // Socket wiring + initial load
@@ -244,9 +245,13 @@ const MessagesPage = ({ selectedIntern }) => {
     const load = async () => {
       setLoadError("");
       try {
-        const meRes = await authApi.me();
-        if (!cancelled) setMe(meRes?.profile || null);
-        await refreshConversations();
+      const meRes = await authApi.me();
+      const profile = meRes?.profile || null;
+      if (!cancelled) setMe(profile);
+        const convList = await refreshConversations();
+        if (!activeChatRef.current && convList.length > 0) {
+          setActiveChat(convList[0]);
+        }
       } catch (err) {
         if (!cancelled) setLoadError(err?.message || "Failed to load conversations");
       }

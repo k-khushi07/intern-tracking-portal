@@ -1,6 +1,6 @@
 ﻿// HRHome.jsx - FIXED with PM Dashboard colors
 import React, { useState, useEffect } from "react";
-import { Menu, Bell, LogOut, Sparkles, X } from "lucide-react";
+import { Menu, Bell, LogOut, Sparkles, X, Send } from "lucide-react";
 import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
 import {
   DashboardSection,
@@ -8,7 +8,8 @@ import {
   NewRegistrationsSection,
   PMSection,
   ReportsSection,
-  ActiveInterns
+  ActiveInterns,
+  ProjectSubmissionsSection
 } from "./HRSections";
 import {
   Modal,
@@ -18,7 +19,7 @@ import {
 } from "./HRComponents";
 
 import MessagesPage from './MessagesPage';
-import { authApi, hrApi, announcementsApi } from "../../lib/apiClient";
+import { authApi, hrApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
 export default function HRHome() {
@@ -106,7 +107,6 @@ export default function HRHome() {
       const me = await authApi.me();
       if (me?.profile?.role === "hr") {
         const hr = {
-          id: me.profile.id,
           role: me.profile.role,
           fullName: me.profile.full_name,
           email: me.profile.email,
@@ -130,11 +130,6 @@ export default function HRHome() {
       setUsers(loadedUsers);
     } catch (err) {
       console.error("Error loading users (API):", err);
-      if (err?.status === 401 || err?.status === 403) {
-        localStorage.removeItem("currentUser");
-        window.location.href = "/hr/login";
-        return;
-      }
       setUsers([]);
     }
   };
@@ -156,11 +151,6 @@ export default function HRHome() {
       setAnnouncements(mapped);
     } catch (err) {
       console.error("Failed to load announcements:", err);
-      if (err?.status === 401 || err?.status === 403) {
-        localStorage.removeItem("currentUser");
-        window.location.href = "/hr/login";
-        return;
-      }
       setAnnouncements([]);
     }
   };
@@ -177,15 +167,22 @@ export default function HRHome() {
     }
   };
 
-  const loadNotifications = () => {
-    const sampleNotifications = [
-      { id: 1, title: "New Intern Registration", message: "Sarah Johnson has registered", time: "5 min ago", read: false, type: "info" },
-      { id: 2, title: "Profile Completed", message: "Mike Chen completed profile setup", time: "1 hour ago", read: false, type: "success" },
-      { id: 3, title: "Daily Log Submitted", message: "Alex Kumar submitted daily log", time: "2 hours ago", read: true, type: "info" },
-      { id: 4, title: "Approval Pending", message: "John Doe awaiting final approval", time: "3 hours ago", read: false, type: "warning" },
-      { id: 5, title: "Report Submitted", message: "Jane Smith submitted weekly report", time: "5 hours ago", read: true, type: "info" },
-    ];
-    setNotifications(sampleNotifications);
+  const loadNotifications = async () => {
+    try {
+      const res = await notificationsApi.list({ limit: 60 });
+      const rows = res?.notifications || [];
+      const mapped = rows.map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.content,
+        time: n.created_at,
+        read: !!n.is_read,
+        type: "info",
+      }));
+      setNotifications(mapped);
+    } catch {
+      setNotifications([]);
+    }
   };
 
   // Data Loading
@@ -222,6 +219,10 @@ export default function HRHome() {
 
   const fallbackStats = getStats();
   const stats = { ...(apiStats || {}), ...fallbackStats };
+  const menuItems = [
+    ...navItems(stats),
+    { id: "project-submissions", label: "Project Submissions", icon: Send },
+  ];
 
   // Handlers
   const handleApprove = async (approval) => {
@@ -564,7 +565,7 @@ export default function HRHome() {
 
           {/* Navigation */}
           <nav style={{ flex: 1, padding: "0 12px", overflowY: "auto", overflowX: "hidden" }}>
-            {navItems(stats).map((item, idx) => (
+            {menuItems.map((item, idx) => (
               <button
                 key={item.id}
                 onClick={() => {
@@ -678,7 +679,7 @@ export default function HRHome() {
             )}
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
-                {navItems(stats).find(n => n.id === activeSection)?.label || "Dashboard"}
+                {menuItems.find(n => n.id === activeSection)?.label || "Dashboard"}
               </h1>
               <p style={{ fontSize: 13, color: COLORS.textMuted, margin: 0 }}>
                 Manage your intern workforce
@@ -931,20 +932,6 @@ export default function HRHome() {
                 initialPmCode={activeInternsPmFilter?.code || ""}
                 initialPmName={activeInternsPmFilter?.name || ""}
                 onClearPmFilter={() => setActiveInternsPmFilter(null)}
-                filterMode="all"
-                currentHrId={currentHR?.id || ""}
-              />
-            )}
-
-            {activeSection === "myInterns" && (
-              <ActiveInterns
-                onNavigateToMessages={handleNavigateToMessages}
-                users={users}
-                initialPmCode={activeInternsPmFilter?.code || ""}
-                initialPmName={activeInternsPmFilter?.name || ""}
-                onClearPmFilter={() => setActiveInternsPmFilter(null)}
-                filterMode="mine"
-                currentHrId={currentHR?.id || ""}
               />
             )}
 
@@ -980,6 +967,10 @@ export default function HRHome() {
                 setReportsTab={setReportsTab}
                 currentHR={currentHR}
               />
+            )}
+
+            {activeSection === "project-submissions" && (
+              <ProjectSubmissionsSection isMobile={isMobile} />
             )}
           </div>
         </div>

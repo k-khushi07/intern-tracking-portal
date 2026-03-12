@@ -225,12 +225,7 @@ export function DashboardSection({
             <Megaphone size={20} color={COLORS.jungleTeal} /> Announcements
           </h3>
           <button 
-            onClick={() => {
-              setEditingAnnouncement(null);
-              setFormError("");
-              setNewAnnouncement({ title: "", content: "", priority: "medium" });
-              setShowAddModal(true);
-            }} 
+            onClick={onCreateAnnouncement}
             style={{ 
               padding: "10px 20px", 
               background: GRADIENTS.accent,
@@ -266,7 +261,7 @@ export function DashboardSection({
                 key={ann.id} 
                 announcement={ann} 
                 onDelete={() => handleDeleteAnnouncement(ann.id)}
-                onEdit={() => handleEditAnnouncement(ann)}
+                onEdit={onCreateAnnouncement}
                 onPin={() => handlePinAnnouncement(ann.id)}
               />
             ))
@@ -280,169 +275,6 @@ export function DashboardSection({
         </div>
       </div>
 
-      {/* Add/Edit Announcement Modal - PM Style */}
-      {showAddModal && (
-        <div 
-          onClick={() => {
-            setShowAddModal(false);
-            setEditingAnnouncement(null);
-          }}
-          style={{ 
-            position: "fixed", inset: 0, 
-            background: "rgba(0,0,0,0.7)", 
-            backdropFilter: "blur(8px)", 
-            display: "flex", alignItems: "center", 
-            justifyContent: "center", zIndex: 2000, padding: 20 
-          }}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{ 
-              width: "100%", 
-              maxWidth: 500, 
-              borderRadius: 20,
-              background: GRADIENTS.primary,
-              border: `1px solid ${COLORS.borderGlass}`,
-              padding: 28
-            }}
-          >
-            <div style={{ paddingBottom: 24, borderBottom: `1px solid ${COLORS.borderGlass}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ color: COLORS.textPrimary, margin: 0, fontSize: 22, fontWeight: 700, fontFamily: "'Inter', system-ui, sans-serif" }}>
-                {editingAnnouncement ? "Edit Announcement" : "New Announcement"}
-              </h2>
-              <button 
-                onClick={() => {
-                  setShowAddModal(false);
-                  setEditingAnnouncement(null);
-                }} 
-                style={{ background: COLORS.surfaceGlass, border: "none", borderRadius: 10, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: COLORS.textPrimary }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div style={{ paddingTop: 24 }}>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", color: COLORS.textPrimary, marginBottom: 8, fontWeight: 500, fontSize: 14, fontFamily: "'Inter', system-ui, sans-serif" }}>Title *</label>
-                <input 
-                  type="text" 
-                  value={newAnnouncement.title} 
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })} 
-                  placeholder="e.g., Team Meeting Tomorrow" 
-                  style={{ 
-                    width: "100%", 
-                    padding: "12px 16px", 
-                    borderRadius: 12, 
-                    border: `1px solid ${COLORS.borderGlass}`, 
-                    background: COLORS.surfaceGlass, 
-                    color: COLORS.textPrimary, 
-                    fontSize: 14, 
-                    outline: "none",
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }} 
-                />
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", color: COLORS.textPrimary, marginBottom: 8, fontWeight: 500, fontSize: 14, fontFamily: "'Inter', system-ui, sans-serif" }}>Message *</label>
-                <textarea 
-                  value={newAnnouncement.content} 
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })} 
-                  placeholder="Write your message..." 
-                  rows={4} 
-                  style={{ 
-                    width: "100%", 
-                    padding: "12px 16px", 
-                    borderRadius: 12, 
-                    border: `1px solid ${COLORS.borderGlass}`, 
-                    background: COLORS.surfaceGlass, 
-                    color: COLORS.textPrimary, 
-                    fontSize: 14, 
-                    outline: "none", 
-                    resize: "vertical", 
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }} 
-                />
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: "block", color: COLORS.textPrimary, marginBottom: 8, fontWeight: 500, fontSize: 14, fontFamily: "'Inter', system-ui, sans-serif" }}>Priority</label>
-                <div style={{ display: "flex", gap: 12 }}>
-                  {["high", "medium", "low"].map(priority => (
-                    <button 
-                      key={priority} 
-                      onClick={() => setNewAnnouncement({ ...newAnnouncement, priority })} 
-                      style={{ 
-                        flex: 1, 
-                        padding: "10px 16px", 
-                        borderRadius: 10, 
-                        border: `2px solid ${newAnnouncement.priority === priority ? (priority === "high" ? COLORS.red : priority === "medium" ? COLORS.orange : COLORS.jungleTeal) : COLORS.borderGlass}`, 
-                        background: newAnnouncement.priority === priority ? `${priority === "high" ? COLORS.red : priority === "medium" ? COLORS.orange : COLORS.jungleTeal}20` : "transparent", 
-                        color: COLORS.textPrimary, 
-                        cursor: "pointer", 
-                        fontSize: 13, 
-                        fontWeight: 600, 
-                        textTransform: "capitalize", 
-                        transition: "all 0.2s",
-                        fontFamily: "'Inter', system-ui, sans-serif"
-                      }}
-                    >
-                      {priority}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {formError ? (
-                <div style={{ marginBottom: 14, color: COLORS.red, fontSize: 13 }}>
-                  {formError}
-                </div>
-              ) : null}
-
-              <div style={{ display: "flex", gap: 12 }}>
-                <button 
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setFormError("");
-                    setEditingAnnouncement(null);
-                  }} 
-                  style={{ 
-                    flex: 1, 
-                    padding: "14px 20px", 
-                    background: COLORS.surfaceGlass, 
-                    color: COLORS.textSecondary, 
-                    border: `1px solid ${COLORS.borderGlass}`, 
-                    borderRadius: 12, 
-                    fontWeight: 600, 
-                    cursor: "pointer", 
-                    fontSize: 14,
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleAddAnnouncement} 
-                  style={{ 
-                    flex: 1, 
-                    padding: "14px 20px", 
-                    background: GRADIENTS.accent, 
-                    color: "white", 
-                    border: "none", 
-                    borderRadius: 12, 
-                    fontWeight: 600, 
-                    cursor: "pointer", 
-                    fontSize: 14,
-                    fontFamily: "'Inter', system-ui, sans-serif"
-                  }}
-                >
-                  {editingAnnouncement ? "Update" : "Create"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2904,6 +2736,238 @@ export function ReportsSection() {
   return <ReportsInbox />;
 }
 
+function ProjectSubmissionsSection({ isMobile }) {
+  const [submissions, setSubmissions] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await hrApi.projectSubmissions();
+        setSubmissions(res?.submissions || []);
+      } catch (err) {
+        setError(err?.message || "Failed to load submissions");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const handleReview = async (submissionId, status) => {
+    const comment = document.getElementById(`comment-${submissionId}`)?.value || "";
+    try {
+      await hrApi.reviewProjectSubmission(submissionId, { status, comment });
+      setSubmissions(prev => prev.map(s =>
+        s.id === submissionId ? { ...s, status } : s
+      ));
+    } catch (err) {
+      alert(err?.message || "Failed to update submission");
+    }
+  };
+
+  if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
+  if (error) return <div style={{ color: "#ef4444", padding: 32 }}>{error}</div>;
+  if (!submissions.length) return (
+    <div style={{ color: "rgba(248,250,252,0.6)", padding: 60, textAlign: "center" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}></div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: "white", marginBottom: 8 }}>
+        No project submissions yet
+      </div>
+      <div style={{ fontSize: 14 }}>Submissions from interns will appear here</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={{ color: "white", margin: 0, fontSize: 22, fontWeight: 700 }}>
+          Project Submissions
+        </h2>
+        <span style={{
+          background: "rgba(20,184,166,0.15)",
+          color: "#14b8a6",
+          border: "1px solid #14b8a6",
+          borderRadius: 20,
+          padding: "4px 14px",
+          fontSize: 13,
+          fontWeight: 600,
+        }}>
+          {submissions.length} total
+        </span>
+      </div>
+
+      {submissions.map((s) => (
+        <div key={s.id} style={{
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 16,
+          padding: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}>
+          {/* Title + Status */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                Project Title
+              </div>
+              <div style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 6 }}>
+                {s.title || "Untitled Project"}
+              </div>
+              <div style={{ color: "#14b8a6", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <span> {s.intern?.full_name || "Unknown Intern"}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span> {s.intern?.email || "?"}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span> {s.intern?.intern_id || "No ID"}</span>
+              </div>
+            </div>
+            <span style={{
+              padding: "6px 14px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 700,
+              flexShrink: 0,
+              background: s.status === "submitted" ? "rgba(20,184,166,0.15)"
+                        : s.status === "approved" ? "rgba(16,185,129,0.15)"
+                        : "rgba(239,68,68,0.15)",
+              color: s.status === "submitted" ? "#14b8a6"
+                   : s.status === "approved" ? "#10b981"
+                   : "#ef4444",
+              border: `1px solid ${s.status === "submitted" ? "#14b8a6"
+                     : s.status === "approved" ? "#10b981" : "#ef4444"}`,
+              textTransform: "uppercase",
+              letterSpacing: 1,
+            }}>{s.status}</span>
+          </div>
+
+          {/* Description */}
+          <div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+              Description
+            </div>
+            <div style={{
+              color: "rgba(248,250,252,0.8)",
+              fontSize: 14,
+              lineHeight: 1.7,
+              background: "rgba(255,255,255,0.03)",
+              padding: "14px 16px",
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}>
+              {s.description || "No description provided."}
+            </div>
+          </div>
+
+          {/* Links + Timestamp */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", gap: 16 }}>
+              <a href={s.github_link} target="_blank" rel="noreferrer" style={{
+                color: "#14b8a6", fontSize: 13, textDecoration: "none",
+                display: "flex", alignItems: "center", gap: 4,
+              }}> GitHub Repository</a>
+              {s.demo_link && (
+                <a href={s.demo_link} target="_blank" rel="noreferrer" style={{
+                  color: "#a78bfa", fontSize: 13, textDecoration: "none",
+                  display: "flex", alignItems: "center", gap: 4,
+                }}> Live Demo</a>
+              )}
+            </div>
+            <div style={{ color: "rgba(248,250,252,0.4)", fontSize: 11 }}>
+              Submitted: {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "?"}
+            </div>
+          </div>
+
+          {/* Review section ? only if still submitted */}
+          {s.status === "submitted" && (
+            <div style={{
+              borderTop: "1px solid rgba(255,255,255,0.1)",
+              paddingTop: 14,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600 }}>
+                HR REVIEW
+              </div>
+              <textarea
+                placeholder="Add a review comment (optional)..."
+                id={`comment-${s.id}`}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "white",
+                  fontSize: 13,
+                  resize: "vertical",
+                  minHeight: 70,
+                  outline: "none",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                }}
+              />
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => handleReview(s.id, "approved")}
+                  style={{
+                    flex: 1,
+                    padding: "11px 0",
+                    borderRadius: 10,
+                    border: "none",
+                    borderLeft: "4px solid #10b981",
+                    background: "linear-gradient(135deg, #059669, #10b981)",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    transition: "opacity 0.2s",
+                  }}>
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleReview(s.id, "rejected")}
+                  style={{
+                    flex: 1,
+                    padding: "11px 0",
+                    borderRadius: 10,
+                    border: "none",
+                    borderLeft: "4px solid #ef4444",
+                    background: "linear-gradient(135deg, #dc2626, #ef4444)",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    transition: "opacity 0.2s",
+                  }}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Show review comment if already reviewed */}
+          {s.status !== "submitted" && s.review_comment && (
+            <div style={{
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              paddingTop: 12,
+              color: "rgba(248,250,252,0.5)",
+              fontSize: 13,
+              fontStyle: "italic",
+            }}>
+               Review comment: {s.review_comment}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ==================== ACTIVE INTERNS FULL PAGE WRAPPER ====================
 export const ActiveInterns = ({ onNavigateToMessages, users, initialPmCode, initialPmName, onClearPmFilter, filterMode, currentHrId }) => (
   <ActiveInternsPage
@@ -2916,5 +2980,7 @@ export const ActiveInterns = ({ onNavigateToMessages, users, initialPmCode, init
     currentHrId={currentHrId}
   />
 );
+
+export { ProjectSubmissionsSection };
 
 

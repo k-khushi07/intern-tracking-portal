@@ -832,7 +832,8 @@ function OverviewPage({ intern, pm, hr, announcements, stats, isMobile }) {
           </div>
         </div>
       </div>
-    </div>
+
+          </div>
   );
 }
 
@@ -977,13 +978,42 @@ function ProjectSubmissionPage({ isMobile }) {
   const [githubLink, setGithubLink] = useState("");
   const [demoLink, setDemoLink] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [mySubmissions, setMySubmissions] = React.useState([]);
+  const [subsLoading, setSubsLoading] = React.useState(true);
 
-  const handleSubmit = (e) => { 
-    e.preventDefault(); 
-    setSubmitted(true); 
-    setTimeout(() => setSubmitted(false), 4000); 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await internApi.submitProject({
+        title: projectTitle,
+        description,
+        githubLink,
+        demoLink: demoLink || null,
+      });
+      setSubmitted(true);
+      setProjectTitle("");
+      setDescription("");
+      setGithubLink("");
+      setDemoLink("");
+      setTimeout(() => setSubmitted(false), 4000);
+    } catch (err) {
+      alert(err?.message || "Failed to submit project");
+    }
   };
-  
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      internApi.mySubmissions()
+        .then(res => { if (!cancelled) setMySubmissions(res?.submissions || []); })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setSubsLoading(false); });
+    };
+    load();
+    const interval = setInterval(load, 15000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [submitted]);
+
   const inputStyle = {
     width: "100%",
     padding: "12px 14px",
@@ -1011,16 +1041,16 @@ function ProjectSubmissionPage({ isMobile }) {
           alignItems: "center",
           gap: 12,
         }}>
-          <div style={{ 
-            width: 40, 
-            height: 40, 
-            borderRadius: 10, 
-            background: `${COLORS.emeraldGlow}20`, 
-            display: "flex", 
-            alignItems: "center", 
-            justifyContent: "center" 
+          <div style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            background: `${COLORS.emeraldGlow}20`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
           }}>
-            ✓
+            ?
           </div>
           <div>
             <div style={{ fontWeight: 600, fontSize: 15, color: "white" }}>
@@ -1041,87 +1071,87 @@ function ProjectSubmissionPage({ isMobile }) {
       }}>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div>
-            <label style={{ 
-              display: "block", 
-              color: COLORS.textPrimary, 
-              marginBottom: 8, 
-              fontWeight: 500, 
-              fontSize: 14 
+            <label style={{
+              display: "block",
+              color: COLORS.textPrimary,
+              marginBottom: 8,
+              fontWeight: 500,
+              fontSize: 14
             }}>
               Project Title *
             </label>
-            <input 
-              type="text" 
-              value={projectTitle} 
-              onChange={(e) => setProjectTitle(e.target.value)} 
-              style={inputStyle} 
-              placeholder="e.g., E-Commerce Dashboard" 
-              required 
+            <input
+              type="text"
+              value={projectTitle}
+              onChange={(e) => setProjectTitle(e.target.value)}
+              style={inputStyle}
+              placeholder="e.g., E-Commerce Dashboard"
+              required
             />
           </div>
-          
+
           <div>
-            <label style={{ 
-              display: "block", 
-              color: COLORS.textPrimary, 
-              marginBottom: 8, 
-              fontWeight: 500, 
-              fontSize: 14 
+            <label style={{
+              display: "block",
+              color: COLORS.textPrimary,
+              marginBottom: 8,
+              fontWeight: 500,
+              fontSize: 14
             }}>
               Project Description *
             </label>
-            <textarea 
-              value={description} 
-              onChange={(e) => setDescription(e.target.value)} 
-              style={{ ...inputStyle, minHeight: 120, resize: "vertical" }} 
-              placeholder="Describe your project, technologies used, key features..." 
-              required 
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              style={{ ...inputStyle, minHeight: 120, resize: "vertical" }}
+              placeholder="Describe your project, technologies used, key features..."
+              required
             />
           </div>
-          
+
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
             <div>
-              <label style={{ 
-                display: "block", 
-                color: COLORS.textPrimary, 
-                marginBottom: 8, 
-                fontWeight: 500, 
-                fontSize: 14 
+              <label style={{
+                display: "block",
+                color: COLORS.textPrimary,
+                marginBottom: 8,
+                fontWeight: 500,
+                fontSize: 14
               }}>
                 GitHub Repository *
               </label>
-              <input 
-                type="url" 
-                value={githubLink} 
-                onChange={(e) => setGithubLink(e.target.value)} 
-                style={inputStyle} 
-                placeholder="https://github.com/..." 
-                required 
+              <input
+                type="url"
+                value={githubLink}
+                onChange={(e) => setGithubLink(e.target.value)}
+                style={inputStyle}
+                placeholder="https://github.com/..."
+                required
               />
             </div>
-            
+
             <div>
-              <label style={{ 
-                display: "block", 
-                color: COLORS.textPrimary, 
-                marginBottom: 8, 
-                fontWeight: 500, 
-                fontSize: 14 
+              <label style={{
+                display: "block",
+                color: COLORS.textPrimary,
+                marginBottom: 8,
+                fontWeight: 500,
+                fontSize: 14
               }}>
                 Live Demo (Optional)
               </label>
-              <input 
-                type="url" 
-                value={demoLink} 
-                onChange={(e) => setDemoLink(e.target.value)} 
-                style={inputStyle} 
-                placeholder="https://your-demo.com" 
+              <input
+                type="url"
+                value={demoLink}
+                onChange={(e) => setDemoLink(e.target.value)}
+                style={inputStyle}
+                placeholder="https://your-demo.com"
               />
             </div>
           </div>
-          
-          <button 
-            type="submit" 
+
+          <button
+            type="submit"
             style={{
               padding: "14px 28px",
               background: GRADIENTS.accent,
@@ -1142,6 +1172,96 @@ function ProjectSubmissionPage({ isMobile }) {
             Submit Project
           </button>
         </form>
+      </div>
+
+      <div style={{ marginTop: 32 }}>
+        <h3 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
+          My Submissions
+        </h3>
+        {subsLoading ? (
+          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>Loading...</div>
+        ) : mySubmissions.length === 0 ? (
+          <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>No submissions yet.</div>
+        ) : mySubmissions.map(sub => (
+          <div key={sub.id} style={{
+            background: "rgba(255,255,255,0.05)",
+            border: `1px solid ${sub.status === "approved" ? "rgba(16,185,129,0.4)" 
+                                : sub.status === "rejected" ? "rgba(239,68,68,0.4)" 
+                                : "rgba(255,255,255,0.1)"}`,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ color: "white", fontWeight: 700, fontSize: 15 }}>{sub.title}</div>
+              <span style={{
+                padding: "4px 12px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                background: sub.status === "approved" ? "rgba(16,185,129,0.15)"
+                          : sub.status === "rejected" ? "rgba(239,68,68,0.15)"
+                          : "rgba(20,184,166,0.15)",
+                color: sub.status === "approved" ? "#10b981"
+                     : sub.status === "rejected" ? "#ef4444"
+                     : "#14b8a6",
+                border: `1px solid ${sub.status === "approved" ? "#10b981"
+                       : sub.status === "rejected" ? "#ef4444" : "#14b8a6"}`,
+              }}>
+                {sub.status === "submitted" ? "Pending Review" : sub.status}
+              </span>
+            </div>
+
+            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>{sub.description}</div>
+
+            {sub.status === "approved" && (
+              <div style={{
+                background: "rgba(16,185,129,0.1)",
+                border: "1px solid rgba(16,185,129,0.3)",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontSize: 13,
+              }}>
+                <div style={{ color: "#10b981", fontWeight: 700, marginBottom: sub.review_comment ? 6 : 0 }}>
+                  Your project was approved!
+                </div>
+                {sub.review_comment && (
+                  <div style={{ color: "rgba(255,255,255,0.7)" }}>
+                    Comment: {sub.review_comment}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sub.status === "rejected" && (
+              <div style={{
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.3)",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontSize: 13,
+              }}>
+                <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: sub.review_comment ? 6 : 0 }}>
+                  Your project was not approved.
+                </div>
+                {sub.review_comment && (
+                  <div style={{ color: "rgba(255,255,255,0.7)" }}>
+                    Reason: {sub.review_comment}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>
+              Submitted: {sub.submitted_at ? new Date(sub.submitted_at).toLocaleString() : "?"}
+              {sub.reviewed_at ? ` ? Reviewed: ${new Date(sub.reviewed_at).toLocaleString()}` : ""}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -241,8 +241,9 @@ const MessagesPage = ({ selectedIntern }) => {
     const load = async () => {
       setLoadError("");
       try {
-        const meRes = await authApi.me();
-        if (!cancelled) setMe(meRes?.profile || null);
+      const meRes = await authApi.me();
+      const profile = meRes?.profile || null;
+      if (!cancelled) setMe(profile);
         await refreshConversations();
       } catch (err) {
         if (!cancelled) setLoadError(err?.message || "Failed to load conversations");
