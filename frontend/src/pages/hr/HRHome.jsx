@@ -14,6 +14,7 @@ import {
 import {
   Modal,
   RejectModal,
+  buildRejectionEmailHtml,
   ProfileModal,
   AnnouncementModal,
 } from "./HRComponents";
@@ -47,6 +48,9 @@ export default function HRHome() {
  
   // Filter States
   const [rejectReason, setRejectReason] = useState("");
+  const [rejectEmailSubject, setRejectEmailSubject] = useState("Internship Application - Update");
+  const [rejectEmailMessage, setRejectEmailMessage] = useState("");
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
   const [profileTab, setProfileTab] = useState("personal");
   const [reportsTab, setReportsTab] = useState("review");
   const [activeInternsPmFilter, setActiveInternsPmFilter] = useState(null);
@@ -238,6 +242,8 @@ export default function HRHome() {
         stipend: approval.stipend,
         password: approval.password,
         sendEmail: approval.sendEmail !== false,
+        pmCode: approval.pmCode || undefined,
+        offerLetterAttachment: approval.offerLetterAttachment || undefined,
       });
       await loadUsers();
       await loadDashboardMetrics();
@@ -340,7 +346,17 @@ export default function HRHome() {
       return;
     }
     try {
-      await hrApi.rejectApplication(selectedUser.applicationId, { reason: rejectReason });
+      setRejectSubmitting(true);
+      await hrApi.rejectApplication(selectedUser.applicationId, {
+        reason: rejectReason,
+        sendEmail: true,
+        subject: rejectEmailSubject,
+        html: buildRejectionEmailHtml({
+          name: selectedUser.fullName || selectedUser.name || "Candidate",
+          message: rejectEmailMessage,
+          reason: rejectReason,
+        }),
+      });
       await loadUsers();
       await loadDashboardMetrics();
       setShowRejectModal(false);
@@ -348,12 +364,18 @@ export default function HRHome() {
     } catch (err) {
       console.error("Reject failed:", err);
       showNotice(err.message || "Failed to reject intern.", "error");
+    } finally {
+      setRejectSubmitting(false);
     }
   };
 
   const handleRejectClick = (intern) => {
     setSelectedUser(intern);
     setRejectReason("");
+    setRejectEmailSubject("Internship Application - Update");
+    setRejectEmailMessage(
+      "Thank you for taking the time to apply for the internship program at InternHub.\n\nAfter careful review, we’re unable to move forward with your application at this time.\n\nWe encourage you to apply again in the future and wish you the very best."
+    );
     setShowRejectModal(true);
   };
 
@@ -922,6 +944,7 @@ export default function HRHome() {
                 onApprove={handleApprove}
                 onReject={handleRejectClick}
                 onDataChanged={refreshHrData}
+                pms={allPMs}
               />
             )}
 
@@ -978,13 +1001,18 @@ export default function HRHome() {
 
       {/* Modals */}
       {showRejectModal && (
-        <Modal onClose={() => setShowRejectModal(false)}>
+        <Modal onClose={() => (!rejectSubmitting ? setShowRejectModal(false) : null)}>
           <RejectModal
             intern={selectedUser}
             rejectReason={rejectReason}
             setRejectReason={setRejectReason}
+            emailSubject={rejectEmailSubject}
+            setEmailSubject={setRejectEmailSubject}
+            emailMessage={rejectEmailMessage}
+            setEmailMessage={setRejectEmailMessage}
+            isSubmitting={rejectSubmitting}
             onReject={handleRejectIntern}
-            onClose={() => setShowRejectModal(false)}
+            onClose={() => (!rejectSubmitting ? setShowRejectModal(false) : null)}
           />
         </Modal>
       )}
