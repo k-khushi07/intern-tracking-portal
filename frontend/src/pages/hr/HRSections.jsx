@@ -1,5 +1,5 @@
 ﻿// HRSections.jsx - My code
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { EmailTemplateManager } from "./EmailTemplateManager";
 import { Edit, Trash2, Pin, Calendar } from "lucide-react";
 import {
@@ -1587,15 +1587,13 @@ export function NewRegistrationsSection({
   const [meetingTime, setMeetingTime] = useState("");
   const [meetingLink, setMeetingLink] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsData, setDetailsData] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
   const [bulkRejectReason, setBulkRejectReason] = useState("");
   const [bulkRejectError, setBulkRejectError] = useState("");
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const emailComposerRef = useRef(null);
   const [bulkFeedback, setBulkFeedback] = useState({
     open: false,
     title: "",
@@ -1657,7 +1655,7 @@ InternHub`;
     }
   }, [interns, selectedIntern]);
 
-  const handleInternSelect = async (intern, options = {}) => {
+  const handleInternSelect = (intern) => {
     setSelectedIntern(intern);
     setEmailContent(getDefaultEmailTemplate(intern));
     setCc("");
@@ -1665,37 +1663,9 @@ InternHub`;
     setMeetingDate("");
     setMeetingTime("");
     setMeetingLink("");
-
-    if (options.openDetails && intern?.applicationId) {
-      await openDetails(intern);
-    }
-  };
-
-  const openDetails = async (intern) => {
-    if (!intern?.applicationId) {
-      openBulkFeedback({
-        title: "Details unavailable",
-        message: "Application details are unavailable for this record.",
-        tone: "error",
-      });
-      return;
-    }
-    setShowDetails(true);
-    setDetailsLoading(true);
-    setDetailsData(null);
-    try {
-      const response = await hrApi.applicationById(intern.applicationId);
-      setDetailsData(response || null);
-    } catch (error) {
-      openBulkFeedback({
-        title: "Failed to load details",
-        message: error?.message || "Failed to load application details.",
-        tone: "error",
-      });
-      setShowDetails(false);
-    } finally {
-      setDetailsLoading(false);
-    }
+    requestAnimationFrame(() => {
+      emailComposerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleViewPDF = (intern) => {
@@ -2077,7 +2047,7 @@ InternHub`;
               return (
                 <div
                   key={internKey || `registration-${idx}`}
-                  onClick={() => handleInternSelect(intern, { openDetails: true })}
+                  onClick={() => handleInternSelect(intern)}
                   style={{
                     ...glassCardStyle,
                     padding: 16,
@@ -2117,7 +2087,8 @@ InternHub`;
                     {intern.applicationPDF && (
                       <button 
                         onClick={(e) => {
-                          e.stopPropagation(); // Prevent selecting the intern when clicking the button
+                          e.stopPropagation();
+                          handleInternSelect(intern);
                           handleViewPDF(intern);
                         }}
                         title="View Application PDF"
@@ -2147,7 +2118,7 @@ InternHub`;
           </div>
 
           {/* Right: Email Composer */}
-          <div style={glassCardStyle}>
+          <div ref={emailComposerRef} style={glassCardStyle}>
             {!selectedIntern ? (
               <EmptyState icon={<Mail size={40} />} message="Select an intern to send email" />
             ) : (
@@ -2325,65 +2296,6 @@ InternHub`;
                   </p>
                 </div>
               </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showDetails && (
-        <div
-          onClick={() => !detailsLoading && setShowDetails(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.65)",
-            backdropFilter: "blur(6px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2200,
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              width: "min(920px, 96vw)",
-              maxHeight: "88vh",
-              overflowY: "auto",
-              borderRadius: 16,
-              padding: 20,
-              background: COLORS.bgSecondary,
-              border: `1px solid ${COLORS.borderGlass}`,
-            }}
-          >
-            {detailsLoading ? (
-              <div style={{ color: COLORS.textSecondary }}>Loading application details...</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <h3 style={{ margin: 0, color: COLORS.textPrimary, fontSize: 20 }}>Application Detail</h3>
-                  <button onClick={() => setShowDetails(false)} style={{ ...secondaryButtonStyle, padding: "8px 12px" }}>
-                    Close
-                  </button>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-                  <DetailItem label="Name" value={detailsData?.application?.applicantName || "-"} />
-                  <DetailItem label="Email" value={detailsData?.application?.email || "-"} />
-                  <DetailItem label="Phone" value={detailsData?.application?.phone || "-"} />
-                  <DetailItem label="College" value={detailsData?.application?.college || "-"} />
-                  <DetailItem label="Domain" value={detailsData?.application?.domain || "-"} />
-                  <DetailItem label="CGPA" value={detailsData?.application?.cgpa ?? "-"} />
-                  <DetailItem label="Status" value={detailsData?.application?.status || "-"} />
-                  <DetailItem label="Submitted" value={detailsData?.application?.submittedAt ? new Date(detailsData.application.submittedAt).toLocaleString() : "-"} />
-                  <DetailItem
-                    label="Resume"
-                    value={detailsData?.application?.resumeUrl ? "Open" : "-"}
-                    link={detailsData?.application?.resumeUrl || ""}
-                  />
-                </div>
-              </div>
             )}
           </div>
         </div>
