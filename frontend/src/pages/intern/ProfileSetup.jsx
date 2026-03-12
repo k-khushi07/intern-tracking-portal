@@ -49,6 +49,7 @@ export default function InternProfileSetup() {
     profilePicture: null,
     resume: null,
   });
+  const [fileUploads, setFileUploads] = useState({ profilePicture: null, resume: null });
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -105,13 +106,13 @@ export default function InternProfileSetup() {
   };
 
   const handleFileChange = (field, file) => {
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfile((prev) => ({ ...prev, [field]: reader.result }));
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfile((prev) => ({ ...prev, [field]: reader.result }));
+    };
+    reader.readAsDataURL(file);
+    setFileUploads((prev) => ({ ...prev, [field]: file }));
   };
 
   const validateStep = (stepNum) => {
@@ -196,18 +197,33 @@ export default function InternProfileSetup() {
         return;
       }
 
-      // Create a clean profile object without file data if too large
+      const profilePicturePreview = profile.profilePicture;
+      const resumePreview = profile.resume;
       const cleanProfile = { ...profile };
-      
-      // Avoid persisting base64 blobs in DB/localStorage.
-      if (typeof cleanProfile.profilePicture === "string" && cleanProfile.profilePicture.startsWith("data:")) {
-        cleanProfile.profilePicture = "uploaded";
-      }
-      if (typeof cleanProfile.resume === "string" && cleanProfile.resume.startsWith("data:")) {
-        cleanProfile.resume = "uploaded";
-      }
+      delete cleanProfile.profilePicture;
+      delete cleanProfile.resume;
 
-      await internApi.updateMe({ profileData: cleanProfile, profileCompleted: true });
+      const buildUploadPayload = (fieldKey, previewValue) => {
+        const file = fileUploads[fieldKey];
+        if (!file || !previewValue) return null;
+        return {
+          name: file.name,
+          type: file.type,
+          dataUrl: previewValue,
+        };
+      };
+
+      const profilePictureUpload = buildUploadPayload("profilePicture", profilePicturePreview);
+      const resumeUpload = buildUploadPayload("resume", resumePreview);
+      const uploadsPayload = {};
+      if (profilePictureUpload) uploadsPayload.profilePicture = profilePictureUpload;
+      if (resumeUpload) uploadsPayload.resume = resumeUpload;
+
+      await internApi.updateMe({
+        profileData: cleanProfile,
+        profileCompleted: true,
+        fileUploads: Object.keys(uploadsPayload).length ? uploadsPayload : undefined,
+      });
 
       const users = JSON.parse(localStorage.getItem("users") || "[]");
       console.log("Total users before update:", users.length);

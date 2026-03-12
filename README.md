@@ -22,6 +22,9 @@
 - Run `supabase/migrations/008_add_messaging.sql` in Supabase SQL editor.
 - Run `supabase/migrations/009_add_message_rpc.sql` in Supabase SQL editor.
 - Run `supabase/migrations/010_hr_workflow_upgrade.sql` in Supabase SQL editor.
+- Run `supabase/migrations/013_add_hr_templates.sql` in Supabase SQL editor.
+
+Custom HR offer-letter templates are now persisted in `public.hr_templates` (via the migration above), so uploads and edits show up across browsers and HR users instead of living in localStorage.
 
 ### 1.3) If you still see table/cache mismatch errors
 - Confirm `public.internship_applications` exists (the backend expects this table first).
@@ -33,6 +36,7 @@
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_STORAGE_BUCKET` (e.g., `intern-files`) – the Storage bucket that will hold profile pictures and resumes; create the bucket, allow public reads (or signed downloads), and ensure the service role key above can write to it.
   - `EMAIL_USER` / `EMAIL_PASS`
 
 ### Google manual sync (Plan A / no credentials)
