@@ -55,7 +55,7 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-function ProjectSubmissionsSection({ isMobile, pmApi }) {
+function ProjectSubmissionsSection({ isMobile }) {
   const [submissions, setSubmissions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
@@ -74,57 +74,195 @@ function ProjectSubmissionsSection({ isMobile, pmApi }) {
     load();
   }, []);
 
+  const handleReview = async (submissionId, status) => {
+    const comment = document.getElementById(`pm-comment-${submissionId}`)?.value || "";
+    try {
+      await pmApi.reviewProjectSubmission(submissionId, { status, comment });
+      setSubmissions(prev => prev.map(s =>
+        s.id === submissionId ? { ...s, status } : s
+      ));
+    } catch (err) {
+      alert(err?.message || "Failed to update submission");
+    }
+  };
+
   if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
   if (error) return <div style={{ color: "#ef4444", padding: 32 }}>{error}</div>;
   if (!submissions.length) return (
-    <div style={{ color: "rgba(248,250,252,0.6)", padding: 32, textAlign: "center" }}>
-      No project submissions yet.
+    <div style={{ color: "rgba(248,250,252,0.6)", padding: 60, textAlign: "center" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}></div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: "white", marginBottom: 8 }}>
+        No project submissions yet
+      </div>
+      <div style={{ fontSize: 14 }}>Submissions from your interns will appear here</div>
     </div>
   );
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ color: "white", margin: 0, fontSize: 20, fontWeight: 700 }}>
-        Project Submissions
-      </h2>
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={{ color: "white", margin: 0, fontSize: 22, fontWeight: 700 }}>
+          Project Submissions
+        </h2>
+        <span style={{
+          background: "rgba(20,184,166,0.15)",
+          color: "#14b8a6",
+          border: "1px solid #14b8a6",
+          borderRadius: 20,
+          padding: "4px 14px",
+          fontSize: 13,
+          fontWeight: 600,
+        }}>
+          {submissions.length} total
+        </span>
+      </div>
+
       {submissions.map((s) => (
         <div key={s.id} style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: 16,
-          padding: 20,
+          padding: 24,
           display: "flex",
           flexDirection: "column",
-          gap: 8,
+          gap: 14,
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ color: "white", fontWeight: 700, fontSize: 16 }}>{s.title}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+                textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                Project Title
+              </div>
+              <div style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>
+                {s.title || "Untitled Project"}
+              </div>
+              <div style={{ color: "#14b8a6", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <span>Intern: {s.intern?.full_name || "Unknown"}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span>{s.intern?.email || "?"}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span>ID: {s.intern?.intern_id || "?"}</span>
+              </div>
+            </div>
             <span style={{
-              padding: "4px 12px",
+              padding: "6px 14px",
               borderRadius: 20,
               fontSize: 12,
-              fontWeight: 600,
-              background: s.status === "submitted" ? "rgba(20,184,166,0.15)" : "rgba(245,158,11,0.15)",
-              color: s.status === "submitted" ? "#14b8a6" : "#f59e0b",
-              border: `1px solid ${s.status === "submitted" ? "#14b8a6" : "#f59e0b"}`,
+              fontWeight: 700,
+              flexShrink: 0,
+              background: s.status === "submitted" ? "rgba(20,184,166,0.15)"
+                        : s.status === "approved" ? "rgba(16,185,129,0.15)"
+                        : "rgba(239,68,68,0.15)",
+              color: s.status === "submitted" ? "#14b8a6"
+                   : s.status === "approved" ? "#10b981"
+                   : "#ef4444",
+              border: `1px solid ${s.status === "submitted" ? "#14b8a6"
+                     : s.status === "approved" ? "#10b981" : "#ef4444"}`,
+              textTransform: "uppercase",
+              letterSpacing: 1,
             }}>{s.status}</span>
           </div>
-          <div style={{ color: "rgba(248,250,252,0.6)", fontSize: 13 }}>{s.description}</div>
-          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-            <a href={s.github_link} target="_blank" rel="noreferrer"
-              style={{ color: "#14b8a6", fontSize: 13, textDecoration: "none" }}>
-              GitHub →
-            </a>
-            {s.demo_link && (
-              <a href={s.demo_link} target="_blank" rel="noreferrer"
-                style={{ color: "#a78bfa", fontSize: 13, textDecoration: "none" }}>
-                Live Demo →
-              </a>
-            )}
+
+          <div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+              textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+              Description
+            </div>
+            <div style={{
+              color: "rgba(248,250,252,0.8)",
+              fontSize: 14,
+              lineHeight: 1.7,
+              background: "rgba(255,255,255,0.03)",
+              padding: "14px 16px",
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}>
+              {s.description || "No description provided."}
+            </div>
           </div>
-          <div style={{ color: "rgba(248,250,252,0.4)", fontSize: 11 }}>
-            Submitted: {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", gap: 16 }}>
+              <a href={s.github_link} target="_blank" rel="noreferrer" style={{
+                color: "#14b8a6", fontSize: 13, textDecoration: "none",
+                display: "flex", alignItems: "center", gap: 4,
+              }}>GitHub Repository</a>
+              {s.demo_link && (
+                <a href={s.demo_link} target="_blank" rel="noreferrer" style={{
+                  color: "#a78bfa", fontSize: 13, textDecoration: "none",
+                  display: "flex", alignItems: "center", gap: 4,
+                }}>Live Demo</a>
+              )}
+            </div>
+            <div style={{ color: "rgba(248,250,252,0.4)", fontSize: 11 }}>
+              Submitted: {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "?"}
+            </div>
           </div>
+
+          {s.status === "submitted" && (
+            <div style={{
+              borderTop: "1px solid rgba(255,255,255,0.1)",
+              paddingTop: 14,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+                textTransform: "uppercase", letterSpacing: 1 }}>
+                PM Review
+              </div>
+              <textarea
+                placeholder="Add a review comment (optional)..."
+                id={`pm-comment-${s.id}`}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "white",
+                  fontSize: 13,
+                  resize: "vertical",
+                  minHeight: 70,
+                  outline: "none",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                }}
+              />
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => handleReview(s.id, "approved")}
+                  style={{
+                    flex: 1, padding: "11px 0", borderRadius: 10, border: "none",
+                    background: "linear-gradient(135deg, #059669, #10b981)",
+                    color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                  }}>
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleReview(s.id, "rejected")}
+                  style={{
+                    flex: 1, padding: "11px 0", borderRadius: 10, border: "none",
+                    background: "linear-gradient(135deg, #dc2626, #ef4444)",
+                    color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                  }}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+
+          {s.status !== "submitted" && s.review_comment && (
+            <div style={{
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              paddingTop: 12,
+              color: "rgba(248,250,252,0.5)",
+              fontSize: 13,
+              fontStyle: "italic",
+            }}>
+              Review comment: {s.review_comment}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -473,7 +611,7 @@ const PMHome = () => {
       case "messages":
         return <MessagesPage selectedIntern={selectedIntern} />;
       case "project-submissions":
-        return <ProjectSubmissionsSection isMobile={isMobile} pmApi={pmApi} />;
+        return <ProjectSubmissionsSection isMobile={isMobile} />;
       default:
         return (
           <OverviewPage 

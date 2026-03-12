@@ -20,6 +20,7 @@ const InternProfilePage = ({ intern, onBack }) => {
   const [internData, setInternData] = useState(intern || null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [activities, setActivities] = useState([]);
 
   useEffect(() => {
     if (!intern) return;
@@ -49,9 +50,34 @@ const InternProfilePage = ({ intern, onBack }) => {
     };
   }, [internId]);
 
+  useEffect(() => {
+    if (!internId) return;
+    Promise.all([
+      hrApi.getInternDailyLogs(internId),
+      hrApi.getInternReports(internId),
+    ])
+      .then(([logsRes, reportsRes]) => {
+        const logs = (logsRes?.logs || []).map((l) => ({
+          type: "daily_log",
+          label: `Submitted daily log for ${l.logDate || l.log_date}`,
+          date: l.createdAt || l.created_at,
+        }));
+        const reports = (reportsRes?.reports || []).map((r) => ({
+          type: "report",
+          label: `Submitted ${r.reportType || r.report_type || "report"}`,
+          date: r.submittedAt || r.submitted_at,
+        }));
+        const all = [...logs, ...reports]
+          .sort((a, b) => new Date(b.date) - new Date(a.date))
+          .slice(0, 10);
+        setActivities(all);
+      })
+      .catch(() => {});
+  }, [internId, internData]);
+
   const profilePayload = useMemo(() => {
-    const raw = internData?.profile_data || internData?.profileData;
-    return raw && typeof raw === "object" ? raw : {};
+    const pd = internData?.profile_data || internData?.profileData || {};
+    return pd && typeof pd === "object" ? pd : {};
   }, [internData]);
 
   const skills = useMemo(() => {
@@ -65,27 +91,19 @@ const InternProfilePage = ({ intern, onBack }) => {
 
   const profileData = useMemo(
     () => ({
-      phone: profilePayload.phone || profilePayload.mobile || "",
-      dob: profilePayload.dob || profilePayload.dateOfBirth || "",
-      bloodGroup: profilePayload.bloodGroup || profilePayload.blood_group || "",
-      address: profilePayload.address || "",
-      college: profilePayload.college || profilePayload.collegeName || "",
-      degree: profilePayload.degree || profilePayload.education || "",
-      education: profilePayload.education || profilePayload.degree || "",
-      university: profilePayload.university || profilePayload.college || profilePayload.collegeName || "",
-      expectedGraduation: profilePayload.expectedGraduation || profilePayload.graduationYear || profilePayload.graduationDate || "",
-      internshipDuration: profilePayload.internshipDuration || profilePayload.duration || "",
-      supervisor: profilePayload.supervisor || profilePayload.mentor || "",
-      startDate: profilePayload.startDate || profilePayload.joinDate || internData?.created_at || "",
-      bio: profilePayload.bio || profilePayload.about || "",
-      location:
-        profilePayload.location ||
-        profilePayload.address ||
-        [profilePayload.city, profilePayload.state].filter(Boolean).join(", "),
-      recentActivities: Array.isArray(profilePayload.recentActivities) ? profilePayload.recentActivities : [],
-      currentProjects: Array.isArray(profilePayload.currentProjects) ? profilePayload.currentProjects : [],
-      goals: Array.isArray(profilePayload.goals) ? profilePayload.goals : [],
+      phone: profilePayload.phone || internData?.phone || "?",
+      dob: profilePayload.dob || internData?.dob || "?",
+      address: profilePayload.address || "?",
+      college: profilePayload.collegeName || profilePayload.college || "?",
+      degree: profilePayload.degree || internData?.degree || "?",
       skills,
+      bio: profilePayload.bio || "?",
+      linkedIn: profilePayload.linkedIn || "?",
+      github: profilePayload.github || "?",
+      bloodGroup: profilePayload.bloodGroup || "?",
+      emergencyContactName: profilePayload.emergencyContactName || "?",
+      guideName: profilePayload.guideName || "?",
+      startDate: profilePayload.startDate || profilePayload.joinDate || internData?.created_at || "",
       performance: Number(profilePayload.performance ?? internData?.performance ?? 0),
       tasksCompleted: Number(profilePayload.tasksCompleted ?? internData?.tasksCompleted ?? 0),
       tasksTotal: Number(profilePayload.tasksTotal ?? internData?.tasksTotal ?? 0),
@@ -271,7 +289,7 @@ const InternProfilePage = ({ intern, onBack }) => {
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <MapPin size={18} color={COLORS.peachGlow} />
                 <span style={{ fontSize: "14px", color: "rgba(255, 229, 217, 0.9)" }}>
-                  {profileData.location || "Not specified"}
+                  {profileData.address || "?"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -403,42 +421,74 @@ const InternProfilePage = ({ intern, onBack }) => {
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div>
                 <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  Education
+                  College/University
                 </p>
                 <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                  {profileData.education}
+                  {profileData.college}
                 </p>
               </div>
               <div>
                 <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  University
+                  Degree/Education
                 </p>
                 <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                  {profileData.university}
+                  {profileData.degree}
                 </p>
               </div>
               <div>
                 <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  Expected Graduation
+                  DOB
                 </p>
                 <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                  {profileData.expectedGraduation}
+                  {profileData.dob}
                 </p>
               </div>
               <div>
                 <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  Internship Duration
+                  Blood Group
                 </p>
                 <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                  {profileData.internshipDuration}
+                  {profileData.bloodGroup}
                 </p>
               </div>
               <div>
                 <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
-                  Supervisor
+                  Emergency Contact
                 </p>
                 <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                  {profileData.supervisor}
+                  {profileData.emergencyContactName}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
+                  Guide Name
+                </p>
+                <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
+                  {profileData.guideName}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
+                  Address
+                </p>
+                <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
+                  {profileData.address}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
+                  LinkedIn
+                </p>
+                <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
+                  {profileData.linkedIn}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)", marginBottom: "4px" }}>
+                  GitHub
+                </p>
+                <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
+                  {profileData.github}
                 </p>
               </div>
             </div>
@@ -489,165 +539,11 @@ const InternProfilePage = ({ intern, onBack }) => {
           </div>
 
 
-          {/* Current Projects */}
-          <div
-            className="glass animate-fadeIn stagger-4"
-            style={{
-              padding: "24px",
-              borderRadius: "16px",
-              background: "rgba(103, 146, 137, 0.1)",
-              border: `1px solid rgba(103, 146, 137, 0.3)`,
-            }}
-          >
-            <h3
-              style={{
-                fontSize: "18px",
-                fontWeight: "700",
-                color: COLORS.peachGlow,
-                marginBottom: "20px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <Briefcase size={22} color={COLORS.jungleTeal} />
-              Current Projects
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {profileData.currentProjects.length > 0 ? (
-                profileData.currentProjects.map((project) => (
-                  <div key={project.id || project.name}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      <span style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500" }}>
-                        {project.name || "Untitled Project"}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          fontWeight: "600",
-                          color: project.status === "Completed" ? "#22c55e" : COLORS.jungleTeal,
-                        }}
-                      >
-                        {project.progress ?? 0}%
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "6px",
-                        background: "rgba(103, 146, 137, 0.2)",
-                        borderRadius: "10px",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${project.progress ?? 0}%`,
-                          height: "100%",
-                          background:
-                            project.status === "Completed"
-                              ? "linear-gradient(90deg, #22c55e, #16a34a)"
-                              : `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                          borderRadius: "10px",
-                          transition: "width 0.5s ease",
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No projects yet.</span>
-              )}
-            </div>
-          </div>
         </div>
 
 
         {/* Right Column */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* Goals */}
-          <div
-            className="glass animate-fadeIn stagger-3"
-            style={{
-              padding: "24px",
-              borderRadius: "16px",
-              background: "rgba(103, 146, 137, 0.1)",
-              border: `1px solid rgba(103, 146, 137, 0.3)`,
-            }}
-          >
-            <h3
-              style={{
-                fontSize: "18px",
-                fontWeight: "700",
-                color: COLORS.peachGlow,
-                marginBottom: "20px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <Target size={22} color={COLORS.jungleTeal} />
-              Goals & Milestones
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {profileData.goals.length > 0 ? (
-                profileData.goals.map((goal) => (
-                  <div key={goal.id || goal.title}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: "14px", color: COLORS.peachGlow, fontWeight: "500", marginBottom: "4px" }}>
-                          {goal.title || "Goal"}
-                        </p>
-                        <p style={{ fontSize: "12px", color: "rgba(255, 229, 217, 0.6)" }}>
-                          Deadline: {goal.deadline || "—"}
-                        </p>
-                      </div>
-                      <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.jungleTeal }}>
-                        {goal.progress ?? 0}%
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "6px",
-                        background: "rgba(103, 146, 137, 0.2)",
-                        borderRadius: "10px",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${goal.progress ?? 0}%`,
-                          height: "100%",
-                          background: `linear-gradient(90deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                          borderRadius: "10px",
-                          transition: "width 0.5s ease",
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No goals yet.</span>
-              )}
-            </div>
-          </div>
-
-
           {/* Recent Activities */}
           <div
             className="glass animate-fadeIn stagger-4"
@@ -673,66 +569,25 @@ const InternProfilePage = ({ intern, onBack }) => {
               Recent Activities
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {profileData.recentActivities.length > 0 ? (
-                profileData.recentActivities.map((activity) => {
-                  const getIcon = () => {
-                    switch (activity.type) {
-                      case "report":
-                        return <TrendingUp size={16} color={COLORS.jungleTeal} />;
-                      case "tna":
-                        return <CheckCircle2 size={16} color={COLORS.jungleTeal} />;
-                      case "project":
-                        return <Briefcase size={16} color={COLORS.jungleTeal} />;
-                      case "blueprint":
-                        return <Target size={16} color={COLORS.jungleTeal} />;
-                      case "task":
-                        return <Award size={16} color={COLORS.jungleTeal} />;
-                      default:
-                        return <AlertCircle size={16} color={COLORS.jungleTeal} />;
-                    }
-                  };
-
-                  return (
-                    <div
-                      key={activity.id || activity.action}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "12px",
-                        padding: "12px",
-                        background: "rgba(103, 146, 137, 0.05)",
-                        borderRadius: "10px",
-                        borderLeft: `3px solid ${COLORS.jungleTeal}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "32px",
-                          height: "32px",
-                          background: "rgba(103, 146, 137, 0.2)",
-                          borderRadius: "8px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {getIcon()}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: "13px", color: COLORS.peachGlow, fontWeight: "500", marginBottom: "4px" }}>
-                          {activity.action || "Activity"}
-                        </p>
-                        <p style={{ fontSize: "11px", color: "rgba(255, 229, 217, 0.6)" }}>
-                          {activity.time || "—"}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <span style={{ fontSize: "13px", color: "rgba(255, 229, 217, 0.6)" }}>No recent activity.</span>
-              )}
+                {activities.length === 0 ? (
+                  <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>No recent activity.</div>
+                ) : activities.map((act, i) => (
+                <div key={i} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: act.type === "report" ? "#a78bfa" : "#14b8a6",
+                    flexShrink: 0,
+                  }} />
+                  <div style={{ flex: 1, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>{act.label}</div>
+                  <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>
+                    {act.date ? new Date(act.date).toLocaleDateString() : "—"}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

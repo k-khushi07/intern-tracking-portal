@@ -59,6 +59,12 @@ export const applicationsApi = {
 };
 
 export const hrApi = {
+  reviewProjectSubmission(id, { status, comment }) {
+  return apiFetch(`/hr/project-submissions/${id}/review`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, comment }),
+  });
+},
   users() {
     return apiFetch("/hr/users", { method: "GET" });
   },
@@ -179,6 +185,12 @@ export const hrApi = {
     const query = params.toString();
     return `/api/hr/active-interns/${profileId}/certificate.pdf${query ? `?${query}` : ""}`;
   },
+  getInternDailyLogs(internId) {
+    return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
+  },
+  getInternReports(internId) {
+    return apiFetch(`/hr/interns/${internId}/reports`, { method: "GET" });
+  },
 };
 
 export const adminApi = {
@@ -275,6 +287,12 @@ export const pmApi = {
   deleteAnnouncement(announcementId) {
     return apiFetch(`/pm/announcements/${announcementId}`, { method: "DELETE" });
   },
+  reviewProjectSubmission(id, { status, comment }) {
+    return apiFetch(`/pm/project-submissions/${id}/review`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, comment }),
+    });
+  },
 };
 
 export const internApi = {
@@ -355,6 +373,9 @@ export const internApi = {
   },
   syncBlueprintFromGoogle() {
     return apiFetch("/intern/blueprint/sync/from-google", { method: "POST" });
+  },
+  mySubmissions() {
+    return apiFetch("/intern/project-submissions", { method: "GET" });
   },
 };
 

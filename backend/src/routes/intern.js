@@ -1059,6 +1059,21 @@ function createInternRouter() {
     }
   });
 
+
+  router.get("/project-submissions", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      const rows = await restSelect({
+        table: "project_submissions",
+        select: "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at",
+        filters: { intern_profile_id: `eq.${internId}`, order: "submitted_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, submissions: rows || [] });
+    } catch (err) { next(err); }
+  });
+
   return router;
 }
 

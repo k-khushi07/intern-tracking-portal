@@ -665,6 +665,31 @@ function createPmRouter() {
     }
   });
 
+
+  router.patch("/project-submissions/:id/review", async (req, res, next) => {
+    try {
+      const { status, comment } = req.body || {};
+      if (!["approved", "rejected"].includes(status)) {
+        throw httpError(400, "status must be approved or rejected", true);
+      }
+      await restUpdate({
+        table: "project_submissions",
+        patch: {
+          status,
+          review_comment: comment || null,
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        matchQuery: { id: `eq.${req.params.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
 

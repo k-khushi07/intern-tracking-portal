@@ -1,3 +1,4 @@
+// backend/src/routes/hr.js
 const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
@@ -979,7 +980,6 @@ function createHrRouter({ emailService }) {
       const { pmCode } = req.body || {};
       if (!pmCode) throw httpError(400, "pmCode is required", true);
 
-      // Fetch current intern state (for chat archival on reassignment).
       const internRows = await restSelect({
         table: "profiles",
         select: "id,role,pm_id,status",
@@ -1009,7 +1009,6 @@ function createHrRouter({ emailService }) {
         useServiceRole: true,
       });
 
-      // If reassigned, archive old direct conversations (intern <-> old PM, intern <-> old teammates).
       if (oldPmId && String(oldPmId) !== String(pm.id)) {
         const now = new Date().toISOString();
         const [a, b] = String(req.params.id) < String(oldPmId) ? [req.params.id, oldPmId] : [oldPmId, req.params.id];
@@ -1144,21 +1143,11 @@ function createHrRouter({ emailService }) {
         const pattern = search.toLowerCase();
         interns = interns.filter((row) => {
           return (
-            String(row.fullName || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.email || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.department || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.mentor || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.internId || "")
-              .toLowerCase()
-              .includes(pattern)
+            String(row.fullName || "").toLowerCase().includes(pattern) ||
+            String(row.email || "").toLowerCase().includes(pattern) ||
+            String(row.department || "").toLowerCase().includes(pattern) ||
+            String(row.mentor || "").toLowerCase().includes(pattern) ||
+            String(row.internId || "").toLowerCase().includes(pattern)
           );
         });
       }
@@ -1351,19 +1340,8 @@ function createHrRouter({ emailService }) {
 
       res.status(200).json({
         success: true,
-        stats: {
-          totalApplications,
-          pendingCount,
-          approvedCount,
-          rejectedCount,
-          approvalRate,
-        },
-        charts: {
-          domainWise,
-          monthlyTrend,
-          topColleges,
-          departmentWise,
-        },
+        stats: { totalApplications, pendingCount, approvedCount, rejectedCount, approvalRate },
+        charts: { domainWise, monthlyTrend, topColleges, departmentWise },
       });
     } catch (err) {
       next(err);
@@ -1482,7 +1460,6 @@ function createHrRouter({ emailService }) {
 
       res.status(200).json({ success: true, reports: mapped });
     } catch (err) {
-      // Back-compat if migration hasn't run yet: no HR recipients, so return empty.
       if (String(err.message || "").includes("recipient_roles")) {
         res.status(200).json({ success: true, reports: [] });
         return;
@@ -1542,7 +1519,6 @@ function createHrRouter({ emailService }) {
       const msg = msgRows?.[0];
       if (!msg) throw httpError(404, "Message not found", true);
 
-      // Surrounding context: 8 before + 8 after.
       const before = await restSelect({
         table: "messages",
         select: "id,conversation_id,sender_profile_id,body,created_at,deleted_at,deleted_by_profile_id,delete_reason",
@@ -1852,12 +1828,69 @@ function createHrRouter({ emailService }) {
       const rows = await restSelect({
         table: "project_submissions",
         select:
-          "id,title,description,github_link,demo_link,status,submitted_at,intern_profile_id,pm_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
+          "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at,intern_profile_id,pm_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
         filters: { order: "submitted_at.desc" },
         accessToken: null,
         useServiceRole: true,
       });
       res.status(200).json({ success: true, submissions: rows || [] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ==================== PROJECT SUBMISSION REVIEW ====================
+  router.patch("/project-submissions/:id/review", async (req, res, next) => {
+    try {
+      const { status, comment } = req.body || {};
+      if (!["approved", "rejected"].includes(status)) {
+        throw httpError(400, "status must be approved or rejected", true);
+      }
+      await restUpdate({
+        table: "project_submissions",
+        patch: {
+          status,
+          review_comment: comment || null,
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        matchQuery: { id: `eq.${req.params.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/interns/:id/daily-logs", async (req, res, next) => {
+    try {
+      await assertInternExists(req.params.id);
+      const rows = await restSelect({
+        table: "daily_logs",
+        select: "id,log_date,hours_worked,tasks_completed,status,created_at",
+        filters: { intern_profile_id: `eq.${req.params.id}`, order: "log_date.desc", limit: 20 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, logs: rows || [] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/interns/:id/reports", async (req, res, next) => {
+    try {
+      await assertInternExists(req.params.id);
+      const rows = await restSelect({
+        table: "reports",
+        select: "id,report_type,status,submitted_at,created_at",
+        filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, reports: rows || [] });
     } catch (err) {
       next(err);
     }
