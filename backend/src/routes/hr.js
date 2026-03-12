@@ -63,6 +63,19 @@ function isMissingTableError(err, tableName) {
   );
 }
 
+function normalizeTemplateRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    content: row.content,
+    customPDF: row.custom_pdf || null,
+    isCustom: !!row.is_custom,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function generatePassword(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$!";
   let output = "";
@@ -201,6 +214,117 @@ function createHrRouter({ emailService }) {
   const auth = createAuthMiddleware();
 
   router.use(auth.requireRole("hr", "admin"));
+  const TEMPLATE_SELECT = "id,name,content,custom_pdf,is_custom,created_at,updated_at";
+
+  router.get("/templates", async (req, res, next) => {
+    try {
+      const rows = await restSelect({
+        table: "hr_templates",
+        select: TEMPLATE_SELECT,
+        filters: { order: "created_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const templates = (rows || []).map(normalizeTemplateRow).filter(Boolean);
+      res.status(200).json({ success: true, templates });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/templates", async (req, res, next) => {
+    try {
+      const ownerId = req.auth.profile.id;
+      const { name, content, customPDF } = req.body || {};
+      if (!name) throw httpError(400, "Template name is required", true);
+      if (!content && !customPDF) throw httpError(400, "Template content or PDF is required", true);
+
+      const now = new Date().toISOString();
+      const rows = await restInsert({
+        table: "hr_templates",
+        rows: {
+          name: String(name).trim(),
+          content: content || null,
+          custom_pdf: customPDF || null,
+          is_custom: true,
+          owner_profile_id: ownerId,
+          created_at: now,
+          updated_at: now,
+        },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const template = normalizeTemplateRow(Array.isArray(rows) ? rows[0] : rows);
+      res.status(201).json({ success: true, template });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/templates/:templateId", async (req, res, next) => {
+    try {
+      const templateId = String(req.params.templateId || "").trim();
+      if (!templateId) throw httpError(400, "Template ID is required", true);
+
+      const existing = await restSelect({
+        table: "hr_templates",
+        select: "id",
+        filters: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      if (!existing?.length) throw httpError(404, "Template not found", true);
+
+      const { name, content, customPDF } = req.body || {};
+      const patchPayload = {};
+      if (name !== undefined) patchPayload.name = String(name).trim();
+      if (content !== undefined) patchPayload.content = content || null;
+      if (customPDF !== undefined) patchPayload.custom_pdf = customPDF || null;
+      if (!Object.keys(patchPayload).length) throw httpError(400, "Nothing to update", true);
+      patchPayload.updated_at = new Date().toISOString();
+
+      const updated = await restUpdate({
+        table: "hr_templates",
+        patch: patchPayload,
+        matchQuery: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const template = normalizeTemplateRow(Array.isArray(updated) ? updated[0] : updated) || normalizeTemplateRow(existing[0]);
+      res.status(200).json({ success: true, template });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete("/templates/:templateId", async (req, res, next) => {
+    try {
+      const templateId = String(req.params.templateId || "").trim();
+      if (!templateId) throw httpError(400, "Template ID is required", true);
+
+      const existing = await restSelect({
+        table: "hr_templates",
+        select: "id",
+        filters: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      if (!existing?.length) throw httpError(404, "Template not found", true);
+
+      await restDelete({
+        table: "hr_templates",
+        matchQuery: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   async function loadApplicationById(applicationId) {
     const rows = await restSelect({

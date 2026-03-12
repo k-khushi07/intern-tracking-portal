@@ -113,6 +113,26 @@ export const hrApi = {
   internBlueprint(internId) {
     return apiFetch(`/hr/interns/${internId}/blueprint`, { method: "GET" });
   },
+  templates() {
+    return apiFetch("/hr/templates", { method: "GET" });
+  },
+  createTemplate(payload) {
+    return apiFetch("/hr/templates", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  updateTemplate(templateId, payload) {
+    return apiFetch(`/hr/templates/${templateId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  deleteTemplate(templateId) {
+    return apiFetch(`/hr/templates/${templateId}`, {
+      method: "DELETE",
+    });
+  },
   internReportLinks(internId) {
     return apiFetch(`/hr/interns/${internId}/report-links`, { method: "GET" });
   },
@@ -278,10 +298,10 @@ export const internApi = {
   stats() {
     return apiFetch("/intern/stats", { method: "GET" });
   },
-  updateMe({ profileData, profileCompleted }) {
+  updateMe({ profileData, profileCompleted, fileUploads } = {}) {
     return apiFetch("/intern/me", {
       method: "PATCH",
-      body: JSON.stringify({ profileData, profileCompleted }),
+      body: JSON.stringify({ profileData, profileCompleted, fileUploads }),
     });
   },
   dailyLogs() {

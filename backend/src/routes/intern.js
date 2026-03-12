@@ -1,6 +1,7 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
+const { uploadProfileFile } = require("../services/supabaseStorage");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { syncTnaFromPublicGoogle, syncBlueprintFromPublicGoogle } = require("../services/googlePublicSync");
 const { createNotifications, listProfilesByRole, toClientNotification, isMissingTableError } = require("../services/notifications");
@@ -52,7 +53,11 @@ function createInternRouter() {
   router.patch("/me", async (req, res, next) => {
     try {
       const internId = req.auth.profile.id;
-      const { profileData, profileCompleted } = req.body || {};
+      const { profileData, profileCompleted, fileUploads } = req.body || {};
+
+      if (fileUploads && Object.values(fileUploads).some(Boolean) && profileData === undefined) {
+        throw httpError(400, "profileData is required when uploading files", true);
+      }
 
       let prevCompleted = null;
       if (profileCompleted !== undefined) {
@@ -73,7 +78,48 @@ function createInternRouter() {
       const patch = {
         updated_at: new Date().toISOString(),
       };
-      if (profileData !== undefined) patch.profile_data = profileData;
+
+      const cleanedProfileData = profileData !== undefined ? { ...profileData } : {};
+      delete cleanedProfileData.profilePicture;
+      delete cleanedProfileData.resume;
+
+      let hasProfileDataPatch = profileData !== undefined;
+
+      if (fileUploads?.profilePicture) {
+        const url = await uploadProfileFile({
+          profileId: internId,
+          field: "profile-picture",
+          filePayload: fileUploads.profilePicture,
+        });
+        if (url) {
+          cleanedProfileData.profilePictureUrl = url;
+          cleanedProfileData.profilePictureMeta = {
+            filename: fileUploads.profilePicture.name || null,
+            type: fileUploads.profilePicture.type || null,
+            uploadedAt: new Date().toISOString(),
+          };
+          hasProfileDataPatch = true;
+        }
+      }
+
+      if (fileUploads?.resume) {
+        const url = await uploadProfileFile({
+          profileId: internId,
+          field: "resume",
+          filePayload: fileUploads.resume,
+        });
+        if (url) {
+          cleanedProfileData.resumeUrl = url;
+          cleanedProfileData.resumeMeta = {
+            filename: fileUploads.resume.name || null,
+            type: fileUploads.resume.type || null,
+            uploadedAt: new Date().toISOString(),
+          };
+          hasProfileDataPatch = true;
+        }
+      }
+
+      if (hasProfileDataPatch) patch.profile_data = cleanedProfileData;
       if (profileCompleted !== undefined) patch.profile_completed = !!profileCompleted;
 
       let updated;
