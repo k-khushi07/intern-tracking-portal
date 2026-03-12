@@ -163,10 +163,15 @@ export const hrApi = {
       body: JSON.stringify(payload || {}),
     });
   },
-  rejectApplication(applicationId, { reason }) {
+  rejectApplication(applicationId, { reason, sendEmail, subject, html } = {}) {
     return apiFetch(`/hr/applications/${applicationId}/reject`, {
       method: "POST",
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({
+        reason,
+        sendEmail,
+        subject,
+        html,
+      }),
     });
   },
   bulkApplicationStatus(payload) {

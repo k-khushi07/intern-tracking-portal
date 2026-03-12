@@ -6,7 +6,7 @@ const { setAuthCookies, clearAuthCookies } = require("../services/authCookies");
 async function loadProfile({ userId, accessToken }) {
   const rows = await restSelect({
     table: "profiles",
-    select: "id,email,full_name,role,status,pm_code,intern_id,pm_id,profile_completed",
+    select: "id,email,full_name,role,status,pm_code,intern_id,pm_id,profile_completed,profile_data",
     filters: { id: `eq.${userId}`, limit: 1 },
     accessToken: null,
     useServiceRole: true,
