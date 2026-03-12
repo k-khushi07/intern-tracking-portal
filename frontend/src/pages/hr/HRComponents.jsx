@@ -459,7 +459,57 @@ export function ApprovalModal({ intern, pmCodeInput, setPmCodeInput, allPMs, onA
   );
 }
 
-export function RejectModal({ intern, rejectReason, setRejectReason, onReject, onClose }) {
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+export function buildRejectionEmailHtml({ name, message, reason }) {
+  const safeName = escapeHtml(name || "Candidate");
+  const body = escapeHtml(message || "").replaceAll("\n", "<br/>");
+  const safeReason = escapeHtml(reason || "");
+
+  return `
+    <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; color: #101828; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #1d7874, #679289); color: white; padding: 18px 20px; border-radius: 12px 12px 0 0;">
+        <h2 style="margin: 0; font-size: 18px;">InternHub</h2>
+        <p style="margin: 6px 0 0; opacity: 0.95;">Internship Application - Status Update</p>
+      </div>
+      <div style="background: #fff; padding: 22px; border-radius: 0 0 12px 12px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);">
+        <p style="margin-top: 0;">Dear ${safeName},</p>
+        <p style="margin: 0; line-height: 1.6;">${body || ""}</p>
+        ${
+          safeReason
+            ? `
+              <div style="margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid rgba(16,24,40,0.08);">
+                <p style="margin: 0;"><strong>Reason:</strong> ${safeReason}</p>
+              </div>
+            `
+            : ""
+        }
+        <p style="margin-bottom: 0;">Regards,<br/>HR Team<br/>InternHub</p>
+      </div>
+    </div>
+  `;
+}
+
+export function RejectModal({
+  intern,
+  rejectReason,
+  setRejectReason,
+  emailSubject,
+  setEmailSubject,
+  emailMessage,
+  setEmailMessage,
+  isSubmitting,
+  onReject,
+  onClose,
+}) {
+
   return (
     <>
       <h2 style={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 20 }}>
@@ -491,11 +541,79 @@ export function RejectModal({ intern, rejectReason, setRejectReason, onReject, o
         />
       </div>
 
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+          Email Subject
+        </label>
+        <input
+          value={emailSubject || ""}
+          onChange={(e) => setEmailSubject(e.target.value)}
+          style={{ ...inputStyle }}
+          placeholder="Subject..."
+        />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+          Email Message
+        </label>
+        <textarea
+          value={emailMessage || ""}
+          onChange={(e) => setEmailMessage(e.target.value)}
+          style={{ ...inputStyle, minHeight: 140, resize: "vertical" }}
+          placeholder="Email message..."
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+            Edit message if you want something specific; reason above is inserted automatically (if provided).
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEmailSubject("Internship Application - Update");
+              setEmailMessage(
+                "Thank you for taking the time to apply for the internship program at InternHub.\n\nAfter careful review, we’re unable to move forward with your application at this time.\n\nWe encourage you to apply again in the future and wish you the very best."
+              );
+            }}
+            style={{ ...secondaryButtonStyle, padding: "8px 12px" }}
+          >
+            Reset template
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+          Rejection Email Preview
+        </label>
+        <div
+          style={{
+            borderRadius: 12,
+            border: `1px solid ${COLORS.borderGlass}`,
+            background: COLORS.surfaceGlass,
+            padding: 12,
+            maxHeight: 240,
+            overflowY: "auto",
+          }}
+          dangerouslySetInnerHTML={{
+            __html: buildRejectionEmailHtml({
+              name: intern?.fullName || intern?.name || "Candidate",
+              message: emailMessage || "",
+              reason: rejectReason,
+            }),
+          }}
+        />
+      </div>
+
       <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={onReject} style={{ ...primaryButtonStyle, background: COLORS.red }}>
-          <X size={18} /> Reject
+        <button
+          onClick={onReject}
+          disabled={isSubmitting}
+          style={{ ...primaryButtonStyle, background: COLORS.red, opacity: isSubmitting ? 0.7 : 1, cursor: isSubmitting ? "not-allowed" : "pointer" }}
+        >
+          <X size={18} /> {isSubmitting ? "Rejecting..." : "Reject"}
         </button>
-        <button onClick={onClose} style={secondaryButtonStyle}>
+        <button onClick={onClose} disabled={isSubmitting} style={{ ...secondaryButtonStyle, opacity: isSubmitting ? 0.7 : 1 }}>
           Cancel
         </button>
       </div>

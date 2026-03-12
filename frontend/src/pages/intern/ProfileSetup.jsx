@@ -11,12 +11,31 @@ const COLORS = {
   racingRed: "#d90429",
 };
 
+const buildStoredFilesFromProfile = (profileData = {}) => {
+  const sanitized = typeof profileData === "object" && profileData ? profileData : {};
+  return {
+    profilePicture: sanitized.profilePictureUrl
+      ? {
+          url: sanitized.profilePictureUrl,
+          filename: sanitized.profilePictureMeta?.filename || "Profile picture",
+        }
+      : null,
+    resume: sanitized.resumeUrl
+      ? {
+          url: sanitized.resumeUrl,
+          filename: sanitized.resumeMeta?.filename || sanitized.resumeFileName || "Resume / CV",
+        }
+      : null,
+  };
+};
+
 export default function InternProfileSetup() {
   const [currentUser, setCurrentUser] = useState(null);
   const [step, setStep] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [storedFiles, setStoredFiles] = useState({ profilePicture: null, resume: null });
 
   const [profile, setProfile] = useState({
     // Personal Details
@@ -49,6 +68,7 @@ export default function InternProfileSetup() {
     profilePicture: null,
     resume: null,
   });
+  const [fileUploads, setFileUploads] = useState({ profilePicture: null, resume: null });
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -65,6 +85,18 @@ export default function InternProfileSetup() {
         return;
       }
 
+      const profileData =
+        me.profile && typeof me.profile.profile_data === "object" ? me.profile.profile_data : {};
+      const existingFiles = buildStoredFilesFromProfile(profileData);
+      if (existingFiles.profilePicture || existingFiles.resume) {
+        setStoredFiles(existingFiles);
+        setProfile((prev) => ({
+          ...prev,
+          profilePicture: prev.profilePicture || existingFiles.profilePicture?.url || null,
+          resume: prev.resume || existingFiles.resume?.url || null,
+        }));
+      }
+
       const u = {
         role: me.profile.role,
         fullName: me.profile.full_name,
@@ -72,6 +104,7 @@ export default function InternProfileSetup() {
         pmCode: me.profile.pm_code || null,
         internId: me.profile.intern_id || null,
         profileCompleted: !!me.profile.profile_completed,
+        profileData,
       };
       localStorage.setItem("currentUser", JSON.stringify(u));
       setCurrentUser(u);
@@ -83,6 +116,16 @@ export default function InternProfileSetup() {
     try {
       const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
       if (user.role === "intern") {
+        const cachedProfileData = user.profileData || {};
+        const cachedFiles = buildStoredFilesFromProfile(cachedProfileData);
+        if (cachedFiles.profilePicture || cachedFiles.resume) {
+          setStoredFiles(cachedFiles);
+          setProfile((prev) => ({
+            ...prev,
+            profilePicture: prev.profilePicture || cachedFiles.profilePicture?.url || null,
+            resume: prev.resume || cachedFiles.resume?.url || null,
+          }));
+        }
         setCurrentUser(user);
       } else {
         window.location.href = "/";
@@ -105,13 +148,13 @@ export default function InternProfileSetup() {
   };
 
   const handleFileChange = (field, file) => {
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfile((prev) => ({ ...prev, [field]: reader.result }));
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfile((prev) => ({ ...prev, [field]: reader.result }));
+    };
+    reader.readAsDataURL(file);
+    setFileUploads((prev) => ({ ...prev, [field]: file }));
   };
 
   const validateStep = (stepNum) => {
@@ -196,18 +239,38 @@ export default function InternProfileSetup() {
         return;
       }
 
-      // Create a clean profile object without file data if too large
+      const profilePicturePreview = profile.profilePicture;
+      const resumePreview = profile.resume;
       const cleanProfile = { ...profile };
-      
-      // Avoid persisting base64 blobs in DB/localStorage.
-      if (typeof cleanProfile.profilePicture === "string" && cleanProfile.profilePicture.startsWith("data:")) {
-        cleanProfile.profilePicture = "uploaded";
-      }
-      if (typeof cleanProfile.resume === "string" && cleanProfile.resume.startsWith("data:")) {
-        cleanProfile.resume = "uploaded";
-      }
+      delete cleanProfile.profilePicture;
+      delete cleanProfile.resume;
 
-      await internApi.updateMe({ profileData: cleanProfile, profileCompleted: true });
+      const buildUploadPayload = (fieldKey, previewValue) => {
+        const file = fileUploads[fieldKey];
+        if (!file || !previewValue) return null;
+        return {
+          name: file.name,
+          type: file.type,
+          dataUrl: previewValue,
+        };
+      };
+
+      const profilePictureUpload = buildUploadPayload("profilePicture", profilePicturePreview);
+      const resumeUpload = buildUploadPayload("resume", resumePreview);
+      const uploadsPayload = {};
+      if (profilePictureUpload) uploadsPayload.profilePicture = profilePictureUpload;
+      if (resumeUpload) uploadsPayload.resume = resumeUpload;
+
+      const result = await internApi.updateMe({
+        profileData: cleanProfile,
+        profileCompleted: true,
+        fileUploads: Object.keys(uploadsPayload).length ? uploadsPayload : undefined,
+      });
+      const updatedProfileData = result?.profile?.profile_data || {};
+      const refreshedFiles = buildStoredFilesFromProfile(updatedProfileData);
+      if (refreshedFiles.profilePicture || refreshedFiles.resume) {
+        setStoredFiles(refreshedFiles);
+      }
 
       const users = JSON.parse(localStorage.getItem("users") || "[]");
       console.log("Total users before update:", users.length);
@@ -218,6 +281,7 @@ export default function InternProfileSetup() {
           return {
             ...u,
             profile: cleanProfile,
+            profileData: updatedProfileData,
             profileCompleted: true,
             status: "active",
             profileCompletedAt: new Date().toISOString(),
@@ -234,6 +298,7 @@ export default function InternProfileSetup() {
         profile: cleanProfile,
         profileCompleted: true,
         status: "active",
+        profileData: updatedProfileData,
       };
       localStorage.setItem("currentUser", JSON.stringify(updatedCurrentUser));
       console.log("Current user updated");
@@ -339,6 +404,7 @@ export default function InternProfileSetup() {
               profile={profile}
               onFileChange={handleFileChange}
               isMobile={isMobile}
+              storedFiles={storedFiles}
             />
           )}
 
@@ -647,7 +713,7 @@ function InternshipDetailsStep({ profile, onChange, isMobile }) {
   );
 }
 
-function DocumentsStep({ profile, onFileChange, isMobile }) {
+function DocumentsStep({ profile, onFileChange, isMobile, storedFiles }) {
   return (
     <div>
       <h2 style={{ fontSize: isMobile ? 20 : 24, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
@@ -662,6 +728,7 @@ function DocumentsStep({ profile, onFileChange, isMobile }) {
           currentFile={profile.profilePicture}
           onChange={(file) => onFileChange("profilePicture", file)}
           description="Upload a professional photo (JPG, PNG)"
+          existingFile={storedFiles?.profilePicture}
         />
 
         <FileUploadField
@@ -671,6 +738,7 @@ function DocumentsStep({ profile, onFileChange, isMobile }) {
           currentFile={profile.resume}
           onChange={(file) => onFileChange("resume", file)}
           description="Upload your resume (PDF, DOC, DOCX)"
+          existingFile={storedFiles?.resume}
         />
       </div>
     </div>
@@ -716,7 +784,7 @@ function SelectField({ label, value, onChange, options, icon }) {
   );
 }
 
-function FileUploadField({ label, icon, accept, currentFile, onChange, description }) {
+function FileUploadField({ label, icon, accept, currentFile, onChange, description, existingFile }) {
   return (
     <div
       style={{
@@ -763,6 +831,28 @@ function FileUploadField({ label, icon, accept, currentFile, onChange, descripti
           }}
         >
           ✓ File uploaded successfully
+        </div>
+      )}
+      {existingFile?.url && (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 12,
+            color: "rgba(255,255,255,0.75)",
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
+          <span>Saved file:</span>
+          <a
+            href={existingFile.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "#a5f3fc", textDecoration: "underline", fontWeight: 600 }}
+          >
+            {existingFile.filename || "View"}
+          </a>
         </div>
       )}
     </div>

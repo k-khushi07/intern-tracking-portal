@@ -64,6 +64,62 @@ function isMissingTableError(err, tableName) {
   );
 }
 
+function normalizeTemplateRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    content: row.content,
+    customPDF: row.custom_pdf || null,
+    isCustom: !!row.is_custom,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const PORTAL_URL = process.env.FRONTEND_URL || "http://localhost:5173/intern/login";
+
+function buildApprovalEmailHtml({
+  name,
+  internId,
+  password,
+  pmCode,
+  department,
+  mentor,
+  startDate,
+  endDate,
+}) {
+  const safeName = name || "Intern";
+  const safePmCode = pmCode || "[PM Code]";
+  return `
+    <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; color: #101828; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #1d7874, #679289); color: white; padding: 22px; border-radius: 12px 12px 0 0;">
+        <h1 style="margin: 0; font-size: 26px;">🎉 Congratulations!</h1>
+        <p style="margin: 8px 0 0;">InternHub Selection - Offer Letter Attached</p>
+      </div>
+      <div style="background: #fff; padding: 24px; border-radius: 0 0 12px 12px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);">
+        <p style="margin-top: 0;">Dear ${safeName},</p>
+        <p>We are thrilled to confirm your internship with InternHub. Please find the credentials you will need below, along with next steps.</p>
+        <div style="background: #f4f6f8; padding: 16px; border-radius: 10px; margin: 20px 0;">
+          <p style="margin: 4px 0;"><strong>Intern ID:</strong> ${internId}</p>
+          <p style="margin: 4px 0;"><strong>Password:</strong> ${password}</p>
+          <p style="margin: 4px 0;"><strong>PM Code:</strong> ${safePmCode}</p>
+        </div>
+        <h3 style="margin-bottom: 8px;">Next Steps</h3>
+        <ol style="margin-top: 0; padding-left: 20px; line-height: 1.5;">
+          <li>Visit the InternHub Portal: <a href="${PORTAL_URL}" style="color: #1d7874;">${PORTAL_URL}</a></li>
+          <li>Login with your Intern ID, Password, and PM Code</li>
+          <li>Complete your profile setup and upload any pending documents</li>
+          <li>Review the attached offer letter for the full internship details</li>
+          <li>Your start date (${startDate}) and mentor details (${mentor}) are confirmed; reach out if you have questions</li>
+        </ol>
+        <p>Please keep this email for your records—the attached offer letter is the official confirmation of your internship.</p>
+        <p style="margin-bottom: 4px;">Best regards,<br/>HR Team<br/>InternHub</p>
+      </div>
+    </div>
+  `;
+}
+
 function generatePassword(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$!";
   let output = "";
@@ -202,6 +258,117 @@ function createHrRouter({ emailService }) {
   const auth = createAuthMiddleware();
 
   router.use(auth.requireRole("hr", "admin"));
+  const TEMPLATE_SELECT = "id,name,content,custom_pdf,is_custom,created_at,updated_at";
+
+  router.get("/templates", async (req, res, next) => {
+    try {
+      const rows = await restSelect({
+        table: "hr_templates",
+        select: TEMPLATE_SELECT,
+        filters: { order: "created_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const templates = (rows || []).map(normalizeTemplateRow).filter(Boolean);
+      res.status(200).json({ success: true, templates });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/templates", async (req, res, next) => {
+    try {
+      const ownerId = req.auth.profile.id;
+      const { name, content, customPDF } = req.body || {};
+      if (!name) throw httpError(400, "Template name is required", true);
+      if (!content && !customPDF) throw httpError(400, "Template content or PDF is required", true);
+
+      const now = new Date().toISOString();
+      const rows = await restInsert({
+        table: "hr_templates",
+        rows: {
+          name: String(name).trim(),
+          content: content || null,
+          custom_pdf: customPDF || null,
+          is_custom: true,
+          owner_profile_id: ownerId,
+          created_at: now,
+          updated_at: now,
+        },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const template = normalizeTemplateRow(Array.isArray(rows) ? rows[0] : rows);
+      res.status(201).json({ success: true, template });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/templates/:templateId", async (req, res, next) => {
+    try {
+      const templateId = String(req.params.templateId || "").trim();
+      if (!templateId) throw httpError(400, "Template ID is required", true);
+
+      const existing = await restSelect({
+        table: "hr_templates",
+        select: "id",
+        filters: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      if (!existing?.length) throw httpError(404, "Template not found", true);
+
+      const { name, content, customPDF } = req.body || {};
+      const patchPayload = {};
+      if (name !== undefined) patchPayload.name = String(name).trim();
+      if (content !== undefined) patchPayload.content = content || null;
+      if (customPDF !== undefined) patchPayload.custom_pdf = customPDF || null;
+      if (!Object.keys(patchPayload).length) throw httpError(400, "Nothing to update", true);
+      patchPayload.updated_at = new Date().toISOString();
+
+      const updated = await restUpdate({
+        table: "hr_templates",
+        patch: patchPayload,
+        matchQuery: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const template = normalizeTemplateRow(Array.isArray(updated) ? updated[0] : updated) || normalizeTemplateRow(existing[0]);
+      res.status(200).json({ success: true, template });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete("/templates/:templateId", async (req, res, next) => {
+    try {
+      const templateId = String(req.params.templateId || "").trim();
+      if (!templateId) throw httpError(400, "Template ID is required", true);
+
+      const existing = await restSelect({
+        table: "hr_templates",
+        select: "id",
+        filters: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      if (!existing?.length) throw httpError(404, "Template not found", true);
+
+      await restDelete({
+        table: "hr_templates",
+        matchQuery: { id: `eq.${templateId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   async function loadApplicationById(applicationId) {
     const rows = await restSelect({
@@ -240,6 +407,8 @@ function createHrRouter({ emailService }) {
     mentorName,
     stipend,
     password,
+    pmCode,
+    offerLetterAttachment,
     sendEmail = true,
   }) {
     if (!department || !mentorName) {
@@ -329,24 +498,57 @@ function createHrRouter({ emailService }) {
 
     let emailSent = false;
     if (emailService && app.email && sendEmail !== false) {
-      await emailService
-        .sendEmail({
+      try {
+        const normalizedAttachmentContent = String(offerLetterAttachment?.content || "").trim();
+        const normalizedAttachmentFilename = String(offerLetterAttachment?.filename || "").trim();
+
+        let attachments = [];
+        if (normalizedAttachmentContent) {
+          attachments = [
+            {
+              filename: normalizedAttachmentFilename || `Offer_Letter_${generatedInternId}.pdf`,
+              content: normalizedAttachmentContent,
+            },
+          ];
+        } else {
+          const bundle = await loadApprovedInternBundle(createdId);
+          const offerLetterBuffer =
+            bundle && bundle.approvedIntern && bundle.profile && bundle.application
+              ? await createOfferLetterPdf({
+                  approvedIntern: bundle.approvedIntern,
+                  profile: bundle.profile,
+                  application: bundle.application,
+                })
+              : null;
+          attachments = offerLetterBuffer
+            ? [
+                {
+                  filename: `Offer_Letter_${bundle.approvedIntern?.intern_id || "intern"}.pdf`,
+                  content: offerLetterBuffer.toString("base64"),
+                },
+              ]
+            : [];
+        }
+
+        await emailService.sendEmail({
           to: app.email,
-          subject: "Internship application approved",
-          html: `<p>Hi ${app.applicant_name || "Intern"},</p>
-<p>Your internship application has been approved.</p>
-<p><strong>Intern ID:</strong> ${generatedInternId}<br/>
-<strong>Email:</strong> ${app.email}<br/>
-<strong>Password:</strong> ${generatedPassword}</p>
-<p><strong>Department:</strong> ${department}<br/>
-<strong>Mentor:</strong> ${mentorName}<br/>
-<strong>Start Date:</strong> ${validatedDates.startDate}<br/>
-<strong>End Date:</strong> ${validatedDates.endDate}</p>`,
-        })
-        .then(() => {
-          emailSent = true;
-        })
-        .catch(() => {});
+          subject: "🎉 InternHub Selection - Offer Letter Attached",
+          html: buildApprovalEmailHtml({
+            name: app.applicant_name,
+            internId: generatedInternId,
+            password: generatedPassword,
+            pmCode,
+            department,
+            mentor: mentorName,
+            startDate: validatedDates.startDate,
+            endDate: validatedDates.endDate,
+          }),
+          attachments,
+        });
+        emailSent = true;
+      } catch (err) {
+        console.error("Approval email failed:", err);
+      }
     }
 
     return {
@@ -779,7 +981,7 @@ function createHrRouter({ emailService }) {
     try {
       const { reason } = req.body || {};
       const rejectionReason = String(reason || "").trim();
-      if (!rejectionReason) throw httpError(400, "rejection_reason is required", true);
+      const { sendEmail, subject, html } = req.body || {};
 
       const existing = await loadApplicationById(req.params.id);
       if (!existing) throw httpError(404, "Application not found", true);
@@ -789,7 +991,7 @@ function createHrRouter({ emailService }) {
         table: "internship_applications",
         patch: {
           status: "rejected",
-          rejection_reason: rejectionReason,
+          rejection_reason: rejectionReason || null,
           reviewed_by: req.auth.profile.id,
           reviewed_at: now,
           updated_at: now,
@@ -804,19 +1006,46 @@ function createHrRouter({ emailService }) {
         fromStatus: normalizeApplicationStatus(existing.status),
         toStatus: "rejected",
         changedBy: req.auth.profile.id,
-        reason: rejectionReason,
+        reason: rejectionReason || null,
       });
 
       sendItpChanged(req.app.get("io"), "internship_applications", "update", req.params.id);
 
       if (emailService && existing.email) {
-        const shouldSend = req.body?.sendEmail !== false;
+        const shouldSend = sendEmail !== false;
         if (shouldSend) {
+          const safeSubject = String(subject || "").trim() || "Internship Application - Update";
+          const overrideHtml = String(html || "").trim();
+          const safeName = existing.applicant_name || "Candidate";
+          const reasonBlock = rejectionReason
+            ? `
+                <div style="margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid rgba(16,24,40,0.08);">
+                  <p style="margin: 0;"><strong>Reason:</strong> ${rejectionReason}</p>
+                </div>
+              `
+            : "";
           await emailService
             .sendEmail({
               to: existing.email,
-              subject: "Internship application update",
-              html: `<p>Hi ${existing.applicant_name || "Candidate"},</p><p>Your internship application has been rejected.</p><p><strong>Reason:</strong> ${rejectionReason}</p>`,
+              subject: safeSubject,
+              html:
+                overrideHtml ||
+                `
+                  <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; color: #101828; max-width: 600px; margin: 0 auto;">
+                    <div style="background: linear-gradient(135deg, #1d7874, #679289); color: white; padding: 18px 20px; border-radius: 12px 12px 0 0;">
+                      <h2 style="margin: 0; font-size: 18px;">InternHub</h2>
+                      <p style="margin: 6px 0 0; opacity: 0.95;">Internship Application - Status Update</p>
+                    </div>
+                    <div style="background: #fff; padding: 22px; border-radius: 0 0 12px 12px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);">
+                      <p style="margin-top: 0;">Dear ${safeName},</p>
+                      <p>Thank you for taking the time to apply for the internship program at InternHub.</p>
+                      <p>After careful review, we’re unable to move forward with your application at this time.</p>
+                      ${reasonBlock}
+                      <p>We encourage you to apply again in the future and wish you the very best.</p>
+                      <p style="margin-bottom: 0;">Regards,<br/>HR Team<br/>InternHub</p>
+                    </div>
+                  </div>
+                `,
             })
             .catch(() => {});
         }
@@ -830,7 +1059,7 @@ function createHrRouter({ emailService }) {
 
   router.post("/applications/:id/approve", async (req, res, next) => {
     try {
-      const { startDate, endDate, department, mentorName, stipend, password, sendEmail } = req.body || {};
+      const { startDate, endDate, department, mentorName, stipend, password, pmCode, offerLetterAttachment, sendEmail } = req.body || {};
       const approval = await approveApplicationRecord({
         applicationId: req.params.id,
         approvedByProfileId: req.auth.profile.id,
@@ -840,6 +1069,8 @@ function createHrRouter({ emailService }) {
         mentorName,
         stipend,
         password,
+        pmCode,
+        offerLetterAttachment,
         sendEmail,
       });
 
@@ -982,6 +1213,7 @@ function createHrRouter({ emailService }) {
     try {
       const { pmCode } = req.body || {};
       if (!pmCode) throw httpError(400, "pmCode is required", true);
+      const normalizedPmCode = String(pmCode || "").trim();
 
       const internRows = await restSelect({
         table: "profiles",
@@ -997,7 +1229,7 @@ function createHrRouter({ emailService }) {
       const pmRows = await restSelect({
         table: "profiles",
         select: "id,pm_code",
-        filters: { pm_code: `eq.${pmCode}`, role: "eq.pm", limit: 1 },
+        filters: { pm_code: `ilike.${normalizedPmCode}`, role: "eq.pm", limit: 1 },
         accessToken: null,
         useServiceRole: true,
       });

@@ -1,8 +1,9 @@
 // EmailTemplateManager.jsx - Email Template System for HR Dashboard
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Copy, RefreshCw, Save, Trash2, Paperclip, Upload, Edit2, X, Plus } from 'lucide-react';
 import { COLORS } from './HRConstants';
 import jsPDF from 'jspdf';
+import { hrApi } from '../../lib/apiClient';
 
 // Default Offer Letter Templates (these will be converted to PDF and attached to email)
 const DEFAULT_OFFER_TEMPLATES = [
@@ -142,25 +143,13 @@ Place: ____________________`
   }
 ];
 
-// Load custom templates from localStorage
-const loadCustomTemplates = () => {
-  try {
-    const saved = localStorage.getItem('customOfferTemplates');
-    return saved ? JSON.parse(saved) : [];
-  } catch (error) {
-    console.error('Error loading custom templates:', error);
-    return [];
-  }
-};
-
-// Save custom templates to localStorage
-const saveCustomTemplates = (templates) => {
-  try {
-    localStorage.setItem('customOfferTemplates', JSON.stringify(templates));
-  } catch (error) {
-    console.error('Error saving custom templates:', error);
-  }
-};
+const mapApiTemplate = (template) => ({
+  id: template.id,
+  name: template.name,
+  content: template.content || "",
+  customPDF: template.customPDF || null,
+  isCustom: template.isCustom ?? true,
+});
 
 // Generate Offer Letter PDF
 const generateOfferLetterPDF = (template, internData) => {
@@ -259,12 +248,13 @@ const pdfToBase64 = (pdf) => {
 };
 
 // EmailTemplateManager Component
-export const EmailTemplateManager = ({ 
+export const EmailTemplateManager = ({
   internData,
-  onTemplateReady 
+  onTemplateReady
 }) => {
-  const [allTemplates, setAllTemplates] = useState([...DEFAULT_OFFER_TEMPLATES, ...loadCustomTemplates()]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(allTemplates[0].id);
+  const [customTemplates, setCustomTemplates] = useState([]);
+  const templates = useMemo(() => [...DEFAULT_OFFER_TEMPLATES, ...customTemplates], [customTemplates]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_OFFER_TEMPLATES[0].id);
   const [showTemplateList, setShowTemplateList] = useState(false);
   const [generatedPDF, setGeneratedPDF] = useState(null);
   const [pdfBase64, setPdfBase64] = useState(null);
@@ -294,6 +284,36 @@ export const EmailTemplateManager = ({
     setNotice({ open: true, title, message, tone });
   };
 
+  useEffect(() => {
+    let active = true;
+    const loadTemplates = async () => {
+      try {
+        const payload = await hrApi.templates();
+        if (!active) return;
+        const serverTemplates = (payload.templates || []).map((template) => ({
+          id: template.id,
+          name: template.name,
+          content: template.content || "",
+          customPDF: template.customPDF || null,
+          isCustom: true,
+        }));
+        setCustomTemplates(serverTemplates);
+      } catch (error) {
+        console.error("Failed to load HR templates:", error);
+        setNotice({
+          open: true,
+          title: "Templates unavailable",
+          message: "Could not load saved templates. Try again later.",
+          tone: "error",
+        });
+      }
+    };
+    void loadTemplates();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const internDataKey = JSON.stringify({
     internName: internData?.internName || "",
     internEmail: internData?.internEmail || "",
@@ -306,7 +326,7 @@ export const EmailTemplateManager = ({
   });
 
   const generatePDF = useCallback(async () => {
-    const template = allTemplates.find(t => t.id === selectedTemplateId);
+    const template = templates.find(t => t.id === selectedTemplateId);
     if (!template) return;
 
     const generationKey = `${selectedTemplateId}|${internDataKey}`;
@@ -324,7 +344,7 @@ export const EmailTemplateManager = ({
 
     const base64 = await pdfToBase64(pdf);
     setPdfBase64(base64);
-  }, [allTemplates, selectedTemplateId, internDataKey]);
+  }, [templates, selectedTemplateId, internDataKey]);
 
 
   // ✅ FIXED: Only regenerate when template ID actually changes
@@ -346,7 +366,7 @@ export const EmailTemplateManager = ({
     if (notifyKey === lastNotifiedDataRef.current) return;
     lastNotifiedDataRef.current = notifyKey;
 
-    const template = allTemplates.find(t => t.id === selectedTemplateId);
+    const template = templates.find(t => t.id === selectedTemplateId);
     if (onTemplateReady && template) {
       onTemplateReady({
         templateName: template.name,
@@ -354,7 +374,7 @@ export const EmailTemplateManager = ({
         filename: `Offer_Letter_${String(internData?.internName || "Intern").replace(/\\s+/g, '_')}_${Date.now()}.pdf`
       });
     }
-  }, [pdfBase64, selectedTemplateId, internDataKey, allTemplates, onTemplateReady, internData?.internName]);
+  }, [pdfBase64, selectedTemplateId, internDataKey, templates, onTemplateReady, internData?.internName]);
 
   const handleTemplateSelect = (templateId) => {
     setSelectedTemplateId(templateId);
@@ -409,7 +429,7 @@ export const EmailTemplateManager = ({
     setIsEditMode(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editedName.trim()) {
       showNotice({
         title: "Template name required",
@@ -428,31 +448,49 @@ export const EmailTemplateManager = ({
       return;
     }
 
-    const updatedTemplates = allTemplates.map(t => 
-      t.id === editingTemplate.id 
-        ? { ...t, name: editedName, content: editedContent }
-        : t
-    );
+    try {
+      let updatedTemplate = null;
+      if (editingTemplate?.isCustom) {
+        const response = await hrApi.updateTemplate(editingTemplate.id, {
+          name: editedName,
+          content: editedContent,
+        });
+        updatedTemplate = mapApiTemplate(response.template);
+        setCustomTemplates((prev) =>
+          prev.map((template) => (template.id === updatedTemplate.id ? updatedTemplate : template))
+        );
+      } else {
+        const response = await hrApi.createTemplate({
+          name: editedName,
+          content: editedContent,
+        });
+        updatedTemplate = mapApiTemplate(response.template);
+        setCustomTemplates((prev) => [...prev, updatedTemplate]);
+        setSelectedTemplateId(updatedTemplate.id);
+      }
 
-    setAllTemplates(updatedTemplates);
-    
-    // Save custom templates to localStorage
-    const customTemplates = updatedTemplates.filter(t => t.isCustom);
-    saveCustomTemplates(customTemplates);
+      setIsEditMode(false);
+      setEditingTemplate(null);
+      setEditedContent("");
+      setEditedName("");
 
-    setIsEditMode(false);
-    setEditingTemplate(null);
-    
-    // Regenerate PDF if this was the selected template
-    if (selectedTemplateId === editingTemplate.id) {
-      setTimeout(() => generatePDF(), 100);
+      if (selectedTemplateId === editingTemplate?.id) {
+        setTimeout(() => generatePDF(), 100);
+      }
+
+      showNotice({
+        title: editingTemplate?.isCustom ? "Template updated" : "Template created",
+        message: `Template "${updatedTemplate.name}" saved successfully.`,
+        tone: "success",
+      });
+    } catch (error) {
+      console.error("Failed to save template:", error);
+      showNotice({
+        title: "Save failed",
+        message: error?.message || "Unable to save template. Try again later.",
+        tone: "error",
+      });
     }
-
-    showNotice({
-      title: "Template updated",
-      message: "Template updated successfully.",
-      tone: "success",
-    });
   }
 
   const handleCancelEdit = () => {
@@ -475,27 +513,34 @@ export const EmailTemplateManager = ({
     setPendingDeleteTemplate(template);
   };
 
-  const confirmDeleteTemplate = () => {
+  const confirmDeleteTemplate = async () => {
     const template = pendingDeleteTemplate;
     if (!template) return;
-    const updatedTemplates = allTemplates.filter(t => t.id !== template.id);
-    setAllTemplates(updatedTemplates);
-    
-    // Save to localStorage
-    const customTemplates = updatedTemplates.filter(t => t.isCustom);
-    saveCustomTemplates(customTemplates);
+    try {
+      await hrApi.deleteTemplate(template.id);
+      setCustomTemplates((prev) => prev.filter((t) => t.id !== template.id));
 
-    // If deleted template was selected, select first template
-    if (selectedTemplateId === template.id) {
-      setSelectedTemplateId(updatedTemplates[0].id);
+      if (selectedTemplateId === template.id) {
+        const firstTemplate = templates[0];
+        if (firstTemplate) {
+          setSelectedTemplateId(firstTemplate.id);
+        }
+      }
+
+      setPendingDeleteTemplate(null);
+      showNotice({
+        title: "Template deleted",
+        message: `"${template.name}" deleted successfully.`,
+        tone: "success",
+      });
+    } catch (error) {
+      console.error("Failed to delete template:", error);
+      showNotice({
+        title: "Delete failed",
+        message: error?.message || "Unable to delete template. Try again later.",
+        tone: "error",
+      });
     }
-
-    setPendingDeleteTemplate(null);
-    showNotice({
-      title: "Template deleted",
-      message: `"${template.name}" deleted successfully.`,
-      tone: "success",
-    });
   };
 
   // Upload custom PDF
@@ -515,31 +560,32 @@ export const EmailTemplateManager = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64PDF = e.target.result;
-      
-      const newTemplate = {
-        id: `custom_pdf_${Date.now()}`,
-        name: file.name.replace('.pdf', ''),
-        isCustom: true,
-        customPDF: base64PDF,
-        content: null, // No content for uploaded PDFs
+      const createTemplate = async () => {
+        try {
+          const response = await hrApi.createTemplate({
+            name: file.name.replace('.pdf', ''),
+            customPDF: base64PDF,
+          });
+          const newTemplate = mapApiTemplate(response.template);
+          setCustomTemplates((prev) => [...prev, newTemplate]);
+          setSelectedTemplateId(newTemplate.id);
+          setShowUploadDialog(false);
+          showNotice({
+            title: "Template uploaded",
+            message: "Custom PDF template uploaded successfully.",
+            tone: "success",
+          });
+        } catch (error) {
+          console.error("Failed to upload custom PDF:", error);
+          showNotice({
+            title: "Upload failed",
+            message: error?.message || "Could not upload template. Try again later.",
+            tone: "error",
+          });
+        }
       };
 
-      const updatedTemplates = [...allTemplates, newTemplate];
-      setAllTemplates(updatedTemplates);
-      
-      // Save to localStorage
-      const customTemplates = updatedTemplates.filter(t => t.isCustom);
-      saveCustomTemplates(customTemplates);
-
-      // Select the new template
-      setSelectedTemplateId(newTemplate.id);
-      setShowUploadDialog(false);
-
-      showNotice({
-        title: "Template uploaded",
-        message: "Custom PDF template uploaded successfully.",
-        tone: "success",
-      });
+      void createTemplate();
     };
 
     reader.readAsDataURL(file);
@@ -552,17 +598,15 @@ export const EmailTemplateManager = ({
     setShowCreateTemplateModal(true);
   };
 
-  const submitCreateNewTemplate = () => {
+  const submitCreateNewTemplate = async () => {
     const templateName = String(newTemplateName || "").trim();
     if (!templateName) {
       setNewTemplateError("Template name is required.");
       return;
     }
 
-    const newTemplate = {
-      id: `custom_${Date.now()}`,
+    const newTemplatePayload = {
       name: templateName,
-      isCustom: true,
       content: `[COMPANY_LETTERHEAD]
 
 Date: [DATE]
@@ -577,20 +621,20 @@ Best regards,
 HR Team`
     };
 
-    const updatedTemplates = [...allTemplates, newTemplate];
-    setAllTemplates(updatedTemplates);
-    
-    // Save to localStorage
-    const customTemplates = updatedTemplates.filter(t => t.isCustom);
-    saveCustomTemplates(customTemplates);
-
-    // Select and edit the new template
-    setSelectedTemplateId(newTemplate.id);
-    setShowCreateTemplateModal(false);
-    handleEditTemplate(newTemplate);
+    try {
+      const response = await hrApi.createTemplate(newTemplatePayload);
+      const createdTemplate = mapApiTemplate(response.template);
+      setCustomTemplates((prev) => [...prev, createdTemplate]);
+      setSelectedTemplateId(createdTemplate.id);
+      setShowCreateTemplateModal(false);
+      handleEditTemplate(createdTemplate);
+    } catch (error) {
+      console.error("Failed to create template:", error);
+      setNewTemplateError(error?.message || "Unable to create template. Try again later.");
+    }
   };
 
-  const selectedTemplate = allTemplates.find(t => t.id === selectedTemplateId);
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
   return (
     <div style={{
@@ -911,7 +955,7 @@ HR Team`
                   maxHeight: 400,
                   overflowY: 'auto'
                 }}>
-                  {allTemplates.map(template => (
+                  {templates.map((template) => (
                     <div
                       key={template.id}
                       style={{

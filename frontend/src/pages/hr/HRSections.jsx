@@ -76,6 +76,170 @@ const INTERN_STATUS = {
 
 const DEPARTMENT_OPTIONS = ["SAP", "Oracle", "Accounts", "HR"];
 
+const normalizeDateInputValue = (value) => {
+  if (!value || typeof value !== "string") return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const asDate = new Date(value);
+  if (Number.isNaN(asDate.getTime())) return "";
+  const yyyy = asDate.getFullYear();
+  const mm = String(asDate.getMonth() + 1).padStart(2, "0");
+  const dd = String(asDate.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const normalizeTimeInputValue = (value) => {
+  if (!value || typeof value !== "string") return "";
+  const match = value.match(/^(\d{2}:\d{2})/);
+  return match ? match[1] : "";
+};
+
+const formatMeetingDate = (meetingDate) => {
+  if (!meetingDate) return "";
+  const date = new Date(meetingDate);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+};
+
+const getOfferEmailTemplate = (intern) => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const portalUrl = origin ? `${origin}/intern/login` : "/intern/login";
+  const internId = intern?.internId || "[Intern ID]";
+  const pmCode = intern?.pmCode || "[PM Code]";
+
+  return `Dear ${intern?.fullName || "[Intern Name]"},
+
+Congratulations! You have been selected for the InternHub internship program.
+
+YOUR CREDENTIALS:
+-------------------------
+Intern ID: ${internId}
+Password: [Will be shared upon approval]
+PM Code: ${pmCode}
+-------------------------
+
+NEXT STEPS:
+1. Visit the InternHub Portal: ${portalUrl}
+2. Login with your Intern ID, Password, and PM Code
+3. Complete your profile setup in the portal
+4. Review the attached offer letter carefully
+5. Your start date and further instructions will be shared soon
+
+We are excited to have you on board!
+
+Best regards,
+HR Team`;
+};
+
+const buildOfferEmailHtml = (intern) => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const portalUrl = origin ? `${origin}/intern/login` : "/intern/login";
+  const internId = intern?.internId || "[Intern ID]";
+  const password = intern?.password || "[Password]";
+  const pmCode = intern?.pmCode || "[PM Code]";
+  const fullName = intern?.fullName || "Intern";
+
+  return `
+      <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; color: #101828; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #1d7874, #679289); color: white; padding: 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 24px;">🎉 Congratulations!</h1>
+          <p style="margin: 8px 0 0;">InternHub Selection - Offer Letter Attached</p>
+        </div>
+        <div style="background: #fff; padding: 24px; border-radius: 0 0 12px 12px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);">
+          <p style="margin-top: 0;">Dear ${fullName},</p>
+          <p>We are thrilled to invite you to join the InternHub internship program. Please find your details below:</p>
+          <div style="background: #f4f6f8; padding: 16px; border-radius: 10px; margin: 16px 0;">
+            <p style="margin: 0.25rem 0;"><strong>Intern ID:</strong> ${internId}</p>
+            <p style="margin: 0.25rem 0;"><strong>Password:</strong> ${password}</p>
+            <p style="margin: 0.25rem 0;"><strong>PM Code:</strong> ${pmCode}</p>
+          </div>
+          <h3 style="margin-bottom: 8px;">Next Steps</h3>
+          <ol style="margin-top: 0; padding-left: 20px;">
+            <li>Visit the InternHub Portal: <a href="${portalUrl}" style="color: #1d7874;">${portalUrl}</a></li>
+            <li>Login with your Intern ID, Password, and PM Code</li>
+            <li>Complete your profile setup in the portal</li>
+            <li>Review the attached offer letter carefully</li>
+            <li>Your start date and further instructions will be shared soon</li>
+          </ol>
+          <p>Please keep this email for reference; the attached offer letter contains the official details of your internship.</p>
+          <p style="margin-bottom: 4px;">Regards,<br/>HR Team<br/>InternHub</p>
+        </div>
+      </div>
+    `;
+};
+
+const buildMeetingEmailHtml = (intern, { meetingDateText, meetingTimeText, meetingLinkText }) => {
+  const fullName = intern?.fullName || "Intern";
+  const dateTimeText = meetingDateText
+    ? `${meetingDateText}${meetingTimeText ? ` at ${meetingTimeText}` : ""}`
+    : "[To be scheduled]";
+
+  return `
+    <div style="font-family: 'Poppins', 'Segoe UI', sans-serif; color: #101828; max-width: 620px; margin: 0 auto; background: #f6f7fb; padding: 18px;">
+      <div style="background: linear-gradient(135deg, #1d7874, #679289); padding: 18px 20px; border-radius: 14px 14px 0 0; text-align: center;">
+        <div style="color: #fff; font-weight: 800; font-size: 18px; letter-spacing: 0.4px;">InternHub</div>
+      </div>
+
+      <div style="background: #fff; border-radius: 0 0 14px 14px; padding: 22px 22px 18px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);">
+        <p style="margin: 0 0 10px; color: #344054; font-size: 13px;">Dear ${fullName},</p>
+
+        <p style="margin: 0 0 10px; color: #475467; font-size: 13px; line-height: 1.55;">
+          Thank you for your application to our internship program. We have carefully reviewed your profile and are impressed with your qualifications.
+        </p>
+        <p style="margin: 0 0 14px; color: #475467; font-size: 13px; line-height: 1.55;">
+          We would like to schedule a meeting with you to discuss the next steps and learn more about your interests.
+        </p>
+
+        <div style="padding: 14px 14px 10px; background: #f7faf9; border: 1px solid rgba(29,120,116,0.25); border-radius: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 800; color: #1d7874;">📅</span>
+            <span style="font-size: 12px; font-weight: 800; color: #1d7874;">MEETING DETAILS:</span>
+          </div>
+
+          <div style="border-top: 1px solid rgba(16,24,40,0.08); padding-top: 10px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+              <div style="width: 18px; text-align: center; color: #1d7874;">🕒</div>
+              <div style="color: #344054; font-size: 13px;">
+                <span style="font-weight: 700;">Date &amp; Time:</span> ${dateTimeText}
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <div style="width: 18px; text-align: center; color: #1d7874;">🔗</div>
+              <div style="color: #344054; font-size: 13px;">
+                <span style="font-weight: 700;">Meeting Link:</span> ${
+                  meetingLinkText
+                    ? `<a href="${meetingLinkText}" style="color: #1d7874; text-decoration: underline;">${meetingLinkText}</a>`
+                    : "[Will be shared shortly]"
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p style="margin: 14px 0 10px; color: #475467; font-size: 13px; line-height: 1.55;">
+          Please confirm your availability by replying to this email.
+        </p>
+        <p style="margin: 0 0 16px; color: #475467; font-size: 13px; line-height: 1.55;">
+          We look forward to speaking with you!
+        </p>
+
+        <p style="margin: 0; color: #344054; font-size: 13px; line-height: 1.5;">
+          Best regards,<br/>HR Team<br/>InternHub
+        </p>
+
+        <div style="margin-top: 18px; padding-top: 10px; border-top: 1px solid rgba(16,24,40,0.08); text-align: center; color: #98A2B3; font-size: 11px;">
+          This is an automated email from InternHub HR Management System<br/>
+          © ${new Date().getFullYear()} InternHub. All rights reserved.
+        </div>
+      </div>
+    </div>
+  `;
+};
+
 // ==================== DASHBOARD SECTION ====================
 // ==================== DASHBOARD SECTION (PM Style) ====================
 export function DashboardSection({
@@ -135,7 +299,6 @@ export function DashboardSection({
     setNewAnnouncement({ title: "", content: "", priority: "medium" });
     setShowAddModal(false);
   };
-
   const handleEditAnnouncement = (announcement) => {
     setEditingAnnouncement(announcement);
     setFormError("");
@@ -481,7 +644,7 @@ function AnnouncementCardPM({ announcement, onDelete, onEdit, onPin }) {
   );
 }
 // ==================== APPROVAL SECTION ====================
-export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove, onReject, onDataChanged }) {
+export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove, onReject, onDataChanged, pms = [] }) {
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [password, setPassword] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -656,6 +819,15 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     try {
       const resolvedDepartment = resolveDepartmentValue();
       const resolvedPmCode = String(pmCode || "").trim();
+      const normalizedPmCode = resolvedPmCode ? resolvedPmCode.toUpperCase() : "";
+      const resolvedOfferLetterAttachment =
+        offerLetterAttachment?.pdfBase64
+          ? {
+              filename: offerLetterAttachment.filename || `Offer_Letter_${Date.now()}.pdf`,
+              content: offerLetterAttachment.pdfBase64,
+              templateName: offerLetterAttachment.templateName || "",
+            }
+          : null;
       const result = await onApprove({
         applicationId: selectedIntern.applicationId,
         startDate,
@@ -664,6 +836,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
         mentorName: mentorName.trim(),
         stipend: stipend.trim() || null,
         password: password.trim(),
+        pmCode: normalizedPmCode || undefined,
+        offerLetterAttachment: resolvedOfferLetterAttachment || undefined,
         sendEmail: true,
         showAlert: false,
       });
@@ -673,12 +847,13 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
       const emailStatus = result?.emailSent ? "Approval email sent." : "Approval done (email not sent).";
       let pmAssignmentLine = "";
 
-      if (resolvedPmCode && result?.intern?.id) {
+      if (normalizedPmCode && result?.intern?.id) {
         try {
-          await hrApi.assignPm(result.intern.id, resolvedPmCode);
-          pmAssignmentLine = `\nPM assigned: ${resolvedPmCode}`;
+          await hrApi.assignPm(result.intern.id, normalizedPmCode);
+          pmAssignmentLine = `\nPM assigned: ${normalizedPmCode}`;
         } catch (error) {
-          pmAssignmentLine = `\nPM assignment failed: ${resolvedPmCode}`;
+          const message = String(error?.message || "").trim();
+          pmAssignmentLine = `\nPM assignment failed: ${normalizedPmCode}${message ? ` (${message})` : ""}`;
           console.error("PM assignment failed:", error);
         }
       }
@@ -1031,10 +1206,33 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>PM Assignment (optional)</label>
-                  <input value={pmCode} onChange={(event) => setPmCode(event.target.value)} placeholder="e.g. PM001" style={{ ...inputStyle, fontFamily: "monospace" }} />
-                </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 13, color: COLORS.textSecondary }}>PM Assignment (optional)</label>
+                    <select
+                      value={pmCode}
+                      onChange={(event) => setPmCode(event.target.value)}
+                      style={{ ...inputStyle, fontFamily: "monospace" }}
+                    >
+                      <option value="">Select PM (optional)</option>
+                      {(Array.isArray(pms) ? pms : [])
+                        .filter((pm) => String(pm?.pmCode || pm?.pm_code || "").trim())
+                        .slice()
+                        .sort((a, b) => {
+                          const ac = String(a?.pmCode || a?.pm_code || "").trim();
+                          const bc = String(b?.pmCode || b?.pm_code || "").trim();
+                          return ac.localeCompare(bc);
+                        })
+                        .map((pm) => {
+                          const code = String(pm?.pmCode || pm?.pm_code || "").trim();
+                          const name = String(pm?.fullName || pm?.full_name || pm?.name || pm?.email || "").trim();
+                          return (
+                            <option key={code} value={code}>
+                              {code}{name ? ` - ${name}` : ""}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
@@ -1090,18 +1288,6 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     }}
                   >
                     <Send size={16} /> {isSubmitting ? "Approving..." : "Approve"}
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    disabled={isSubmitting}
-                    style={{
-                      ...primaryButtonStyle,
-                      background: `linear-gradient(135deg, ${COLORS.red}, #dc2626)`,
-                      opacity: isSubmitting ? 0.7 : 1,
-                      cursor: isSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    <X size={16} /> Reject
                   </button>
                   <button onClick={resetForm} style={secondaryButtonStyle}>
                     <X size={16} /> Clear
@@ -1466,14 +1652,7 @@ InternHub`;
   // Update email template when meeting details change
   useEffect(() => {
     if (selectedIntern) {
-      const dateText = meetingDate
-        ? new Date(meetingDate).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          })
-        : "[To be scheduled]";
+      const dateText = meetingDate ? formatMeetingDate(meetingDate) : "[To be scheduled]";
       setEmailContent(getDefaultEmailTemplate(selectedIntern, dateText, meetingTime, meetingLink));
     }
   }, [meetingDate, meetingTime, meetingLink, selectedIntern]);
@@ -1489,12 +1668,11 @@ InternHub`;
 
   const handleInternSelect = (intern) => {
     setSelectedIntern(intern);
-    setEmailContent(getDefaultEmailTemplate(intern));
     setCc("");
     setBcc("");
-    setMeetingDate("");
-    setMeetingTime("");
-    setMeetingLink("");
+    setMeetingDate(normalizeDateInputValue(intern?.meetingDate));
+    setMeetingTime(normalizeTimeInputValue(intern?.meetingTime));
+    setMeetingLink(intern?.meetingLink || "");
     requestAnimationFrame(() => {
       emailComposerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -1590,6 +1768,21 @@ InternHub`;
 
     setIsSending(true);
     try {
+      const meetingDateText = meetingDate ? formatMeetingDate(meetingDate) : "";
+      const html = buildMeetingEmailHtml(selectedIntern, {
+        meetingDateText,
+        meetingTimeText: meetingTime || "",
+        meetingLinkText: meetingLink || "",
+      });
+      const attachments = selectedIntern.applicationPDF?.base64
+        ? [
+            {
+              filename: `${(selectedIntern.fullName || "Intern").replace(/\s+/g, "_")}_Application.pdf`,
+              content: selectedIntern.applicationPDF.base64,
+            },
+          ]
+        : [];
+
       const res = await fetch("/api/send-email", {
         method: "POST",
         credentials: "include",
@@ -1599,7 +1792,8 @@ InternHub`;
           cc: cc || undefined,
           bcc: bcc || undefined,
           subject: "Internship Application - Next Steps",
-          html: emailContent.replace(/\n/g, '<br>'),
+          html,
+          attachments: attachments.length ? attachments : undefined,
         }),
       });
 

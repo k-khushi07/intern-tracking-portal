@@ -59,17 +59,8 @@ export const applicationsApi = {
 };
 
 export const hrApi = {
-  reviewProjectSubmission(id, { status, comment }) {
-  return apiFetch(`/hr/project-submissions/${id}/review`, {
-    method: "PATCH",
-    body: JSON.stringify({ status, comment }),
-  });
-},
   users() {
     return apiFetch("/hr/users", { method: "GET" });
-  },
-  getIntern(id) {
-    return apiFetch(`/hr/interns/${id}`, { method: "GET" });
   },
   applications(params = {}) {
     const searchParams = new URLSearchParams();
@@ -116,14 +107,31 @@ export const hrApi = {
   reports() {
     return apiFetch("/hr/reports", { method: "GET" });
   },
-  projectSubmissions() {
-    return apiFetch("/hr/project-submissions", { method: "GET" });
-  },
   internTna(internId) {
     return apiFetch(`/hr/interns/${internId}/tna`, { method: "GET" });
   },
   internBlueprint(internId) {
     return apiFetch(`/hr/interns/${internId}/blueprint`, { method: "GET" });
+  },
+  templates() {
+    return apiFetch("/hr/templates", { method: "GET" });
+  },
+  createTemplate(payload) {
+    return apiFetch("/hr/templates", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  updateTemplate(templateId, payload) {
+    return apiFetch(`/hr/templates/${templateId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  deleteTemplate(templateId) {
+    return apiFetch(`/hr/templates/${templateId}`, {
+      method: "DELETE",
+    });
   },
   internReportLinks(internId) {
     return apiFetch(`/hr/interns/${internId}/report-links`, { method: "GET" });
@@ -155,10 +163,15 @@ export const hrApi = {
       body: JSON.stringify(payload || {}),
     });
   },
-  rejectApplication(applicationId, { reason }) {
+  rejectApplication(applicationId, { reason, sendEmail, subject, html } = {}) {
     return apiFetch(`/hr/applications/${applicationId}/reject`, {
       method: "POST",
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({
+        reason,
+        sendEmail,
+        subject,
+        html,
+      }),
     });
   },
   bulkApplicationStatus(payload) {
@@ -190,12 +203,6 @@ export const hrApi = {
       method: "PATCH",
       body: JSON.stringify(payload || {}),
     });
-  },
-  getInternDailyLogs(internId) {
-    return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
-  },
-  getInternReports(internId) {
-    return apiFetch(`/hr/interns/${internId}/reports`, { method: "GET" });
   },
 };
 
@@ -248,9 +255,6 @@ export const pmApi = {
   me() {
     return apiFetch("/pm/me", { method: "GET" });
   },
-  getIntern(id) {
-    return apiFetch(`/pm/interns/${id}`, { method: "GET" });
-  },
   interns() {
     return apiFetch("/pm/interns", { method: "GET" });
   },
@@ -268,9 +272,6 @@ export const pmApi = {
   },
   reports() {
     return apiFetch("/pm/reports", { method: "GET" });
-  },
-  projectSubmissions() {
-    return apiFetch("/pm/project-submissions", { method: "GET" });
   },
   reviewReport(reportId, payload) {
     return apiFetch(`/pm/reports/${reportId}/review`, {
@@ -293,12 +294,6 @@ export const pmApi = {
   deleteAnnouncement(announcementId) {
     return apiFetch(`/pm/announcements/${announcementId}`, { method: "DELETE" });
   },
-  reviewProjectSubmission(id, { status, comment }) {
-    return apiFetch(`/pm/project-submissions/${id}/review`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, comment }),
-    });
-  },
 };
 
 export const internApi = {
@@ -308,16 +303,10 @@ export const internApi = {
   stats() {
     return apiFetch("/intern/stats", { method: "GET" });
   },
-  submitProject({ title, description, githubLink, demoLink }) {
-    return apiFetch("/intern/project-submission", {
-      method: "POST",
-      body: JSON.stringify({ title, description, githubLink, demoLink }),
-    });
-  },
-  updateMe({ profileData, profileCompleted }) {
+  updateMe({ profileData, profileCompleted, fileUploads } = {}) {
     return apiFetch("/intern/me", {
       method: "PATCH",
-      body: JSON.stringify({ profileData, profileCompleted }),
+      body: JSON.stringify({ profileData, profileCompleted, fileUploads }),
     });
   },
   dailyLogs() {
@@ -379,9 +368,6 @@ export const internApi = {
   },
   syncBlueprintFromGoogle() {
     return apiFetch("/intern/blueprint/sync/from-google", { method: "POST" });
-  },
-  mySubmissions() {
-    return apiFetch("/intern/project-submissions", { method: "GET" });
   },
 };
 
@@ -460,5 +446,3 @@ export const notificationsApi = {
     return apiFetch("/notifications/read-all", { method: "POST" });
   },
 };
-
-
