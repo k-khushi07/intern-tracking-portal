@@ -185,19 +185,16 @@ export const hrApi = {
     const query = params.toString();
     return `/api/hr/active-interns/${profileId}/certificate.pdf${query ? `?${query}` : ""}`;
   },
-<<<<<<< HEAD
   reviewReport(reportId, payload) {
     return apiFetch(`/hr/reports/${reportId}/review`, {
       method: "PATCH",
       body: JSON.stringify(payload || {}),
     });
-=======
   getInternDailyLogs(internId) {
     return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
   },
   getInternReports(internId) {
     return apiFetch(`/hr/interns/${internId}/reports`, { method: "GET" });
->>>>>>> ca8db999f2b8a39b60e0b379ba767f5d30123256
   },
 };
 
@@ -462,3 +459,4 @@ export const notificationsApi = {
     return apiFetch("/notifications/read-all", { method: "POST" });
   },
 };
+
