@@ -190,6 +190,7 @@ export const hrApi = {
       method: "PATCH",
       body: JSON.stringify(payload || {}),
     });
+  },
   getInternDailyLogs(internId) {
     return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
   },
@@ -459,4 +460,5 @@ export const notificationsApi = {
     return apiFetch("/notifications/read-all", { method: "POST" });
   },
 };
+
 
