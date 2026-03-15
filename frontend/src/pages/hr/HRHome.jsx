@@ -245,6 +245,11 @@ export default function HRHome() {
         password: approval.password,
         sendEmail: approval.sendEmail !== false,
         pmCode: approval.pmCode || undefined,
+<<<<<<< HEAD
+=======
+        cc: approval.cc || undefined,
+        bcc: approval.bcc || undefined,
+>>>>>>> origin/khush
         offerLetterAttachment: approval.offerLetterAttachment || undefined,
       });
       await loadUsers();

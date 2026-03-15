@@ -23,8 +23,11 @@
 - Run `supabase/migrations/009_add_message_rpc.sql` in Supabase SQL editor.
 - Run `supabase/migrations/010_hr_workflow_upgrade.sql` in Supabase SQL editor.
 - Run `supabase/migrations/013_add_hr_templates.sql` in Supabase SQL editor.
+<<<<<<< HEAD
 - Run `supabase/migrations/014_add_attendance.sql` in Supabase SQL editor.
 - Run `supabase/migrations/015_add_leave_requests.sql` in Supabase SQL editor.
+=======
+>>>>>>> origin/khush
 
 Custom HR offer-letter templates are now persisted in `public.hr_templates` (via the migration above), so uploads and edits show up across browsers and HR users instead of living in localStorage.
 

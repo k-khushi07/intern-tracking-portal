@@ -4,6 +4,25 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { applicationsApi } from '../lib/apiClient';
 
+const DOMAIN_OPTIONS = [
+  "SAP",
+  "Accounts",
+  "Oracle",
+  "Software Development",
+  "Web Development",
+  "Mobile App Development",
+  "Data Science",
+  "Machine Learning",
+  "Artificial Intelligence",
+  "Cloud Computing",
+  "DevOps",
+  "UI/UX Design",
+  "Digital Marketing",
+  "Content Writing",
+  "Business Development",
+  "Human Resources",
+];
+
 const InternApplicationForm = () => {
   const MAX_RESUME_FILE_SIZE_BYTES = 5 * 1024 * 1024;
   const RESUME_ACCEPT_ATTR = '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -38,7 +57,6 @@ const InternApplicationForm = () => {
     
     // Internship Preferences
     internshipDomain: '',
-    customInternshipDomain: '',
     preferredDuration: '',
     availableFrom: '',
     
@@ -114,8 +132,7 @@ const InternApplicationForm = () => {
   const validateStep = (currentStep) => {
     setError('');
 
-    const preferredDomain =
-      String(formData.customInternshipDomain || '').trim() || String(formData.internshipDomain || '').trim();
+    const preferredDomain = String(formData.internshipDomain || '').trim();
     
     switch(currentStep) {
       case 1:
@@ -242,8 +259,7 @@ const InternApplicationForm = () => {
     const pageHeight = doc.internal.pageSize.height;
     const margin = 15;
     let yPos = 15;
-    const preferredDomain =
-      String(formData.customInternshipDomain || '').trim() || String(formData.internshipDomain || '').trim();
+    const preferredDomain = String(formData.internshipDomain || '').trim();
 
     const colors = {
       gradientStart: [7, 30, 34],
@@ -687,8 +703,7 @@ const InternApplicationForm = () => {
       const pdfBase64 = generateApplicationPDF();
       const resumeLinkValue = String(formData.resumeLink || '').trim();
       let resolvedResumeLink = resumeLinkValue;
-      const preferredDomain =
-        String(formData.customInternshipDomain || '').trim() || String(formData.internshipDomain || '').trim();
+      const preferredDomain = String(formData.internshipDomain || '').trim();
 
       if (!resolvedResumeLink && resumeFile) {
         resolvedResumeLink = await toDataUrl(resumeFile);
@@ -1152,41 +1167,21 @@ const InternApplicationForm = () => {
 
                 <div style={{ marginBottom: '24px' }}>
                   <label style={labelStyle}>Preferred Domain *</label>
-                  <select
+                  <input
+                    type="text"
                     name="internshipDomain"
                     value={formData.internshipDomain}
                     onChange={handleInputChange}
                     style={inputStyle}
-                  >
-                    <option value="">Select a domain</option>
-                    <option value="SAP">SAP</option>
-                    <option value="Accounts">Accounts</option>
-                    <option value="Oracle">Oracle</option>
-                    <option value="Software Development">Software Development</option>
-                    <option value="Web Development">Web Development</option>
-                    <option value="Mobile App Development">Mobile App Development</option>
-                    <option value="Data Science">Data Science</option>
-                    <option value="Machine Learning">Machine Learning</option>
-                    <option value="AI">Artificial Intelligence</option>
-                    <option value="Cloud Computing">Cloud Computing</option>
-                    <option value="DevOps">DevOps</option>
-                    <option value="UI/UX Design">UI/UX Design</option>
-                    <option value="Digital Marketing">Digital Marketing</option>
-                    <option value="Content Writing">Content Writing</option>
-                    <option value="Business Development">Business Development</option>
-                    <option value="HR">Human Resources</option>
-                  </select>
-                  <div style={{ marginTop: '12px' }}>
-                    <label style={labelStyle}>Preferred Domain (manual)</label>
-                    <input
-                      type="text"
-                      name="customInternshipDomain"
-                      value={formData.customInternshipDomain}
-                      onChange={handleInputChange}
-                      style={inputStyle}
-                      placeholder="Type your preferred domain if not listed above"
-                    />
-                  </div>
+                    placeholder="Select or type a domain"
+                    list="internshipDomainList"
+                    required
+                  />
+                  <datalist id="internshipDomainList">
+                    {DOMAIN_OPTIONS.map(domain => (
+                      <option key={domain} value={domain} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
