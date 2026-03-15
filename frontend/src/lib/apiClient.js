@@ -17,15 +17,30 @@ async function parseResponse(res) {
 
 export async function apiFetch(path, options = {}) {
   const url = path.startsWith("/api") ? path : `/api${path.startsWith("/") ? "" : "/"}${path}`;
-  const res = await fetch(url, {
-    credentials: "include",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-  return parseResponse(res);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+
+  try {
+    const res = await fetch(url, {
+      credentials: "include",
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+    return parseResponse(res);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export const authApi = {

@@ -4,6 +4,7 @@ const { restSelect, restUpdate, restInsert, restDelete } = require("../services/
 const { createAuthMiddleware } = require("../middleware/auth");
 const { syncTnaFromPublicGoogle, syncBlueprintFromPublicGoogle } = require("../services/googlePublicSync");
 const { createNotifications, listProfilesByRole, toClientNotification, isMissingTableError } = require("../services/notifications");
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function createInternRouter() {
   const router = express.Router();
@@ -494,6 +495,9 @@ function createInternRouter() {
 
   router.patch("/tna/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const internId = req.auth.profile.id;
       const { weekNumber, task, plannedDate, planOfAction, executedDate, status, reason, deliverable, sortOrder } =
         req.body || {};
@@ -535,6 +539,9 @@ function createInternRouter() {
 
   router.delete("/tna/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const internId = req.auth.profile.id;
       await restDelete({
         table: "tna_items",
@@ -1023,17 +1030,30 @@ function createInternRouter() {
       const pmId = req.auth.profile.pm_id;
       const { title, description, githubLink, demoLink } = req.body || {};
 
-      if (!title) throw httpError(400, "title is required", true);
-      if (!description) throw httpError(400, "description is required", true);
-      if (!githubLink) throw httpError(400, "githubLink is required", true);
+      const safeTitle = String(title || "").trim();
+      const safeDescription = String(description || "").trim();
+      const safeGithubLink = String(githubLink || "").trim();
+
+      if (!safeTitle) throw httpError(400, "title is required", true);
+      if (!safeDescription) throw httpError(400, "description is required", true);
+      if (!safeGithubLink) throw httpError(400, "githubLink is required", true);
+      if (safeTitle.length < 3 || safeTitle.length > 200) {
+        throw httpError(400, "title must be between 3 and 200 characters", true);
+      }
+      if (safeDescription.length < 10 || safeDescription.length > 5000) {
+        throw httpError(400, "description must be between 10 and 5000 characters", true);
+      }
+      if (!/^https?:\/\//i.test(safeGithubLink)) {
+        throw httpError(400, "githubLink must be a valid URL", true);
+      }
 
       const row = {
         intern_profile_id: internId,
         pm_profile_id: pmId || null,
-        title: String(title),
-        description: String(description),
-        github_link: String(githubLink),
-        demo_link: demoLink ? String(demoLink) : null,
+        title: safeTitle,
+        description: safeDescription,
+        github_link: safeGithubLink,
+        demo_link: demoLink ? String(demoLink).trim() : null,
         status: "submitted",
         submitted_at: new Date().toISOString(),
         created_at: new Date().toISOString(),

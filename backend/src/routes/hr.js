@@ -4,6 +4,7 @@ const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { generateNextInternId, peekNextInternId } = require("../services/internId");
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function assertInternExists(internId) {
   const rows = await restSelect({
@@ -663,6 +664,9 @@ function createHrRouter({ emailService }) {
 
   router.get("/applications/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const application = await loadApplicationById(req.params.id);
       if (!application) throw httpError(404, "Application not found", true);
 
@@ -716,6 +720,9 @@ function createHrRouter({ emailService }) {
 
   router.patch("/applications/:id/notes", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { hrNotes } = req.body || {};
       await restUpdate({
         table: "internship_applications",
@@ -734,6 +741,9 @@ function createHrRouter({ emailService }) {
 
   router.patch("/applications/:id/status", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { status, reason } = req.body || {};
       const nextStatus = normalizeApplicationStatus(status);
       if (!nextStatus) throw httpError(400, "Invalid status", true);
@@ -777,6 +787,9 @@ function createHrRouter({ emailService }) {
 
   router.post("/applications/:id/reject", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { reason } = req.body || {};
       const rejectionReason = String(reason || "").trim();
       if (!rejectionReason) throw httpError(400, "rejection_reason is required", true);
@@ -830,6 +843,9 @@ function createHrRouter({ emailService }) {
 
   router.post("/applications/:id/approve", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { startDate, endDate, department, mentorName, stipend, password, sendEmail } = req.body || {};
       const approval = await approveApplicationRecord({
         applicationId: req.params.id,
@@ -980,6 +996,9 @@ function createHrRouter({ emailService }) {
 
   router.patch("/interns/:id/assign-pm", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { pmCode } = req.body || {};
       if (!pmCode) throw httpError(400, "pmCode is required", true);
 
@@ -1499,6 +1518,9 @@ function createHrRouter({ emailService }) {
 
   router.get("/message-reports/:id/context", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const reason = String(req.query.reason || "").trim();
       if (!reason) throw httpError(400, "reason query param is required", true);
 
@@ -1562,6 +1584,9 @@ function createHrRouter({ emailService }) {
 
   router.post("/message-reports/:id/delete-message", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { reason } = req.body || {};
       const why = String(reason || "").trim();
       if (!why) throw httpError(400, "reason is required", true);
@@ -1716,6 +1741,9 @@ function createHrRouter({ emailService }) {
 
   router.get("/interns/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const rows = await restSelect({
         table: "profiles",
         select: "id,full_name,email,role,status,intern_id,pm_id,profile_data,profile_completed,created_at",
@@ -1770,6 +1798,9 @@ function createHrRouter({ emailService }) {
 
   router.patch("/announcements/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { title, content, priority, audienceRoles, pinned } = req.body || {};
 
       const patch = { updated_at: new Date().toISOString() };
@@ -1808,6 +1839,9 @@ function createHrRouter({ emailService }) {
 
   router.delete("/announcements/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       await restDelete({
         table: "announcements",
         matchQuery: { id: `eq.${req.params.id}` },
@@ -1845,6 +1879,9 @@ function createHrRouter({ emailService }) {
   // ==================== PROJECT SUBMISSION REVIEW ====================
   router.patch("/project-submissions/:id/review", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { status, comment } = req.body || {};
       if (!["approved", "rejected"].includes(status)) {
         throw httpError(400, "status must be approved or rejected", true);
@@ -1869,6 +1906,9 @@ function createHrRouter({ emailService }) {
 
   router.get("/interns/:id/daily-logs", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       await assertInternExists(req.params.id);
       const rows = await restSelect({
         table: "daily_logs",
@@ -1885,6 +1925,9 @@ function createHrRouter({ emailService }) {
 
   router.get("/interns/:id/reports", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       await assertInternExists(req.params.id);
       const rows = await restSelect({
         table: "reports",
