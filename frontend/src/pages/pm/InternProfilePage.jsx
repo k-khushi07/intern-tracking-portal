@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User } from "lucide-react";
 import { pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
+import AttendancePanel from "../../components/AttendancePanel";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -79,7 +80,7 @@ function getGoogleEmbedUrl(url, type) {
       if (isPublished) return `https://docs.google.com/spreadsheets/d/e/${id}/pubhtml?widget=true&headers=false${gid}`;
       return `https://docs.google.com/spreadsheets/d/${id}/htmlembed?widget=true${gid}`;
     }
-  } catch(e) {
+  } catch {
     return url;
   }
   return url;
@@ -242,6 +243,9 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     .toUpperCase();
   const status = String(intern.status || "active").toLowerCase();
   const department = resolveDepartment(intern);
+  const profileData = intern.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+  const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
+  const resumeUrl = profileData.resumeUrl || profileData.resume_url || intern.resumeUrl || intern.resume_url || null;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -287,9 +291,21 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               color: "white",
               fontWeight: 800,
               fontSize: 24,
+              overflow: "hidden",
+              position: "relative",
             }}
           >
-            {avatar || "IN"}
+            <span>{avatar || "IN"}</span>
+            {profilePictureUrl ? (
+              <img
+                src={profilePictureUrl}
+                alt="Intern profile"
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : null}
           </div>
           <div style={{ minWidth: 260, flex: 1 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "white" }}>{name}</div>
@@ -391,10 +407,55 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
           <FileText size={16} />
           Reports
         </button>
+        <button
+          onClick={() => setActiveTab("attendance")}
+          style={{
+            border: `1px solid ${activeTab === "attendance" ? "rgba(34,211,238,0.45)" : COLORS.border}`,
+            background: activeTab === "attendance" ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
+            color: activeTab === "attendance" ? "#cffafe" : "rgba(255,229,217,0.75)",
+            borderRadius: 999,
+            padding: "10px 14px",
+            fontWeight: 900,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Calendar size={16} />
+          Attendance
+        </button>
       </div>
 
       {activeTab === "profile" && (
         <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            {resumeUrl ? (
+              <button
+                type="button"
+                onClick={() => window.open(resumeUrl, "_blank", "noopener,noreferrer")}
+                style={{
+                  border: `1px solid ${COLORS.border}`,
+                  background: "rgba(255,255,255,0.06)",
+                  color: COLORS.peachGlow,
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                }}
+              >
+                <FileText size={14} /> Open Resume
+              </button>
+            ) : (
+              <div style={{ fontSize: 12, color: "rgba(255,229,217,0.7)", fontWeight: 800 }}>
+                Resume not uploaded (profile setup pending)
+              </div>
+            )}
+          </div>
           <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
             <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
               Intern Information
@@ -720,6 +781,12 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
 
         </>
       )}
+
+      {activeTab === "attendance" && (
+        <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
+          <AttendancePanel internId={internId} variant="pm" title="Attendance" />
+        </div>
+      )}
     </div>
   );
 };
@@ -781,6 +848,9 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const currentStatusColor = statusColor(report.status);
   const isWeekly = String(report.reportType || "").toLowerCase() === "weekly";
   const label = isWeekly ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
+  const extra = report?.data && typeof report.data === "object" ? report.data : {};
+  const attendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
+  const progressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
 
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
@@ -830,6 +900,61 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
             {report.summary || "No summary provided."}
           </div>
         </div>
+
+        {(attendanceSummary || progressSummary) && (
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {attendanceSummary && !attendanceSummary.error && (
+              <div style={{ background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                  Attendance (recorded)
+                </div>
+                <div style={{ color: "rgba(255,229,217,0.85)", fontSize: 12, lineHeight: 1.55 }}>
+                  Present: {attendanceSummary.counts?.present ?? 0} • Remote: {attendanceSummary.counts?.remote ?? 0} • Half day: {attendanceSummary.counts?.half_day ?? 0} • Leave: {attendanceSummary.counts?.leave ?? 0} • Absent: {attendanceSummary.counts?.absent ?? 0}
+                  <div style={{ color: "rgba(255,229,217,0.55)", marginTop: 4 }}>
+                    Total recorded days: {attendanceSummary.totalRecordedDays ?? 0}
+                  </div>
+                </div>
+              </div>
+            )}
+            {attendanceSummary?.error && (
+              <div style={{ background: "rgba(245,158,11,0.08)", padding: 12, borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", color: "rgba(255,229,217,0.85)", fontSize: 12 }}>
+                Attendance: {attendanceSummary.error}
+              </div>
+            )}
+
+            {progressSummary?.tna && !progressSummary.tna.error && (
+              <div style={{ background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                  Progress (TNA)
+                </div>
+                <div style={{ color: "rgba(255,229,217,0.85)", fontSize: 12, lineHeight: 1.55 }}>
+                  Completion: {progressSummary.tna.completionPercent ?? 0}% • Completed: {progressSummary.tna.counts?.completed ?? 0}/{progressSummary.tna.counts?.total ?? 0} • Blocked: {progressSummary.tna.counts?.blocked ?? 0}
+                </div>
+              </div>
+            )}
+            {progressSummary?.tna?.error && (
+              <div style={{ background: "rgba(245,158,11,0.08)", padding: 12, borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", color: "rgba(255,229,217,0.85)", fontSize: 12 }}>
+                TNA progress: {progressSummary.tna.error}
+              </div>
+            )}
+
+            {progressSummary?.blueprint?.milestones && !progressSummary.blueprint?.error && (
+              <div style={{ background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                  Progress (Blueprint)
+                </div>
+                <div style={{ color: "rgba(255,229,217,0.85)", fontSize: 12, lineHeight: 1.55 }}>
+                  Milestones: {progressSummary.blueprint.milestones.completed ?? 0}/{progressSummary.blueprint.milestones.total ?? 0} ({progressSummary.blueprint.milestones.completionPercent ?? 0}%)
+                </div>
+              </div>
+            )}
+            {progressSummary?.blueprint?.error && (
+              <div style={{ background: "rgba(245,158,11,0.08)", padding: 12, borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", color: "rgba(255,229,217,0.85)", fontSize: 12 }}>
+                Blueprint progress: {progressSummary.blueprint.error}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ marginTop: 16 }}>
           <div style={{ color: "rgba(255,229,217,0.7)", fontSize: 11, marginBottom: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>

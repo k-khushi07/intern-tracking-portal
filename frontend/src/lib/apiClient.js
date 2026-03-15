@@ -377,6 +377,93 @@ export const announcementsApi = {
   },
 };
 
+export const attendanceApi = {
+  self(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/attendance/self${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  punchIn(payload) {
+    return apiFetch("/attendance/self/punch-in", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  punchOut(payload) {
+    return apiFetch("/attendance/self/punch-out", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  intern(internId, params = {}) {
+    if (!internId) return Promise.reject(new Error("internId is required"));
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/attendance/intern/${internId}${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  upsert(internId, payload) {
+    if (!internId) return Promise.reject(new Error("internId is required"));
+    return apiFetch(`/attendance/intern/${internId}`, {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  remove(internId, date) {
+    if (!internId) return Promise.reject(new Error("internId is required"));
+    const normalizedDate = String(date || "").trim();
+    if (!normalizedDate) return Promise.reject(new Error("date is required"));
+    return apiFetch(`/attendance/intern/${internId}/${normalizedDate}`, { method: "DELETE" });
+  },
+};
+
+export const leaveRequestsApi = {
+  selfList(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/attendance/self/leave-requests${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  selfCreate(payload) {
+    return apiFetch("/attendance/self/leave-requests", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  selfCancel(id) {
+    const normalized = String(id || "").trim();
+    if (!normalized) return Promise.reject(new Error("id is required"));
+    return apiFetch(`/attendance/self/leave-requests/${normalized}/cancel`, { method: "POST" });
+  },
+  list(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/attendance/leave-requests${query ? `?${query}` : ""}`, { method: "GET" });
+  },
+  decide(id, payload) {
+    const normalized = String(id || "").trim();
+    if (!normalized) return Promise.reject(new Error("id is required"));
+    return apiFetch(`/attendance/leave-requests/${normalized}/decision`, {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+};
+
 export const messagesApi = {
   contacts() {
     return apiFetch("/messages/contacts", { method: "GET" });

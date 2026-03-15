@@ -21,6 +21,7 @@ import {
 import MessagesPage from './MessagesPage';
 import { authApi, hrApi, announcementsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
+import AccountModal from "../../components/AccountModal";
 
 export default function HRHome() {
   // State Management
@@ -44,6 +45,7 @@ export default function HRHome() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
  
   // Filter States
   const [rejectReason, setRejectReason] = useState("");
@@ -895,6 +897,7 @@ export default function HRHome() {
 
             {/* User Avatar */}
             <div
+              onClick={() => setShowAccountModal(true)}
               style={{
                 width: 40,
                 height: 40,
@@ -1046,6 +1049,8 @@ export default function HRHome() {
           />
         </Modal>
       )}
+
+      <AccountModal open={showAccountModal} onClose={() => setShowAccountModal(false)} />
 
       {uiNotice.open && (
         <div

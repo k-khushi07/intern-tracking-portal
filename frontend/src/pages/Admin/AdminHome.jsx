@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { RefreshCw, LogOut, Trash2, Plus, Users, UserCheck, BarChart3, Activity, Save, Eye, X, Sparkles, Menu } from "lucide-react";
+import { RefreshCw, LogOut, Trash2, Plus, Users, UserCheck, BarChart3, Activity, Save, Eye, X, Sparkles, Menu, Clock } from "lucide-react";
 import { adminApi, authApi } from "../../lib/apiClient";
+import AttendancePanel from "../../components/AttendancePanel";
+import LeaveRequestsPanel from "../../components/LeaveRequestsPanel";
+import AccountModal from "../../components/AccountModal";
 
 const COLORS = {
   bgPrimary: "#020617",
@@ -36,6 +39,7 @@ const TABS = [
   { id: "hr", label: "HR", icon: Users },
   { id: "pm", label: "PM", icon: UserCheck },
   { id: "intern", label: "Interns", icon: Activity },
+  { id: "leave", label: "Leave Requests", icon: Clock },
   { id: "departments", label: "Departments", icon: Users },
   { id: "progress", label: "Progress", icon: Activity },
 ];
@@ -138,6 +142,7 @@ export default function AdminHome() {
   const [profileDraft, setProfileDraft] = useState(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [loadingGeneratedId, setLoadingGeneratedId] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   const minDate = new Date().toISOString().slice(0, 10);
 
@@ -666,8 +671,9 @@ export default function AdminHome() {
               <div style={{
                 background: COLORS.surfaceGlass, borderRadius: 16, padding: 16,
                 border: `1px solid ${COLORS.borderGlass}`,
+                cursor: "pointer",
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div onClick={() => setShowAccountModal(true)} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{
                     width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
                     display: "flex", alignItems: "center", justifyContent: "center",
@@ -1074,6 +1080,12 @@ export default function AdminHome() {
                 </div>
               )}
 
+              {activeTab === "leave" && (
+                <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 12 }}>
+                  <LeaveRequestsPanel variant="admin" defaultStatus="pending" />
+                </div>
+              )}
+
               {(activeTab === "hr" || activeTab === "pm" || activeTab === "intern") && (
                 <div
                   style={{
@@ -1474,6 +1486,10 @@ export default function AdminHome() {
                   <StatCard label="Progress" value={`${selectedInternProgress?.progressPercent ?? 0}%`} />
                 </div>
 
+                <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 12 }}>
+                  <AttendancePanel internId={selectedIntern.id} variant="admin" canEdit title="Attendance" />
+                </div>
+
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button type="button" onClick={closeInternProfile} style={btnStyle("secondary")}>
                     Cancel
@@ -1503,6 +1519,8 @@ export default function AdminHome() {
             />
           )
         }
+
+        <AccountModal open={showAccountModal} onClose={() => setShowAccountModal(false)} />
       </div >
     </>
   );
