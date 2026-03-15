@@ -7,11 +7,122 @@ const { syncTnaFromPublicGoogle, syncBlueprintFromPublicGoogle } = require("../s
 const { createNotifications, listProfilesByRole, toClientNotification, isMissingTableError } = require("../services/notifications");
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function isIsoDateString(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+}
+
+function isGoogleSyncEnabled() {
+  return String(process.env.GOOGLE_SYNC_ENABLED || "").toLowerCase() === "true";
+}
+
+function dateIsoToUtcMs(isoDate) {
+  if (!isIsoDateString(isoDate)) return null;
+  const [yyyy, mm, dd] = String(isoDate).split("-").map((p) => Number(p));
+  if (!yyyy || !mm || !dd) return null;
+  return Date.UTC(yyyy, mm - 1, dd);
+}
+
+function utcMsToIsoDate(ms) {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function createInternRouter() {
   const router = express.Router();
   const auth = createAuthMiddleware();
+  const pendingGoogleSyncTimers = new Map();
 
   router.use(auth.requireRole("intern"));
+
+  function loadGoogleSync() {
+    try {
+      // Lazy-load so the backend can still run without the optional dependency.
+      // `backend/package.json` should include `googleapis` when enabling sync-to-Google.
+      // eslint-disable-next-line global-require
+      return require("../services/googleSync");
+    } catch (err) {
+      const e = new Error(
+        "Google sync dependency missing. Install `googleapis` in backend and restart the server to enable sync to Google Sheets/Docs."
+      );
+      e.status = 400;
+      e.expose = true;
+      e.cause = err;
+      throw e;
+    }
+  }
+
+  function scheduleGoogleSync(internId, pmId, io, kind) {
+    if (!isGoogleSyncEnabled()) return;
+    if (!internId) return;
+
+    const key = `${internId}:${kind}`;
+    const existing = pendingGoogleSyncTimers.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(async () => {
+      pendingGoogleSyncTimers.delete(key);
+      try {
+        const { syncTnaToGoogle, syncBlueprintToGoogle } = loadGoogleSync();
+        if (kind === "tna") {
+          const links = await getReportLinksRow(internId);
+          const tnaSheetUrl = links?.tna_sheet_url || "";
+          if (!String(tnaSheetUrl || "").trim()) return;
+
+          const rows = await restSelect({
+            table: "tna_items",
+            select:
+              "week_number,task,planned_date,plan_of_action,executed_date,status,reason,deliverable,sort_order,created_at,updated_at",
+            filters: { intern_profile_id: `eq.${internId}`, order: "sort_order.asc,created_at.asc" },
+            accessToken: null,
+            useServiceRole: true,
+          });
+          await syncTnaToGoogle({ tnaSheetUrl, items: rows || [] });
+        } else if (kind === "blueprint") {
+          const links = await getReportLinksRow(internId);
+          const blueprintDocUrl = links?.blueprint_doc_url || "";
+          if (!String(blueprintDocUrl || "").trim()) return;
+
+          const bpRows = await restSelect({
+            table: "intern_blueprints",
+            select: "data",
+            filters: { intern_profile_id: `eq.${internId}`, limit: 1 },
+            accessToken: null,
+            useServiceRole: true,
+          });
+          const data = bpRows?.[0]?.data && typeof bpRows[0].data === "object" ? bpRows[0].data : {};
+          await syncBlueprintToGoogle({ blueprintDocUrl, data });
+        } else {
+          return;
+        }
+
+        const now = new Date().toISOString();
+        await updateReportLinksMeta(internId, { last_synced_to_google_at: now, last_sync_error: null });
+        if (io) {
+          io.to(`user:${internId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+          if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+          io.to("role:hr").emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+        }
+      } catch (err) {
+        try {
+          await updateReportLinksMeta(internId, { last_sync_error: String(err?.message || "Sync failed") });
+          if (io) {
+            io.to(`user:${internId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google_failed", internId });
+            if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google_failed", internId });
+            io.to("role:hr").emit("itp:changed", { entity: "report_links", action: "sync_to_google_failed", internId });
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }, 1500);
+
+    pendingGoogleSyncTimers.set(key, timer);
+  }
 
   router.get("/me", async (req, res, next) => {
     try {
@@ -208,6 +319,20 @@ function createInternRouter() {
       const { date, logDate, hoursWorked, tasks, learnings, blockers } = req.body || {};
       const actualDate = logDate || date;
       if (!actualDate) throw httpError(400, "logDate is required", true);
+
+      const normalizedDate = String(actualDate || "").trim();
+      if (!isIsoDateString(normalizedDate)) throw httpError(400, "logDate must be in YYYY-MM-DD format", true);
+      const today = todayIsoDate();
+      if (normalizedDate > today) throw httpError(400, "logDate cannot be in the future", true);
+
+      const todayMs = dateIsoToUtcMs(today);
+      const logMs = dateIsoToUtcMs(normalizedDate);
+      if (todayMs == null || logMs == null) throw httpError(400, "Invalid logDate", true);
+      const diffDays = Math.floor((todayMs - logMs) / 86400000);
+      if (diffDays > 7) {
+        const oldest = utcMsToIsoDate(todayMs - 7 * 86400000) || today;
+        throw httpError(403, `Daily logs are editable for 7 days only. Oldest allowed date is ${oldest}.`, true);
+      }
       if (!tasks || !learnings) throw httpError(400, "tasks and learnings are required", true);
 
       const parsedHours = Number.isFinite(Number(hoursWorked)) ? Number(hoursWorked) : 0;
@@ -225,7 +350,7 @@ function createInternRouter() {
       const existing = await restSelect({
         table: "daily_logs",
         select: "id",
-        filters: { intern_profile_id: `eq.${internId}`, log_date: `eq.${actualDate}`, limit: 1 },
+        filters: { intern_profile_id: `eq.${internId}`, log_date: `eq.${normalizedDate}`, limit: 1 },
         accessToken: null,
         useServiceRole: true,
       });
@@ -258,7 +383,7 @@ function createInternRouter() {
       } else {
         const row = {
           intern_profile_id: internId,
-          log_date: actualDate,
+          log_date: normalizedDate,
           ...patch,
           created_at: new Date().toISOString(),
         };
@@ -301,10 +426,10 @@ function createInternRouter() {
             rows: Array.from(recipients).map((rid) => ({
               recipient_profile_id: rid,
               title: "Daily log submitted",
-              message: `${internLabel} submitted a daily log for ${actualDate}.`,
+              message: `${internLabel} submitted a daily log for ${normalizedDate}.`,
               type: "info",
               category: "daily_log",
-              metadata: { internId, logDate: actualDate },
+              metadata: { internId, logDate: normalizedDate },
             })),
           });
           const rows = Array.isArray(inserted) ? inserted : [inserted];
@@ -528,6 +653,7 @@ function createInternRouter() {
         io.to("role:hr").emit("itp:changed", { entity: "tna", action: "insert", internId });
       }
 
+      scheduleGoogleSync(internId, pmId, io, "tna");
       res.status(201).json({ success: true, item: inserted?.[0] || inserted });
     } catch (err) {
       if (String(err.message || "").includes("tna_items")) {
@@ -577,6 +703,7 @@ function createInternRouter() {
         io.to("role:hr").emit("itp:changed", { entity: "tna", action: "update", internId });
       }
 
+      scheduleGoogleSync(internId, pmId, io, "tna");
       res.status(200).json({ success: true });
     } catch (err) {
       next(err);
@@ -604,6 +731,7 @@ function createInternRouter() {
         io.to("role:hr").emit("itp:changed", { entity: "tna", action: "delete", internId });
       }
 
+      scheduleGoogleSync(internId, pmId, io, "tna");
       res.status(200).json({ success: true });
     } catch (err) {
       next(err);
@@ -726,11 +854,42 @@ function createInternRouter() {
 
   router.post("/tna/sync/to-google", async (req, res, next) => {
     try {
-      throw httpError(
-        400,
-        "Sync to Google requires credentials (Service Account or OAuth). Plan A supports read-only sync from public links.",
-        true
-      );
+      const internId = req.auth.profile.id;
+      if (!isGoogleSyncEnabled()) {
+        throw httpError(
+          400,
+          "Google sync is disabled. Set GOOGLE_SYNC_ENABLED=true and configure a Service Account that has edit access to the sheet.",
+          true
+        );
+      }
+
+      const links = await getReportLinksRow(internId);
+      const tnaSheetUrl = links?.tna_sheet_url || "";
+      if (!String(tnaSheetUrl || "").trim()) throw httpError(400, "No TNA Sheet URL saved yet.", true);
+
+      const rows = await restSelect({
+        table: "tna_items",
+        select:
+          "week_number,task,planned_date,plan_of_action,executed_date,status,reason,deliverable,sort_order,created_at,updated_at",
+        filters: { intern_profile_id: `eq.${internId}`, order: "sort_order.asc,created_at.asc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const { syncTnaToGoogle } = loadGoogleSync();
+      await syncTnaToGoogle({ tnaSheetUrl, items: rows || [] });
+      const now = new Date().toISOString();
+      await updateReportLinksMeta(internId, { last_synced_to_google_at: now, last_sync_error: null });
+
+      const io = req.app.get("io");
+      const pmId = req.auth.profile.pm_id;
+      if (io) {
+        io.to(`user:${internId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+        io.to("role:hr").emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+      }
+
+      res.status(200).json({ success: true });
     } catch (err) {
       try {
         const internId = req.auth?.profile?.id;
@@ -804,6 +963,7 @@ function createInternRouter() {
         io.to("role:hr").emit("itp:changed", { entity: "blueprint", action: "upsert", internId });
       }
 
+      scheduleGoogleSync(internId, pmId, io, "blueprint");
       res.status(200).json({ success: true });
     } catch (err) {
       if (String(err.message || "").includes("intern_blueprints")) {
@@ -879,11 +1039,42 @@ function createInternRouter() {
 
   router.post("/blueprint/sync/to-google", async (req, res, next) => {
     try {
-      throw httpError(
-        400,
-        "Sync to Google requires credentials (Service Account or OAuth). Plan A supports read-only sync from public links.",
-        true
-      );
+      const internId = req.auth.profile.id;
+      if (!isGoogleSyncEnabled()) {
+        throw httpError(
+          400,
+          "Google sync is disabled. Set GOOGLE_SYNC_ENABLED=true and configure a Service Account that has edit access to the doc.",
+          true
+        );
+      }
+
+      const links = await getReportLinksRow(internId);
+      const blueprintDocUrl = links?.blueprint_doc_url || "";
+      if (!String(blueprintDocUrl || "").trim()) throw httpError(400, "No Blueprint Doc URL saved yet.", true);
+
+      const bpRows = await restSelect({
+        table: "intern_blueprints",
+        select: "data",
+        filters: { intern_profile_id: `eq.${internId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const data = bpRows?.[0]?.data && typeof bpRows[0].data === "object" ? bpRows[0].data : {};
+
+      const { syncBlueprintToGoogle } = loadGoogleSync();
+      await syncBlueprintToGoogle({ blueprintDocUrl, data });
+      const now = new Date().toISOString();
+      await updateReportLinksMeta(internId, { last_synced_to_google_at: now, last_sync_error: null });
+
+      const io = req.app.get("io");
+      const pmId = req.auth.profile.pm_id;
+      if (io) {
+        io.to(`user:${internId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+        io.to("role:hr").emit("itp:changed", { entity: "report_links", action: "sync_to_google", internId });
+      }
+
+      res.status(200).json({ success: true });
     } catch (err) {
       try {
         const internId = req.auth?.profile?.id;

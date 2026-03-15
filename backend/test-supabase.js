@@ -1,8 +1,7 @@
-const { getSupabaseConfig } = require('./src/services/supabaseRest.js');
-const { getProjectRefFromUrl } = require('./src/services/supabaseRest.js'); // Not exported, just fetch instead
-
 async function test() {
-  require('dotenv').config();
+  // Ensure backend/.env is loaded even when running this script from repo root.
+  const path = require("path");
+  require("dotenv").config({ path: path.join(__dirname, ".env") });
   try {
     const res = await fetch(process.env.SUPABASE_URL + '/rest/v1/', {
       headers: { apikey: process.env.SUPABASE_ANON_KEY }
