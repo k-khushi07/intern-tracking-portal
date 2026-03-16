@@ -1,7 +1,8 @@
 // frontend/src/pages/Admin/AdminLogin.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, Mail } from 'lucide-react';
+import { Shield, Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { authApi } from '../../lib/apiClient';
 
 const COLORS = {
   inkBlack: "#020617",
@@ -17,27 +18,39 @@ export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
 
     try {
-      const users = JSON.parse(localStorage.getItem("users") || "[]");
-      const admin = users.find(
-        (u) => u.role === "admin" && 
-              u.email.toLowerCase() === email.toLowerCase() && 
-              u.password === password
-      );
-
-      if (admin) {
-        localStorage.setItem("currentUser", JSON.stringify(admin));
-        navigate("/admin");
-      } else {
-        setError("Invalid credentials");
+      const trimmedEmail = String(email || "").trim();
+      const rawPassword = String(password || "");
+      if (!trimmedEmail || !rawPassword) {
+        setError("Email and password are required.");
+        return;
       }
+
+      const res = await authApi.login({
+        email: trimmedEmail,
+        password: rawPassword,
+        expectedRole: "admin",
+        rememberMe: false,
+      });
+
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify({
+          role: res.profile.role,
+          fullName: res.profile.full_name,
+          email: res.profile.email,
+        })
+      );
+      navigate("/admin/dashboard");
     } catch (err) {
-      setError("Error. Please try again.");
+      localStorage.removeItem("currentUser");
+      setError(err.message || "Error. Please try again.");
     }
   };
 
@@ -245,7 +258,7 @@ export default function AdminLogin() {
               }}
             />
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -253,7 +266,7 @@ export default function AdminLogin() {
               className="input-field"
               style={{
                 width: "100%",
-                padding: "14px 14px 14px 45px",
+                padding: "14px 44px 14px 45px",
                 background: "rgba(255, 255, 255, 0.08)",
                 border: "1px solid rgba(255, 255, 255, 0.15)",
                 borderRadius: "10px",
@@ -263,6 +276,24 @@ export default function AdminLogin() {
                 boxSizing: "border-box",
               }}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              style={{
+                position: "absolute",
+                right: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "transparent",
+                border: "none",
+                padding: 6,
+                cursor: "pointer",
+                color: "rgba(255,255,255,0.65)",
+              }}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
           </div>
 
           {/* Error */}

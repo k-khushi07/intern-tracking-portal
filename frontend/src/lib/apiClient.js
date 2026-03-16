@@ -279,6 +279,9 @@ export const adminApi = {
   nextPmCode() {
     return apiFetch("/admin/pm-code/next", { method: "GET" });
   },
+  nextHrCode() {
+    return apiFetch("/admin/hr-code/next", { method: "GET" });
+  },
   stats() {
     return apiFetch("/admin/stats", { method: "GET" });
   },
@@ -290,6 +293,27 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
+  },
+  getInternDailyLogs(internId) {
+    return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
+  },
+  getInternReports(internId) {
+    return apiFetch(`/hr/interns/${internId}/reports`, { method: "GET" });
+  },
+  async getInternProjectSubmissions(internId) {
+    const res = await apiFetch("/hr/project-submissions", { method: "GET" });
+    const id = String(internId || "");
+    const submissions = Array.isArray(res?.submissions) ? res.submissions : [];
+    const filtered = submissions.filter((row) => {
+      const rowInternId =
+        row?.intern_profile_id ||
+        row?.internProfileId ||
+        row?.intern_profile?.id ||
+        row?.intern?.id ||
+        null;
+      return String(rowInternId || "") === id;
+    });
+    return { ...(res || {}), submissions: filtered };
   },
 };
 

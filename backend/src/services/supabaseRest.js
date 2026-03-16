@@ -290,6 +290,16 @@ async function adminDeleteUser({ userId, softDelete = false }) {
   });
 }
 
+async function adminUpdateUser({ userId, attributes }) {
+  const { url, serviceRoleKey } = getSupabaseConfig();
+  const endpoint = `${url}/auth/v1/admin/users/${userId}`;
+  return requestJson(endpoint, {
+    method: "PUT",
+    headers: authHeaders({ apikey: serviceRoleKey, bearer: serviceRoleKey }),
+    body: attributes || {},
+  });
+}
+
 async function restSelect({ table, select, filters, accessToken, useServiceRole = false }) {
   const { url, anonKey, serviceRoleKey } = getSupabaseConfig();
   const endpoint = new URL(`${url}/rest/v1/${table}`);
@@ -358,6 +368,7 @@ module.exports = {
   authRefresh,
   authGetUser,
   adminCreateUser,
+  adminUpdateUser,
   adminDeleteUser,
   restSelect,
   restInsert,
