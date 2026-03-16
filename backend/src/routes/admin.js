@@ -1,6 +1,8 @@
+//admin.js - Admin routes for user management and intern progress tracking
 const express = require("express");
 const { httpError } = require("../errors");
-const { adminCreateUser, adminDeleteUser, restInsert, restSelect, restUpdate } = require("../services/supabaseRest");
+const { adminCreateUser, adminDeleteUser, adminUpdateUser, restInsert, restSelect, restUpdate } = require("../services/supabaseRest");
+const { getSupabaseConfig } = require("../services/supabaseConfig");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { generateNextInternId, peekNextInternId, checkInternIdUsage } = require("../services/internId");
 const { generateNextPmCode, checkPmCodeUsage } = require("../services/pmCode");
@@ -523,13 +525,49 @@ function createAdminRouter() {
       if (!password || String(password).length < 6) {
         throw httpError(400, "Password must be at least 6 characters", true);
       }
+
+      const userId = req.params.userId;
+      const { url, serviceRoleKey } = getSupabaseConfig();
+
+      // Step 1: Save to temp_password column in profiles
       await restUpdate({
         table: "profiles",
-        patch: { temp_password: String(password), updated_at: new Date().toISOString() },
-        matchQuery: { id: `eq.${req.params.userId}` },
+        patch: {
+          temp_password: String(password),
+          updated_at: new Date().toISOString(),
+        },
+        matchQuery: { id: `eq.${userId}` },
         accessToken: null,
         useServiceRole: true,
       });
+
+      // Step 2: Update password directly in Supabase Auth
+      // userId in profiles IS the Supabase Auth user ID (same UUID)
+      const authRes = await fetch(
+        `${url}/auth/v1/admin/users/${userId}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ password: String(password) }),
+        }
+      );
+
+      if (!authRes.ok) {
+        const errBody = await authRes.json().catch(() => ({}));
+        console.error("[password-reset] Auth PATCH failed:", authRes.status, errBody);
+        throw httpError(
+          500,
+          `Auth password update failed: ${errBody?.message || authRes.status}`,
+          true
+        );
+      }
+
+      const authData = await authRes.json().catch(() => ({}));
+      console.log("[password-reset] Success for:", authData?.email || userId);
       res.status(200).json({ success: true });
     } catch (err) {
       next(err);

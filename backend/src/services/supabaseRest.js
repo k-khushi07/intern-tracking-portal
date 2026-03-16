@@ -290,6 +290,20 @@ async function adminDeleteUser({ userId, softDelete = false }) {
   });
 }
 
+async function adminUpdateUser({ userId, password, email, userMetadata }) {
+  const { url, serviceRoleKey } = getSupabaseConfig();
+  const endpoint = `${url}/auth/v1/admin/users/${userId}`;
+  const body = {};
+  if (password !== undefined) body.password = password;
+  if (email !== undefined) body.email = email;
+  if (userMetadata !== undefined) body.user_metadata = userMetadata;
+  return requestJson(endpoint, {
+    method: "PATCH",
+    headers: authHeaders({ apikey: serviceRoleKey, bearer: serviceRoleKey }),
+    body,
+  });
+}
+
 async function restSelect({ table, select, filters, accessToken, useServiceRole = false }) {
   const { url, anonKey, serviceRoleKey } = getSupabaseConfig();
   const endpoint = new URL(`${url}/rest/v1/${table}`);
@@ -359,6 +373,7 @@ module.exports = {
   authGetUser,
   adminCreateUser,
   adminDeleteUser,
+  adminUpdateUser,
   restSelect,
   restInsert,
   restUpdate,

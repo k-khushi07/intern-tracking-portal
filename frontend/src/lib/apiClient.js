@@ -1,3 +1,4 @@
+// apiClient.js - Client-side API wrapper for making requests to the backend
 async function parseResponse(res) {
   const contentType = res.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
@@ -291,7 +292,17 @@ export const adminApi = {
       body: JSON.stringify({ status }),
     });
   },
+    getInternDailyLogs(internId) {
+    return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
+  },
+  getInternReports(internId) {
+    return apiFetch(`/hr/interns/${internId}/reports`, { method: "GET" });
+  },
+  getInternProjectSubmissions(internId) {
+    return apiFetch(`/hr/project-submissions?internId=${internId}`, { method: "GET" });
+  },
 };
+
 
 export const pmApi = {
   me() {

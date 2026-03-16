@@ -2241,14 +2241,23 @@ function createHrRouter({ emailService }) {
 
   router.get("/project-submissions", async (req, res, next) => {
     try {
+      const filters = { order: "submitted_at.desc" };
+      if (req.query.internId) {
+        filters.intern_profile_id = `eq.${req.query.internId}`;
+      }
+      console.log(
+        "[project-submissions] internId filter:",
+        req.query.internId || "NONE - returning all"
+      );
       const rows = await restSelect({
         table: "project_submissions",
         select:
           "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at,intern_profile_id,pm_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
-        filters: { order: "submitted_at.desc" },
+        filters,
         accessToken: null,
         useServiceRole: true,
       });
+      console.log("[project-submissions] returned:", rows?.length, "rows");
       res.status(200).json({ success: true, submissions: rows || [] });
     } catch (err) {
       next(err);
@@ -2291,7 +2300,7 @@ function createHrRouter({ emailService }) {
       await assertInternExists(req.params.id);
       const rows = await restSelect({
         table: "daily_logs",
-        select: "id,log_date,hours_worked,tasks_completed,status,created_at",
+        select: "id,log_date,hours_worked,tasks,tasks_completed,learnings,blockers,status,review_reason,created_at",
         filters: { intern_profile_id: `eq.${req.params.id}`, order: "log_date.desc", limit: 20 },
         accessToken: null,
         useServiceRole: true,

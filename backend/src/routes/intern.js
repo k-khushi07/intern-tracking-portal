@@ -1,3 +1,4 @@
+// intern.js - Routes for intern users to manage their profile, daily logs, reports, and TNA items
 const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
