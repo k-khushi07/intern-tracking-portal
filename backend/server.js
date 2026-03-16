@@ -1,3 +1,4 @@
+// LEGACY: This file is not used. Email is handled by api-server.js
 // backend/server.js - Email API Server
 const express = require('express');
 const cors = require('cors');

@@ -1,3 +1,4 @@
+// LEGACY: Not used. All API calls go through apiClient.js
 // frontend/src/lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
 

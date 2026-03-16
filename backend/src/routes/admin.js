@@ -372,6 +372,28 @@ function createAdminRouter() {
     }
   });
 
+  router.get("/users/:userId/password", async (req, res, next) => {
+    try {
+      const rows = await restSelect({
+        table: "profiles",
+        select: "id,email,full_name,role,temp_password",
+        filters: { id: `eq.${req.params.userId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const user = rows?.[0];
+      if (!user) throw httpError(404, "User not found", true);
+      res.status(200).json({
+        success: true,
+        password: user.temp_password || null,
+        email: user.email,
+        fullName: user.full_name,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post("/users", async (req, res, next) => {
     try {
       const { email, password, role, fullName, pmCode, pmId, internId, status, profileData } = req.body || {};
@@ -440,6 +462,7 @@ function createAdminRouter() {
         intern_id: normalizedRole === "intern" ? resolvedInternId : null,
         pm_id: normalizedRole === "intern" ? resolvedPmId : null,
         profile_completed: normalizedRole === "intern" ? false : true,
+        temp_password: String(password),
         created_at: now,
         updated_at: now,
       };
@@ -489,6 +512,25 @@ function createAdminRouter() {
           pmId: row.pm_id,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/users/:userId/password", async (req, res, next) => {
+    try {
+      const { password } = req.body || {};
+      if (!password || String(password).length < 6) {
+        throw httpError(400, "Password must be at least 6 characters", true);
+      }
+      await restUpdate({
+        table: "profiles",
+        patch: { temp_password: String(password), updated_at: new Date().toISOString() },
+        matchQuery: { id: `eq.${req.params.userId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true });
     } catch (err) {
       next(err);
     }

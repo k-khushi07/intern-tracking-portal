@@ -34,6 +34,64 @@ const GRADIENTS = {
   accent: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`,
 };
 
+const HR_TABLE_COLUMNS = "2fr 1fr 160px";
+const PM_TABLE_COLUMNS = "2fr 1fr 1fr 160px";
+const INTERN_TABLE_COLUMNS = "1.5fr 1fr 1fr 1fr 0.8fr 280px";
+
+const TABLE_WRAPPER_STYLE = { overflowX: "auto", width: "100%" };
+const TABLE_INNER_STYLE = { minWidth: 700, width: "100%" };
+const USER_CELL_STYLE = { overflow: "hidden", minWidth: 0 };
+const USER_NAME_STYLE = {
+  fontWeight: 600,
+  fontSize: 13,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  display: "block",
+  maxWidth: "100%",
+};
+const USER_EMAIL_STYLE = {
+  fontSize: 11,
+  color: COLORS.muted,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  display: "block",
+  maxWidth: "100%",
+};
+const TABLE_CELL_STYLE = { overflow: "hidden", minWidth: 0 };
+const TABLE_FIELD_STYLE = {
+  background: "rgba(255,255,255,0.04)",
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 8,
+  padding: "6px 8px",
+  color: COLORS.text,
+  fontSize: 12,
+  width: "100%",
+  boxSizing: "border-box",
+};
+const TABLE_ROW_BASE_STYLE = {
+  display: "grid",
+  padding: "12px 14px",
+  borderTop: `1px solid ${COLORS.border}`,
+  alignItems: "center",
+  gap: 8,
+};
+const ACTION_CONTAINER_STYLE = {
+  display: "flex",
+  gap: 6,
+  alignItems: "center",
+  justifyContent: "flex-start",
+  flexWrap: "nowrap",
+};
+const INTERN_ACTION_CONTAINER_STYLE = {
+  display: "flex",
+  gap: 3,
+  alignItems: "center",
+  justifyContent: "flex-start",
+  flexWrap: "nowrap",
+};
+
 const TABS = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "hr", label: "HR", icon: Users },
@@ -143,6 +201,8 @@ export default function AdminHome() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [loadingGeneratedId, setLoadingGeneratedId] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [passwordModal, setPasswordModal] = useState(null);
+  const [internStatusFilter, setInternStatusFilter] = useState("all");
 
   const minDate = new Date().toISOString().slice(0, 10);
 
@@ -164,9 +224,13 @@ export default function AdminHome() {
   const roleFilteredUsers = useMemo(() => {
     if (activeTab === "hr") return filteredUsers.filter((user) => user.role === "hr");
     if (activeTab === "pm") return filteredUsers.filter((user) => user.role === "pm");
-    if (activeTab === "intern") return filteredUsers.filter((user) => user.role === "intern");
+    if (activeTab === "intern") {
+      const byRole = filteredUsers.filter((user) => user.role === "intern");
+      if (internStatusFilter === "all") return byRole;
+      return byRole.filter((user) => (user.status || "active") === internStatusFilter);
+    }
     return filteredUsers;
-  }, [activeTab, filteredUsers]);
+  }, [activeTab, filteredUsers, internStatusFilter]);
 
   const internDepartmentById = useMemo(() => {
     const entries = (internProgress || []).map((intern) => [intern.id, String(intern.department || "").trim()]);
@@ -313,6 +377,11 @@ export default function AdminHome() {
     };
   }, [navigate]);
 
+  useEffect(() => {
+    setInfo("");
+    setError("");
+  }, [activeTab]);
+
   async function refreshData() {
     try {
       setLoading(true);
@@ -326,6 +395,24 @@ export default function AdminHome() {
       setError(err?.message || "Failed to refresh data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleViewPassword(user) {
+    setPasswordModal({ user, password: null, loading: true, newPassword: "" });
+    try {
+      const res = await adminApi.getUserPassword(user.id);
+      setPasswordModal((prev) => ({
+        ...prev,
+        password: res?.password || "Not saved",
+        loading: false,
+      }));
+    } catch (err) {
+      setPasswordModal((prev) => ({
+        ...prev,
+        password: "Error loading",
+        loading: false,
+      }));
     }
   }
 
@@ -405,6 +492,7 @@ export default function AdminHome() {
       setSaving(true);
       setError("");
       setInfo("");
+      setTimeout(() => setInfo(""), 3000);
       await adminApi.createUser(payload);
       setForm({
         role,
@@ -422,6 +510,7 @@ export default function AdminHome() {
       });
       await loadGeneratedIdForRole(role);
       setInfo(`Created ${role.toUpperCase()} account for ${payload.email}. Password: ${password}`);
+      setTimeout(() => setInfo(""), 3000);
       await loadAll();
     } catch (err) {
       if (isAuthOrRoleError(err)) {
@@ -485,6 +574,7 @@ export default function AdminHome() {
       setActionId(user.id);
       setError("");
       setInfo("");
+      setTimeout(() => setInfo(""), 3000);
       await adminApi.updateUser(user.id, {
         internId: nextInternId,
         department: nextDepartment || null,
@@ -492,6 +582,7 @@ export default function AdminHome() {
       });
       await loadAll();
       setInfo(`Updated intern profile for ${user.fullName || user.email}.`);
+      setTimeout(() => setInfo(""), 3000);
     } catch (err) {
       if (isAuthOrRoleError(err)) {
         redirectToAdminLogin(err);
@@ -555,6 +646,7 @@ export default function AdminHome() {
       setProfileSaving(true);
       setError("");
       setInfo("");
+      setTimeout(() => setInfo(""), 3000);
       await adminApi.updateUser(selectedIntern.id, {
         fullName: String(profileDraft.fullName || "").trim(),
         internId: String(profileDraft.internId || "").trim(),
@@ -568,6 +660,7 @@ export default function AdminHome() {
       });
       await loadAll();
       setInfo(`Updated profile for ${selectedIntern.fullName || selectedIntern.email}.`);
+      setTimeout(() => setInfo(""), 3000);
       closeInternProfile();
     } catch (err) {
       if (isAuthOrRoleError(err)) {
@@ -604,6 +697,14 @@ export default function AdminHome() {
   }
 
   const activeTabDetails = TABS.find((t) => t.id === activeTab);
+  const userTableColumns =
+    activeTab === "intern" ? INTERN_TABLE_COLUMNS : activeTab === "pm" ? PM_TABLE_COLUMNS : HR_TABLE_COLUMNS;
+  const userTableLabels =
+    activeTab === "intern"
+      ? ["User", "Intern ID", "Department", "Assigned PM", "Status", "Actions"]
+      : activeTab === "pm"
+        ? ["User", "PM Code", "Status", "Actions"]
+        : ["User", "Status", "Actions"];
 
   return (
     <>
@@ -820,19 +921,20 @@ export default function AdminHome() {
             overflowX: "hidden",
             background: "transparent",
           }}>
-            <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 24 }}>
+              <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 24 }}>
 
-              <form
-                onSubmit={createUser}
-                style={{
-                  background: COLORS.panel,
-                  border: `1px solid ${COLORS.border}`,
-                  borderRadius: 16,
-                  padding: 24,
-                  display: "grid",
-                  gap: 20,
-                }}
-              >
+                {activeTab === "overview" && (
+                  <form
+                    onSubmit={createUser}
+                    style={{
+                      background: COLORS.panel,
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: 16,
+                      padding: 24,
+                      display: "grid",
+                      gap: 20,
+                    }}
+                  >
                 <div style={{ fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
                   <Plus size={20} /> Create New User
                 </div>
@@ -988,7 +1090,8 @@ export default function AdminHome() {
                     <Plus size={16} /> {saving ? "Creating..." : "Create User"}
                   </button>
                 </div>
-              </form>
+                </form>
+                )}
 
               {error && (
                 <div
@@ -1043,6 +1146,59 @@ export default function AdminHome() {
                     <StatCard label="Pending Reports" value={stats?.activity?.reportsPending ?? 0} />
                   </div>
 
+                  {stats && (
+                    <div style={{ display: "grid", gap: 16, marginTop: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.textPrimary }}>Analytics Overview</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                        <div style={{ background: COLORS.surfaceGlass, border: `1px solid ${COLORS.borderGlass}`, borderRadius: 14, padding: 16 }}>
+                          <div style={{ fontWeight: 700, marginBottom: 12, color: COLORS.textPrimary }}>User Breakdown</div>
+                          {[
+                            { label: "HR Staff", value: stats.users?.hr || 0, color: "#14b8a6" },
+                            { label: "Project Managers", value: stats.users?.pm || 0, color: "#a78bfa" },
+                            { label: "Interns", value: stats.users?.intern || 0, color: "#10b981" },
+                            { label: "Active Users", value: stats.users?.active || 0, color: "#f59e0b" },
+                            { label: "New (last 30 days)", value: stats.users?.createdLast30Days || 0, color: "#14b8a6" },
+                          ].map((item) => (
+                            <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                              <span style={{ color: COLORS.textSecondary, fontSize: 13 }}>{item.label}</span>
+                              <span style={{ color: item.color, fontWeight: 700, fontSize: 15 }}>{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ background: COLORS.surfaceGlass, border: `1px solid ${COLORS.borderGlass}`, borderRadius: 14, padding: 16 }}>
+                          <div style={{ fontWeight: 700, marginBottom: 12, color: COLORS.textPrimary }}>Intern Statistics</div>
+                          {[
+                            { label: "Assigned to PM", value: stats.interns?.assignedToPm || 0, color: "#10b981" },
+                            { label: "Unassigned", value: stats.interns?.unassignedToPm || 0, color: "#ef4444" },
+                            { label: "Profile Completed", value: stats.interns?.profileCompleted || 0, color: "#14b8a6" },
+                            { label: "Avg Progress", value: `${stats.interns?.averageProgress || 0}%`, color: "#a78bfa" },
+                            { label: "Completed Internships", value: stats.interns?.completed || 0, color: "#10b981" },
+                          ].map((item) => (
+                            <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                              <span style={{ color: COLORS.textSecondary, fontSize: 13 }}>{item.label}</span>
+                              <span style={{ color: item.color, fontWeight: 700, fontSize: 15 }}>{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ background: COLORS.surfaceGlass, border: `1px solid ${COLORS.borderGlass}`, borderRadius: 14, padding: 16 }}>
+                          <div style={{ fontWeight: 700, marginBottom: 12, color: COLORS.textPrimary }}>Activity Summary</div>
+                          {[
+                            { label: "Total Daily Logs", value: stats.activity?.dailyLogs || 0, color: "#14b8a6" },
+                            { label: "Approved Logs", value: stats.activity?.approvedDailyLogs || 0, color: "#10b981" },
+                            { label: "Total Hours Logged", value: `${stats.activity?.totalHours || 0}h`, color: "#f59e0b" },
+                            { label: "Reports Submitted", value: stats.activity?.reportsTotal || 0, color: "#a78bfa" },
+                            { label: "Reports Pending", value: stats.activity?.reportsPending || 0, color: "#f59e0b" },
+                          ].map((item) => (
+                            <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                              <span style={{ color: COLORS.textSecondary, fontSize: 13 }}>{item.label}</span>
+                              <span style={{ color: item.color, fontWeight: 700, fontSize: 15 }}>{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div
                     style={{
                       background: COLORS.panel,
@@ -1093,145 +1249,229 @@ export default function AdminHome() {
                     border: `1px solid ${COLORS.border}`,
                     borderRadius: 14,
                     overflow: "hidden",
+                    width: "100%",
                   }}
                 >
-                  <div style={{ padding: "12px 14px", fontWeight: 700 }}>
-                    {activeTab.toUpperCase()} Users ({roleFilteredUsers.length})
-                  </div>
-                  <TableHeader
-                    columns={activeTab === "intern" ? "2fr 1.1fr 1.2fr 1.2fr 1fr auto auto" : "2fr 1fr 1fr 1fr auto"}
-                    labels={
-                      activeTab === "intern"
-                        ? ["User", "Intern ID", "Department", "Assigned PM", "Set Status", "Save", "Actions"]
-                        : ["User", "Code/ID", "Status", "Assigned PM", "Actions"]
-                    }
-                  />
-                  <div style={{ display: "grid" }}>
-                    {roleFilteredUsers.map((user) => (
-                      <div
-                        key={user.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: activeTab === "intern" ? "2fr 1.1fr 1.2fr 1.2fr 1fr auto auto" : "2fr 1fr 1fr 1fr auto",
-                          padding: "10px 12px",
-                          borderTop: `1px solid ${COLORS.border}`,
-                          fontSize: 13,
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <div
-                          onClick={() => {
-                            if (activeTab === "intern") openInternProfile(user);
+                  <div style={{ padding: "12px 14px", fontWeight: 700 }}>{activeTab.toUpperCase()} Users ({roleFilteredUsers.length})</div>
+                  {activeTab === "intern" && (
+                    <div style={{ display: "flex", gap: 8, margin: "0 14px 16px", flexWrap: "wrap" }}>
+                      {["all", "active", "completed", "archived", "inactive"].map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => setInternStatusFilter(status)}
+                          style={{
+                            padding: "6px 16px",
+                            borderRadius: 20,
+                            border: internStatusFilter === status ? "1px solid #14b8a6" : `1px solid rgba(255,255,255,0.12)`,
+                            background: internStatusFilter === status ? "rgba(20,184,166,0.15)" : "transparent",
+                            color: internStatusFilter === status ? "#14b8a6" : "rgba(248,250,252,0.5)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            textTransform: "capitalize",
                           }}
-                          style={{ cursor: activeTab === "intern" ? "pointer" : "default" }}
                         >
-                          <div style={{ fontWeight: 600 }}>{user.fullName || "-"}</div>
-                          <div style={{ color: COLORS.muted }}>{user.email}</div>
-                        </div>
-                        {activeTab === "intern" && (
-                          <input
-                            value={internEdits[user.id]?.internId ?? user.internId ?? ""}
-                            onChange={(event) =>
-                              setInternEdits((prev) => ({
-                                ...prev,
-                                [user.id]: {
-                                  ...(prev[user.id] || {}),
-                                  internId: event.target.value,
-                                },
-                              }))
-                            }
-                            disabled={actionId === user.id}
-                            style={inputStyle}
-                          />
-                        )}
-                        {activeTab === "intern" && (
-                          <select
-                            value={internEdits[user.id]?.department ?? user.profileData?.department ?? ""}
-                            onChange={(event) =>
-                              setInternEdits((prev) => ({
-                                ...prev,
-                                [user.id]: {
-                                  ...(prev[user.id] || {}),
-                                  department: event.target.value,
-                                },
-                              }))
-                            }
-                            disabled={actionId === user.id}
-                            style={inputStyle}
-                          >
-                            <option value="">Unassigned</option>
-                            {DEPARTMENT_OPTIONS.map((department) => (
-                              <option key={department} value={department}>
-                                {department}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        {activeTab !== "intern" && <div>{user.role === "pm" ? user.pmCode || "-" : user.role === "intern" ? user.internId || "-" : "-"}</div>}
-                        {activeTab !== "intern" && <div>{user.status || "-"}</div>}
-                        <div>
-                          {activeTab === "intern" ? (
-                            <select
-                              value={internEdits[user.id]?.pmId ?? user.pmId ?? ""}
-                              onChange={(event) =>
-                                setInternEdits((prev) => ({
-                                  ...prev,
-                                  [user.id]: {
-                                    ...(prev[user.id] || {}),
-                                    pmId: event.target.value,
-                                  },
-                                }))
-                              }
-                              disabled={actionId === user.id}
-                              style={inputStyle}
-                            >
-                              <option value="">Unassigned</option>
-                              {pmUsers.map((pm) => (
-                                <option key={pm.id} value={pm.id}>
-                                  {pm.fullName || pm.email} {pm.pmCode ? `(${pm.pmCode})` : ""}
-                                </option>
-                              ))}
-                            </select>
-                          ) : user.role === "intern" ? (
-                            user.pm?.fullName || user.pm?.email || "-"
-                          ) : (
-                            "-"
-                          )}
-                        </div>
-                        {activeTab === "intern" && (
-                          <select
-                            value={user.status || "active"}
-                            onChange={(event) => updateInternStatus(user.id, event.target.value)}
-                            disabled={actionId === user.id}
-                            style={inputStyle}
-                          >
-                            <option value="active">active</option>
-                            <option value="inactive">inactive</option>
-                            <option value="completed">completed</option>
-                            <option value="archived">archived</option>
-                          </select>
-                        )}
-                        {activeTab === "intern" && (
-                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                            <button type="button" onClick={() => saveInternProfile(user)} disabled={actionId === user.id} style={btnStyle("secondary")}>
-                              <Save size={14} /> {actionId === user.id ? "..." : "Save"}
-                            </button>
+                          {status === "all" ? "All Interns" : status}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div style={TABLE_WRAPPER_STYLE}>
+                    <div style={TABLE_INNER_STYLE}>
+                      <TableHeader columns={userTableColumns} labels={userTableLabels} />
+                      <div style={{ display: "grid" }}>
+                        {roleFilteredUsers.map((user) => (
+                          <div key={user.id} style={{ ...TABLE_ROW_BASE_STYLE, gridTemplateColumns: userTableColumns }}>
+                            <div style={USER_CELL_STYLE}>
+                              <span style={USER_NAME_STYLE}>{user.fullName || "-"}</span>
+                              <span style={USER_EMAIL_STYLE}>{user.email || "-"}</span>
+                            </div>
+                            {activeTab === "hr" && (
+                              <>
+                                <div style={TABLE_CELL_STYLE}>{user.status || "-"}</div>
+                                <div style={ACTION_CONTAINER_STYLE}>
+                                  <button
+                                    type="button"
+                                    title="Password"
+                                    onClick={() => handleViewPassword(user)}
+                                    style={{
+                                      ...btnStyle("small"),
+                                      border: "1px solid rgba(167,139,250,0.4)",
+                                      background: "rgba(167,139,250,0.15)",
+                                      color: "#a78bfa",
+                                    }}
+                                  >
+                                    <Eye size={12} /> Password
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Delete"
+                                    onClick={() => deleteUser(user)}
+                                    disabled={actionId === user.id}
+                                    style={btnStyle("small-danger")}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                            {activeTab === "pm" && (
+                              <>
+                                <div style={TABLE_CELL_STYLE}>{user.pmCode || "-"}</div>
+                                <div style={TABLE_CELL_STYLE}>{user.status || "-"}</div>
+                                <div style={ACTION_CONTAINER_STYLE}>
+                                  <button
+                                    type="button"
+                                    title="Password"
+                                    onClick={() => handleViewPassword(user)}
+                                    style={{
+                                      ...btnStyle("small"),
+                                      border: "1px solid rgba(167,139,250,0.4)",
+                                      background: "rgba(167,139,250,0.15)",
+                                      color: "#a78bfa",
+                                    }}
+                                  >
+                                    <Eye size={12} /> Password
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Delete"
+                                    onClick={() => deleteUser(user)}
+                                    disabled={actionId === user.id}
+                                    style={btnStyle("small-danger")}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                            {activeTab === "intern" && (
+                              <>
+                                <div style={TABLE_CELL_STYLE}>
+                                  <input
+                                    value={internEdits[user.id]?.internId ?? user.internId ?? ""}
+                                    onChange={(event) =>
+                                      setInternEdits((prev) => ({
+                                        ...prev,
+                                        [user.id]: {
+                                          ...(prev[user.id] || {}),
+                                          internId: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    disabled={actionId === user.id}
+                                    style={TABLE_FIELD_STYLE}
+                                  />
+                                </div>
+                                <div style={TABLE_CELL_STYLE}>
+                                  <select
+                                    value={internEdits[user.id]?.department ?? user.profileData?.department ?? ""}
+                                    onChange={(event) =>
+                                      setInternEdits((prev) => ({
+                                        ...prev,
+                                        [user.id]: {
+                                          ...(prev[user.id] || {}),
+                                          department: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    disabled={actionId === user.id}
+                                    style={TABLE_FIELD_STYLE}
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {DEPARTMENT_OPTIONS.map((department) => (
+                                      <option key={department} value={department}>
+                                        {department}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div style={TABLE_CELL_STYLE}>
+                                  <select
+                                    value={internEdits[user.id]?.pmId ?? user.pmId ?? ""}
+                                    onChange={(event) =>
+                                      setInternEdits((prev) => ({
+                                        ...prev,
+                                        [user.id]: {
+                                          ...(prev[user.id] || {}),
+                                          pmId: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    disabled={actionId === user.id}
+                                    style={TABLE_FIELD_STYLE}
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {pmUsers.map((pm) => (
+                                      <option key={pm.id} value={pm.id}>
+                                        {pm.fullName || pm.email} {pm.pmCode ? `(${pm.pmCode})` : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div style={TABLE_CELL_STYLE}>
+                                  <select
+                                    value={user.status || "active"}
+                                    onChange={(event) => updateInternStatus(user.id, event.target.value)}
+                                    disabled={actionId === user.id}
+                                    style={TABLE_FIELD_STYLE}
+                                  >
+                                    <option value="active">active</option>
+                                    <option value="inactive">inactive</option>
+                                    <option value="completed">completed</option>
+                                    <option value="archived">archived</option>
+                                  </select>
+                                </div>
+                                <div style={TABLE_CELL_STYLE}>
+                                  <div style={INTERN_ACTION_CONTAINER_STYLE}>
+                                    <button
+                                      type="button"
+                                      title="Save"
+                                      onClick={() => saveInternProfile(user)}
+                                      disabled={actionId === user.id}
+style={{ ...btnStyle("small"), background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}                                    >
+                                      <Save size={12} /> {actionId === user.id ? "..." : "Save"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="View"
+                                      onClick={() => openInternProfile(user)}
+                                      style={btnStyle("small")}
+                                    >
+                                      <Eye size={12} /> View
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Password"
+                                      onClick={() => handleViewPassword(user)}
+                                      style={{
+                                        ...btnStyle("small"),
+                                        border: "1px solid rgba(167,139,250,0.4)",
+                                        background: "rgba(167,139,250,0.15)",
+                                        color: "#a78bfa",
+                                      }}
+                                    >
+                                      <Eye size={12} /> Password
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Delete"
+                                      onClick={() => deleteUser(user)}
+                                      disabled={actionId === user.id}
+                                      style={btnStyle("small-danger")}
+                                    >
+                                      <Trash2 size={12} /> {actionId === user.id ? "..." : "Delete"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
-                        )}
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                          {activeTab === "intern" && (
-                            <button type="button" onClick={() => openInternProfile(user)} style={btnStyle("secondary")}>
-                              <Eye size={14} /> View
-                            </button>
-                          )}
-                          <button type="button" onClick={() => deleteUser(user)} disabled={actionId === user.id} style={btnStyle("danger")}>
-                            <Trash2 size={14} /> {actionId === user.id ? "..." : "Delete"}
-                          </button>
-                        </div>
+                        ))}
+                        {!roleFilteredUsers.length && <div style={{ padding: 16, color: COLORS.muted }}>No users found.</div>}
                       </div>
-                    ))}
-                    {!roleFilteredUsers.length && <div style={{ padding: 16, color: COLORS.muted }}>No users found.</div>}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1301,65 +1541,70 @@ export default function AdminHome() {
                   }}
                 >
                   <div style={{ padding: "12px 14px", fontWeight: 700 }}>Intern Progress ({internProgress.length})</div>
-                  <TableHeader
-                    columns="2fr 1fr 1fr 1fr 1fr 1fr 1fr"
-                    labels={["Intern", "Intern ID", "Department", "Approved Logs", "Approved Hours", "Approved Reports", "Progress"]}
-                  />
-                  <div style={{ display: "grid" }}>
-                    {internProgress.map((intern) => (
-                      <div
-                        key={intern.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr",
-                          padding: "10px 12px",
-                          borderTop: `1px solid ${COLORS.border}`,
-                          fontSize: 13,
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{intern.fullName || "-"}</div>
-                          <div style={{ color: COLORS.muted }}>{intern.email}</div>
-                        </div>
-                        <div>{intern.internId || "-"}</div>
-                        <div>{intern.department || "-"}</div>
-                        <div>{intern.approvedWork?.logs || 0}</div>
-                        <div>{intern.approvedWork?.hours || 0}h</div>
-                        <div>
-                          {intern.approvedWork?.reports || 0}/{intern.reports?.total || 0}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{intern.progressPercent || 0}%</div>
+                  <div style={TABLE_WRAPPER_STYLE}>
+                    <div style={TABLE_INNER_STYLE}>
+                      <TableHeader
+                        columns="1.5fr 1fr 1fr 1fr 1fr 1fr 1fr"
+                        labels={["Intern", "Intern ID", "Department", "Approved Logs", "Approved Hours", "Approved Reports", "Progress"]}
+                      />
+                      <div style={{ display: "grid" }}>
+                        {internProgress.map((intern) => (
                           <div
+                            key={intern.id}
                             style={{
-                              marginTop: 4,
-                              height: 6,
-                              borderRadius: 999,
-                              background: "rgba(255,255,255,0.1)",
-                              overflow: "hidden",
+                              display: "grid",
+                              gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr",
+                              padding: "10px 12px",
+                              borderTop: `1px solid ${COLORS.border}`,
+                              fontSize: 13,
+                              alignItems: "center",
+                              gap: 8,
                             }}
                           >
-                            <div
-                              style={{
-                                width: `${Math.max(0, Math.min(100, intern.progressPercent || 0))}%`,
-                                height: "100%",
-                                background: `linear-gradient(90deg, ${COLORS.accent}, ${COLORS.accent2})`,
-                              }}
-                            />
+                            <div style={{ overflow: "hidden", minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{intern.fullName || "-"}</div>
+                              <div style={{ color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{intern.email}</div>
+                            </div>
+                            <div>{intern.internId || "-"}</div>
+                            <div>{intern.department || "-"}</div>
+                            <div>{intern.approvedWork?.logs || 0}</div>
+                            <div>{intern.approvedWork?.hours || 0}h</div>
+                            <div>
+                              {intern.approvedWork?.reports || 0}/{intern.reports?.total || 0}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{intern.progressPercent || 0}%</div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  height: 6,
+                                  borderRadius: 999,
+                                  background: "rgba(255,255,255,0.1)",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${Math.max(0, Math.min(100, intern.progressPercent || 0))}%`,
+                                    height: "100%",
+                                    background: `linear-gradient(90deg, ${COLORS.accent}, ${COLORS.accent2})`,
+                                  }}
+                                />
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
+                        {!internProgress.length && <div style={{ padding: 16, color: COLORS.muted }}>No intern progress data available.</div>}
                       </div>
-                    ))}
-                    {!internProgress.length && <div style={{ padding: 16, color: COLORS.muted }}>No intern progress data available.</div>}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {selectedIntern && profileDraft && (
+          <>
+            {selectedIntern && profileDraft && (
             <div
               onClick={closeInternProfile}
               style={{
@@ -1500,7 +1745,134 @@ export default function AdminHome() {
                 </div>
               </div>
             </div>
-          )}
+            )}
+            {passwordModal && (
+              <div
+                onClick={() => setPasswordModal(null)}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  background: "rgba(2,6,23,0.8)",
+                  backdropFilter: "blur(4px)",
+                  display: "grid",
+                  placeItems: "center",
+                  zIndex: 1300,
+                  padding: 20,
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: "100%",
+                    maxWidth: 440,
+                    background: "#0b1a24",
+                    border: `1px solid ${COLORS.borderGlass}`,
+                    borderRadius: 16,
+                    padding: 24,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 16,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>Account Password</div>
+                    <button type="button" onClick={() => setPasswordModal(null)} style={btnStyle("secondary")}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div style={{ color: COLORS.textMuted, fontSize: 13 }}>
+                    {passwordModal.user?.fullName || passwordModal.user?.email}
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        background: "rgba(20,184,166,0.15)",
+                        color: "#14b8a6",
+                        fontSize: 11,
+                      }}
+                    >
+                      {passwordModal.user?.role?.toUpperCase()}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: `1px solid ${COLORS.borderGlass}`,
+                      borderRadius: 10,
+                      padding: "14px 16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>Current Password</div>
+                    {passwordModal.loading ? (
+                      <div style={{ color: "#14b8a6", fontSize: 15, fontWeight: 700 }}>Loading...</div>
+                    ) : passwordModal.password && passwordModal.password !== "Not saved" ? (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ color: "#14b8a6", fontSize: 15, fontWeight: 700, letterSpacing: 2 }}>
+                          {passwordModal.password}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(passwordModal.password)}
+                          style={{ ...btnStyle("secondary"), padding: "4px 8px", fontSize: 11 }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                          Password not on record — this account was created before password tracking was enabled.
+                        </div>
+                        <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                          Use "Reset Password" below to set a new password and save it.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ borderTop: `1px solid ${COLORS.borderGlass}`, paddingTop: 16 }}>
+                    <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 8 }}>Reset Password</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        type="text"
+                        placeholder="New password (min 6 chars)"
+                        value={passwordModal.newPassword || ""}
+                        onChange={(e) => setPasswordModal((prev) => ({ ...prev, newPassword: e.target.value }))}
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!passwordModal.newPassword || passwordModal.newPassword.length < 6) {
+                            alert("Password must be at least 6 characters");
+                            return;
+                          }
+                          try {
+                            await adminApi.resetUserPassword(passwordModal.user.id, passwordModal.newPassword);
+                            setPasswordModal((prev) => ({
+                              ...prev,
+                              password: prev.newPassword,
+                              newPassword: "",
+                            }));
+                            setInfo("Password updated successfully!");
+                            setTimeout(() => setInfo(""), 3000);
+                          } catch (err) {
+                            setError(err?.message || "Failed to reset password");
+                          }
+                        }}
+                        style={btnStyle("primary")}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
 
         </main >
 
@@ -1539,6 +1911,38 @@ function btnStyle(type) {
       display: "inline-flex",
       gap: 6,
       alignItems: "center",
+    };
+  }
+  if (type === "small") {
+    return {
+      border: `1px solid ${COLORS.border}`,
+      background: "transparent",
+      color: COLORS.text,
+      padding: "4px 8px",
+      borderRadius: 6,
+      fontWeight: 600,
+      fontSize: 11,
+      cursor: "pointer",
+      display: "inline-flex",
+      gap: 4,
+      alignItems: "center",
+      whiteSpace: "nowrap",
+    };
+  }
+  if (type === "small-danger") {
+    return {
+      border: "1px solid rgba(239,68,68,0.5)",
+      background: "rgba(239,68,68,0.15)",
+      color: "#fecaca",
+      padding: "4px 8px",
+      borderRadius: 6,
+      fontWeight: 600,
+      fontSize: 11,
+      cursor: "pointer",
+      display: "inline-flex",
+      gap: 4,
+      alignItems: "center",
+      whiteSpace: "nowrap",
     };
   }
   if (type === "danger") {

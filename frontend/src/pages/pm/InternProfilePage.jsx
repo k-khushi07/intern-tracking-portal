@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User } from "lucide-react";
 import { pmApi } from "../../lib/apiClient";
@@ -348,6 +348,9 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
   const displayInternId = profileData.internId || profileData.intern_id || internDetails?.intern_id || internDetails?.internId || "-";
   const joinedAt = profileData.joinedAt || profileData.joinDate || internDetails?.created_at || null;
   const lastActivity = profileData.lastLogDate || profileData.lastActivity || internDetails?.lastLogDate || null;
+  const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
+  const resumeUrl =
+    profileData.resumeUrl || profileData.resume_url || internDetails?.resumeUrl || internDetails?.resume_url || null;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -610,13 +613,13 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13 }}>
                     <span style={{ color: "rgba(255,229,217,0.9)" }}>TNA Sheet</span>
                     {links.tnaSheetUrl ? (
-                      <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ↗</a>
+                      <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ?</a>
                     ) : <span style={{ color: COLORS.muted }}>Not set</span>}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13 }}>
                     <span style={{ color: "rgba(255,229,217,0.9)" }}>Blueprint Doc</span>
                     {links.blueprintDocUrl ? (
-                      <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ↗</a>
+                      <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ?</a>
                     ) : <span style={{ color: COLORS.muted }}>Not set</span>}
                   </div>
                 </div>
@@ -714,7 +717,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               TNA Tracking Sheet
             </div>
             {links.tnaSheetUrl && (
-              <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ↗</a>
+              <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ?</a>
             )}
           </div>
           {links.tnaSheetUrl ? (
@@ -740,7 +743,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               Blueprint Document
             </div>
             {links.blueprintDocUrl && (
-              <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ↗</a>
+              <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ?</a>
             )}
           </div>
           {links.blueprintDocUrl ? (
@@ -953,7 +956,6 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const extra = report?.data && typeof report.data === "object" ? report.data : {};
   const attendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
   const progressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
-
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
     report.submittedAt ? `Submitted: ${new Date(report.submittedAt).toLocaleDateString()}` : null,
