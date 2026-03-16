@@ -348,9 +348,6 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
   const displayInternId = profileData.internId || profileData.intern_id || internDetails?.intern_id || internDetails?.internId || "-";
   const joinedAt = profileData.joinedAt || profileData.joinDate || internDetails?.created_at || null;
   const lastActivity = profileData.lastLogDate || profileData.lastActivity || internDetails?.lastLogDate || null;
-  const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
-  const resumeUrl =
-    profileData.resumeUrl || profileData.resume_url || internDetails?.resumeUrl || internDetails?.resume_url || null;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
