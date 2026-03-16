@@ -943,16 +943,11 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const readOnly = String(report.status || "").toLowerCase() !== "pending";
   const currentStatusColor = statusColor(report.status);
   const isWeekly = String(report.reportType || "").toLowerCase() === "weekly";
-<<<<<<< HEAD
-  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
+  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
   const extra = report?.data && typeof report.data === "object" ? report.data : {};
   const attendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
   const progressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
-=======
-  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
->>>>>>> origin/khush
-
-  const meta = [
+const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
     report.submittedAt ? `Submitted: ${new Date(report.submittedAt).toLocaleDateString()}` : null,
   ].filter(Boolean).join(" • ");

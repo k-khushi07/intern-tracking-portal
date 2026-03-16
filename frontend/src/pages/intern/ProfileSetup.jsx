@@ -88,7 +88,6 @@ export default function InternProfileSetup() {
       const profileData =
         me.profile && typeof me.profile.profile_data === "object" ? me.profile.profile_data : {};
       const existingFiles = buildStoredFilesFromProfile(profileData);
-<<<<<<< HEAD
       setStoredFiles(existingFiles);
       setProfile((prev) => ({
         ...prev,
@@ -96,16 +95,6 @@ export default function InternProfileSetup() {
         profilePicture: prev.profilePicture || existingFiles.profilePicture?.url || profileData.profilePictureUrl || null,
         resume: prev.resume || existingFiles.resume?.url || profileData.resumeUrl || null,
       }));
-=======
-      if (existingFiles.profilePicture || existingFiles.resume) {
-        setStoredFiles(existingFiles);
-        setProfile((prev) => ({
-          ...prev,
-          profilePicture: prev.profilePicture || existingFiles.profilePicture?.url || null,
-          resume: prev.resume || existingFiles.resume?.url || null,
-        }));
-      }
->>>>>>> origin/khush
 
       const u = {
         role: me.profile.role,
@@ -128,7 +117,6 @@ export default function InternProfileSetup() {
       if (user.role === "intern") {
         const cachedProfileData = user.profileData || {};
         const cachedFiles = buildStoredFilesFromProfile(cachedProfileData);
-<<<<<<< HEAD
         setStoredFiles(cachedFiles);
         setProfile((prev) => ({
           ...prev,
@@ -136,16 +124,6 @@ export default function InternProfileSetup() {
           profilePicture: prev.profilePicture || cachedFiles.profilePicture?.url || cachedProfileData.profilePictureUrl || null,
           resume: prev.resume || cachedFiles.resume?.url || cachedProfileData.resumeUrl || null,
         }));
-=======
-        if (cachedFiles.profilePicture || cachedFiles.resume) {
-          setStoredFiles(cachedFiles);
-          setProfile((prev) => ({
-            ...prev,
-            profilePicture: prev.profilePicture || cachedFiles.profilePicture?.url || null,
-            resume: prev.resume || cachedFiles.resume?.url || null,
-          }));
-        }
->>>>>>> origin/khush
         setCurrentUser(user);
       } else {
         window.location.href = "/";

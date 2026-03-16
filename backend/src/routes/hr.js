@@ -414,11 +414,8 @@ function createHrRouter({ emailService }) {
     stipend,
     password,
     pmCode,
-<<<<<<< HEAD
-=======
     cc,
     bcc,
->>>>>>> origin/khush
     offerLetterAttachment,
     sendEmail = true,
   }) {
@@ -579,11 +576,8 @@ function createHrRouter({ emailService }) {
 
         await emailService.sendEmail({
           to: app.email,
-<<<<<<< HEAD
-=======
           cc: cc || undefined,
           bcc: bcc || undefined,
->>>>>>> origin/khush
           subject: "🎉 InternHub Selection - Offer Letter Attached",
           html: buildApprovalEmailHtml({
             name: app.applicant_name,
@@ -1123,7 +1117,6 @@ function createHrRouter({ emailService }) {
 
   router.post("/applications/:id/approve", async (req, res, next) => {
     try {
-<<<<<<< HEAD
       if (!UUID_REGEX.test(req.params.id)) {
         return res.status(400).json({ error: "Invalid ID format" });
       }
@@ -1135,12 +1128,11 @@ function createHrRouter({ emailService }) {
         stipend,
         password,
         pmCode,
+        cc,
+        bcc,
         offerLetterAttachment,
         sendEmail,
       } = req.body || {};
-=======
-      const { startDate, endDate, department, mentorName, stipend, password, pmCode, cc, bcc, offerLetterAttachment, sendEmail } = req.body || {};
->>>>>>> origin/khush
       const approval = await approveApplicationRecord({
         applicationId: req.params.id,
         approvedByProfileId: req.auth.profile.id,
@@ -1151,11 +1143,8 @@ function createHrRouter({ emailService }) {
         stipend,
         password,
         pmCode,
-<<<<<<< HEAD
-=======
         cc,
         bcc,
->>>>>>> origin/khush
         offerLetterAttachment,
         sendEmail,
       });
@@ -1794,22 +1783,14 @@ function createHrRouter({ emailService }) {
 
   router.patch("/reports/:id/review", async (req, res, next) => {
     try {
-<<<<<<< HEAD
       const reviewerId = req.auth.profile.id;
       const reviewerRole = String(req.auth.profile.role || "").toLowerCase();
       const { status, reason, remarks, reviewReason } = req.body || {};
       const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
-
-=======
-      const hrId = req.auth.profile.id;
-      const { status, reason, remarks, reviewReason } = req.body || {};
-      const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
->>>>>>> origin/khush
       if (!status || !["approved", "rejected"].includes(status)) {
         throw httpError(400, "status must be approved or rejected", true);
       }
 
-<<<<<<< HEAD
       const existing = await restSelect({
         table: "reports",
         select: "id,intern_profile_id,pm_profile_id,recipient_roles,status,submitted_at",
@@ -1832,13 +1813,6 @@ function createHrRouter({ emailService }) {
         patch: {
           status,
           reviewed_by: reviewerId,
-=======
-      await restUpdate({
-        table: "reports",
-        patch: {
-          status,
-          reviewed_by: hrId,
->>>>>>> origin/khush
           reviewed_at: new Date().toISOString(),
           review_reason: finalRemarks || null,
           updated_at: new Date().toISOString(),
@@ -1848,7 +1822,6 @@ function createHrRouter({ emailService }) {
         useServiceRole: true,
       });
 
-<<<<<<< HEAD
       const nextReportRow = Array.isArray(updated) ? updated[0] : updated;
       const internId = nextReportRow?.intern_profile_id || reportRow.intern_profile_id;
       const pmId = nextReportRow?.pm_profile_id || reportRow.pm_profile_id;
@@ -1891,15 +1864,6 @@ function createHrRouter({ emailService }) {
       }
 
       res.status(200).json({ success: true, report: nextReportRow || null });
-=======
-      const io = req.app.get("io");
-      if (io) {
-        io.to(`user:${hrId}`).emit("itp:changed", { entity: "reports", action: "update" });
-        io.to("role:hr").emit("itp:changed", { entity: "reports", action: "update" });
-      }
-
-      res.status(200).json({ success: true });
->>>>>>> origin/khush
     } catch (err) {
       next(err);
     }

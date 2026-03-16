@@ -1,6 +1,5 @@
 //frontend/src/pages/intern/ProfilePage.jsx
 import React, { useState, useCallback } from "react";
-import { internApi } from "../../lib/apiClient";
 import {
   User, Mail, Phone, MapPin, GraduationCap, Briefcase,
   Calendar, Heart, Shield, Edit3, Save, X, Check,

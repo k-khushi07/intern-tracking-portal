@@ -264,6 +264,15 @@ export const adminApi = {
   deleteUser(userId) {
     return apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
   },
+  getUserPassword(userId) {
+    return apiFetch(`/admin/users/${userId}/password`, { method: "GET" });
+  },
+  resetUserPassword(userId, password) {
+    return apiFetch(`/admin/users/${userId}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ password }),
+    });
+  },
   nextInternId() {
     return apiFetch("/admin/intern-id/next", { method: "GET" });
   },
@@ -351,12 +360,9 @@ export const internApi = {
       body: JSON.stringify({ title, description, githubLink, demoLink }),
     });
   },
-<<<<<<< HEAD
-=======
   mySubmissions() {
     return apiFetch("/intern/project-submissions", { method: "GET" });
   },
->>>>>>> origin/khush
   updateMe({ profileData, profileCompleted, fileUploads } = {}) {
     return apiFetch("/intern/me", {
       method: "PATCH",

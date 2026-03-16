@@ -859,11 +859,8 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
         stipend: stipend.trim() || null,
         password: password.trim(),
         pmCode: normalizedPmCode || undefined,
-<<<<<<< HEAD
-=======
         cc: approvalCc.trim() || undefined,
         bcc: approvalBcc.trim() || undefined,
->>>>>>> origin/khush
         offerLetterAttachment: resolvedOfferLetterAttachment || undefined,
         sendEmail: true,
         showAlert: false,

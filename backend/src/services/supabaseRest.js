@@ -1,10 +1,7 @@
 const { httpError } = require("../errors");
 const { getSupabaseConfig } = require("./supabaseConfig");
-<<<<<<< HEAD
 const http = require("node:http");
 const https = require("node:https");
-=======
->>>>>>> origin/khush
 
 function normalizeUpstreamStatus(status) {
   if (status === 525) return 503;
