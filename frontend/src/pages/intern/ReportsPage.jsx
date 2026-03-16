@@ -68,7 +68,9 @@ export default function ReportsPage({ isMobile = false }) {
   });
   const [syncing, setSyncing] = useState({
     tnaFrom: false,
+    tnaTo: false,
     blueprintFrom: false,
+    blueprintTo: false,
   });
 
   const [items, setItems] = useState([]);
@@ -84,6 +86,8 @@ export default function ReportsPage({ isMobile = false }) {
   const [blueprintDirty, setBlueprintDirty] = useState(false);
 
   const hasUnsaved = linksDirty || tnaDirty || blueprintDirty;
+  const tnaHasUnsaved = linksDirty || tnaDirty;
+  const blueprintHasUnsaved = linksDirty || blueprintDirty;
 
   const stats = useMemo(() => {
     const completed = items.filter((i) => i.status === "completed").length;
@@ -191,7 +195,7 @@ export default function ReportsPage({ isMobile = false }) {
   };
 
   const syncTnaFromGoogle = async () => {
-    if (hasUnsaved) {
+    if (tnaHasUnsaved) {
       alert("Save or discard your changes before syncing from Google.");
       return;
     }
@@ -211,9 +215,35 @@ export default function ReportsPage({ isMobile = false }) {
     }
   };
 
+  const syncTnaToGoogle = async ({ silent = false } = {}) => {
+    if (tnaHasUnsaved) {
+      if (!silent) alert("Save or discard your changes before syncing to Google.");
+      return;
+    }
+    if (!String(links.tnaSheetUrl || "").trim()) {
+      if (!silent) alert("Paste and save a TNA Google Sheet URL first.");
+      return;
+    }
+    setSyncing((s) => ({ ...s, tnaTo: true }));
+    try {
+      await internApi.syncTnaToGoogle();
+      const linksRes = await internApi.reportLinks();
+      setMeta({
+        lastSyncedFromGoogleAt: linksRes?.meta?.lastSyncedFromGoogleAt || null,
+        lastSyncedToGoogleAt: linksRes?.meta?.lastSyncedToGoogleAt || null,
+        lastSyncError: linksRes?.meta?.lastSyncError || null,
+      });
+    } catch (e) {
+      if (!silent) alert(e?.message || "Failed to sync to Google");
+      await loadAll().catch(() => { });
+    } finally {
+      setSyncing((s) => ({ ...s, tnaTo: false }));
+    }
+  };
+
 
   const syncBlueprintFromGoogle = async () => {
-    if (hasUnsaved) {
+    if (blueprintHasUnsaved) {
       alert("Save or discard your changes before syncing from Google.");
       return;
     }
@@ -230,6 +260,32 @@ export default function ReportsPage({ isMobile = false }) {
       await loadAll().catch(() => { });
     } finally {
       setSyncing((s) => ({ ...s, blueprintFrom: false }));
+    }
+  };
+
+  const syncBlueprintToGoogle = async ({ silent = false } = {}) => {
+    if (blueprintHasUnsaved) {
+      if (!silent) alert("Save or discard your changes before syncing to Google.");
+      return;
+    }
+    if (!String(links.blueprintDocUrl || "").trim()) {
+      if (!silent) alert("Paste and save a Blueprint Google Doc URL first.");
+      return;
+    }
+    setSyncing((s) => ({ ...s, blueprintTo: true }));
+    try {
+      await internApi.syncBlueprintToGoogle();
+      const linksRes = await internApi.reportLinks();
+      setMeta({
+        lastSyncedFromGoogleAt: linksRes?.meta?.lastSyncedFromGoogleAt || null,
+        lastSyncedToGoogleAt: linksRes?.meta?.lastSyncedToGoogleAt || null,
+        lastSyncError: linksRes?.meta?.lastSyncError || null,
+      });
+    } catch (e) {
+      if (!silent) alert(e?.message || "Failed to sync to Google");
+      await loadAll().catch(() => { });
+    } finally {
+      setSyncing((s) => ({ ...s, blueprintTo: false }));
     }
   };
 
@@ -309,6 +365,10 @@ export default function ReportsPage({ isMobile = false }) {
       }
       setItems(next);
       setTnaDirty(false);
+
+      if (String(links.tnaSheetUrl || "").trim() && !linksDirty) {
+        await syncTnaToGoogle({ silent: true });
+      }
     } catch (e) {
       alert(e?.message || "Failed to save TNA");
     } finally {
@@ -351,6 +411,10 @@ export default function ReportsPage({ isMobile = false }) {
         notes: blueprint.notes || "",
       });
       setBlueprintDirty(false);
+
+      if (String(links.blueprintDocUrl || "").trim() && !linksDirty) {
+        await syncBlueprintToGoogle({ silent: true });
+      }
     } catch (e) {
       alert(e?.message || "Failed to save blueprint");
     } finally {
@@ -501,16 +565,22 @@ export default function ReportsPage({ isMobile = false }) {
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button
                   onClick={syncTnaFromGoogle}
-                  disabled={syncing.tnaFrom || saving || loading || hasUnsaved || !String(links.tnaSheetUrl || "").trim()}
+                  disabled={syncing.tnaFrom || saving || loading || tnaHasUnsaved || !String(links.tnaSheetUrl || "").trim()}
                   style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
                   title="Pull rows from Google Sheets into the portal"
                 >
                   {syncing.tnaFrom ? <Loader size={16} /> : <RefreshCw size={16} />}
                   Sync from Google
                 </button>
-                <div style={{ alignSelf: "center", color: COLORS.muted, fontSize: 12 }}>
-                  Sync to Google requires credentials (service account). This portal supports read-only sync from public links.
-                </div>
+                <button
+                  onClick={() => syncTnaToGoogle()}
+                  disabled={syncing.tnaTo || saving || loading || tnaHasUnsaved || !String(links.tnaSheetUrl || "").trim()}
+                  style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
+                  title="Push portal rows into Google Sheets"
+                >
+                  {syncing.tnaTo ? <Loader size={16} /> : <Save size={16} />}
+                  Sync to Google
+                </button>
               </div>
             </div>
             <div>
@@ -540,16 +610,22 @@ export default function ReportsPage({ isMobile = false }) {
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button
                   onClick={syncBlueprintFromGoogle}
-                  disabled={syncing.blueprintFrom || saving || loading || hasUnsaved || !String(links.blueprintDocUrl || "").trim()}
+                  disabled={syncing.blueprintFrom || saving || loading || blueprintHasUnsaved || !String(links.blueprintDocUrl || "").trim()}
                   style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
                   title="Pull blueprint from Google Docs into the portal"
                 >
                   {syncing.blueprintFrom ? <Loader size={16} /> : <RefreshCw size={16} />}
                   Sync from Google
                 </button>
-                <div style={{ alignSelf: "center", color: COLORS.muted, fontSize: 12 }}>
-                  Sync to Google requires credentials (service account). This portal supports read-only sync from public links.
-                </div>
+                <button
+                  onClick={() => syncBlueprintToGoogle()}
+                  disabled={syncing.blueprintTo || saving || loading || blueprintHasUnsaved || !String(links.blueprintDocUrl || "").trim()}
+                  style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
+                  title="Push portal blueprint into Google Docs"
+                >
+                  {syncing.blueprintTo ? <Loader size={16} /> : <Save size={16} />}
+                  Sync to Google
+                </button>
               </div>
             </div>
           </div>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Search, Mail, Eye, Award, TrendingUp, Clock, FileDown, CheckCircle2, Briefcase, Calendar, MessageCircle, FileText, X, Activity } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Search, Mail, Eye, Award, TrendingUp, Clock, FileDown, CheckCircle2, Briefcase, Calendar, MessageCircle, FileText, X, Activity, User } from "lucide-react";
 import InternProfilePage from "./InternProfilePage";
 import { Modal } from "../HRComponents";
 import { hrApi } from "../../../lib/apiClient";
@@ -67,7 +67,9 @@ const ActiveInternsPage = ({
   const [pmFilterName, setPmFilterName] = useState(initialPmName || "");
 
   const [pmSelections, setPmSelections] = useState({});
+  const [pmEditing, setPmEditing] = useState({});
   const [savingAssign, setSavingAssign] = useState({});
+  const [pmDirectory, setPmDirectory] = useState([]);
   const [markingCompleted, setMarkingCompleted] = useState({});
   const [loadError, setLoadError] = useState("");
   const [pendingCompleteIntern, setPendingCompleteIntern] = useState(null);
@@ -143,14 +145,49 @@ const ActiveInternsPage = ({
     setActiveInterns(uniqueInterns);
   }, [allUsers]);
 
-  const allPMs = (allUsers || [])
-    .filter((u) => u.role === "pm" && (u.pmCode || u.pm_code))
-    .map((u) => ({
-      id: u.id,
-      fullName: u.fullName || u.name || u.full_name || u.email,
-      email: u.email,
-      pmCode: u.pmCode || u.pm_code,
-    }));
+  const pmDirectoryFetchedRef = useRef(false);
+  const allPMs = pmDirectory;
+
+  useEffect(() => {
+    const pmsFromCurrentUsers = (allUsers || [])
+      .filter((u) => u?.role === "pm" && (u.pmCode || u.pm_code))
+      .map((u) => ({
+        id: u.id,
+        fullName: u.fullName || u.name || u.full_name || u.email,
+        email: u.email,
+        pmCode: u.pmCode || u.pm_code,
+      }))
+      .filter((pm) => pm?.pmCode);
+
+    if (pmsFromCurrentUsers.length) {
+      setPmDirectory(pmsFromCurrentUsers);
+      return;
+    }
+
+    if (pmDirectoryFetchedRef.current) return;
+    pmDirectoryFetchedRef.current = true;
+
+    const loadPmDirectory = async () => {
+      try {
+        const res = await hrApi.users();
+        const pms = (res?.users || [])
+          .filter((u) => u?.role === "pm" && (u.pmCode || u.pm_code))
+          .map((u) => ({
+            id: u.id,
+            fullName: u.fullName || u.name || u.full_name || u.email,
+            email: u.email,
+            pmCode: u.pmCode || u.pm_code,
+          }))
+          .filter((pm) => pm?.pmCode);
+        setPmDirectory(pms);
+      } catch (err) {
+        console.error("Error loading PM directory:", err);
+        setPmDirectory([]);
+      }
+    };
+
+    void loadPmDirectory();
+  }, [allUsers]);
 
   const handleAssignPm = async (intern, pmCode) => {
     if (!intern?.id || !pmCode) return;
@@ -175,6 +212,14 @@ const ActiveInternsPage = ({
     } finally {
       setSavingAssign((prev) => ({ ...prev, [intern.id]: false }));
     }
+  };
+
+  const getInitials = (fullName) => {
+    const safe = String(fullName || "").trim();
+    if (!safe) return "PM";
+    const parts = safe.split(/\s+/).filter(Boolean);
+    const initials = parts.slice(0, 2).map((p) => p[0]).join("");
+    return initials.toUpperCase() || "PM";
   };
 
   const handleMarkCompleted = async (intern) => {
@@ -802,59 +847,156 @@ const ActiveInternsPage = ({
                   <p style={{ fontSize: 11, color: "rgba(255, 229, 217, 0.55)", marginBottom: 5, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
                     PM Assignment
                   </p>
-                  {intern.pmCode ? (
+
+                  {intern.pmCode && !pmEditing[intern.id] ? (
+                    (() => {
+                      const assignedPm = allPMs.find((pm) => String(pm.pmCode) === String(intern.pmCode));
+                      const pmName = assignedPm?.fullName || "Unknown PM";
+                      const pmCode = assignedPm?.pmCode || intern.pmCode;
+
+                      return (
+                        <div
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            background: "rgba(103, 146, 137, 0.12)",
+                            border: "1px solid rgba(103, 146, 137, 0.3)",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <div
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: "50%",
+                                background: "linear-gradient(135deg, rgba(20, 184, 166, 0.35), rgba(103, 146, 137, 0.25))",
+                                border: "1px solid rgba(103, 146, 137, 0.35)",
+                                display: "grid",
+                                placeItems: "center",
+                                color: COLORS.peachGlow,
+                                fontWeight: 900,
+                                fontSize: 13,
+                                flexShrink: 0,
+                              }}
+                              title={pmName}
+                            >
+                              {getInitials(pmName)}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ color: COLORS.peachGlow, fontSize: 14, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {pmName}
+                              </div>
+                              <div style={{ marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    padding: "3px 8px",
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    color: "rgba(255, 229, 217, 0.8)",
+                                    background: "rgba(255,255,255,0.05)",
+                                    border: "1px solid rgba(103, 146, 137, 0.25)",
+                                  }}
+                                >
+                                  {pmCode}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPmSelections((prev) => ({ ...prev, [intern.id]: String(intern.pmCode || "") }));
+                              setPmEditing((prev) => ({ ...prev, [intern.id]: true }));
+                            }}
+                            className="action-btn secondary"
+                            style={{ flex: "0 0 auto" }}
+                          >
+                            Change
+                          </button>
+                        </div>
+                      );
+                    })()
+                  ) : (
                     <div
                       style={{
-                        padding: "9px 12px",
-                        borderRadius: 10,
-                        background: "rgba(103, 146, 137, 0.12)",
-                        border: "1px solid rgba(103, 146, 137, 0.3)",
-                        color: COLORS.peachGlow,
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {intern.pmCode}
-                    </div>
-                  ) : (
-                    <select
-                      value={pmSelections[intern.id] || ""}
-                      onChange={(e) => setPmSelections((prev) => ({ ...prev, [intern.id]: e.target.value }))}
-                      style={{
                         width: "100%",
-                        padding: "9px 12px",
-                        borderRadius: 10,
-                        border: "1px solid rgba(103, 146, 137, 0.35)",
-                        background: "rgba(255,255,255,0.06)",
-                        color: COLORS.peachGlow,
-                        outline: "none",
-                        fontSize: 13,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: intern.pmCode ? "1px solid rgba(103, 146, 137, 0.3)" : "1px dashed rgba(245, 158, 11, 0.35)",
+                        background: intern.pmCode ? "rgba(255,255,255,0.04)" : "rgba(245, 158, 11, 0.08)",
                       }}
                     >
-                      <option value="" style={{ background: COLORS.inkBlack }}>Select PM code…</option>
-                      {allPMs.map((pm) => (
-                        <option key={pm.pmCode} value={pm.pmCode} style={{ background: COLORS.inkBlack }}>
-                          {pm.pmCode} — {pm.fullName}
-                        </option>
-                      ))}
-                    </select>
+                      {!intern.pmCode ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "rgba(255, 229, 217, 0.75)", fontSize: 12, fontWeight: 800 }}>
+                          <User size={14} style={{ opacity: 0.9 }} />
+                          No PM assigned
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <select
+                          value={pmSelections[intern.id] || ""}
+                          onChange={(e) => setPmSelections((prev) => ({ ...prev, [intern.id]: e.target.value }))}
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 10,
+                            border: "1px solid rgba(103, 146, 137, 0.35)",
+                            background: "rgba(7, 30, 34, 0.72)",
+                            color: COLORS.peachGlow,
+                            outline: "none",
+                            fontSize: 13,
+                          }}
+                        >
+                          <option value="" style={{ background: COLORS.inkBlack, color: COLORS.peachGlow }}>
+                            Select project manager…
+                          </option>
+                          {allPMs.map((pm) => (
+                            <option key={pm.pmCode} value={pm.pmCode} style={{ background: COLORS.inkBlack, color: COLORS.peachGlow }}>
+                              {pm.fullName} ({pm.pmCode})
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleAssignPm(intern, pmSelections[intern.id]);
+                            setPmEditing((prev) => ({ ...prev, [intern.id]: false }));
+                          }}
+                          disabled={!pmSelections[intern.id] || !!savingAssign[intern.id]}
+                          className="action-btn primary"
+                          style={{
+                            flex: "0 0 auto",
+                            opacity: !pmSelections[intern.id] || savingAssign[intern.id] ? 0.65 : 1,
+                            cursor: !pmSelections[intern.id] || savingAssign[intern.id] ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {savingAssign[intern.id] ? "Saving…" : intern.pmCode ? "Update" : "Assign"}
+                        </button>
+                      </div>
+
+                      {intern.pmCode ? (
+                        <button
+                          type="button"
+                          onClick={() => setPmEditing((prev) => ({ ...prev, [intern.id]: false }))}
+                          className="action-btn secondary"
+                          style={{ marginTop: 8, padding: "8px 10px", fontSize: 12 }}
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
                   )}
                 </div>
-                {!intern.pmCode && (
-                  <button
-                    type="button"
-                    onClick={() => handleAssignPm(intern, pmSelections[intern.id])}
-                    disabled={!pmSelections[intern.id] || !!savingAssign[intern.id]}
-                    className="action-btn primary"
-                    style={{
-                      flex: "0 0 auto",
-                      opacity: !pmSelections[intern.id] || savingAssign[intern.id] ? 0.65 : 1,
-                      cursor: !pmSelections[intern.id] || savingAssign[intern.id] ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {savingAssign[intern.id] ? "Assigning…" : "Assign"}
-                  </button>
-                )}
               </div>
 
               {/* Documents + Complete */}

@@ -213,6 +213,110 @@ async function createOfferLetterPdf({ approvedIntern, profile, application }) {
   });
 }
 
+function decodePdfBase64(payload) {
+  const raw = String(payload || "").trim();
+  if (!raw) return null;
+  const base64 = raw.includes(",") ? raw.split(",").pop() : raw;
+  try {
+    return Buffer.from(base64, "base64");
+  } catch {
+    return null;
+  }
+}
+
+function decodeDataUrlOrBase64(payload) {
+  const raw = String(payload || "").trim();
+  if (!raw) return { buffer: null, mimeType: null };
+  const isDataUrl = raw.startsWith("data:");
+  const mimeType = isDataUrl ? raw.slice(5).split(";")[0] || null : null;
+  const base64 = raw.includes(",") ? raw.split(",").pop() : raw;
+  try {
+    return { buffer: Buffer.from(base64, "base64"), mimeType };
+  } catch {
+    return { buffer: null, mimeType };
+  }
+}
+
+function replaceTemplateVariables(template, variables) {
+  let output = String(template || "");
+  const entries = Object.entries(variables || {});
+  for (const [key, value] of entries) {
+    if (!key) continue;
+    const escaped = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    output = output.replace(new RegExp(escaped, "g"), String(value ?? ""));
+  }
+  return output;
+}
+
+async function createPdfFromTemplateText({ title, templateText }) {
+  let PDFDocument;
+  try {
+    PDFDocument = require("pdfkit");
+  } catch {
+    throw httpError(500, "PDF generation dependency missing. Install `pdfkit` in backend.", true);
+  }
+
+  const doc = new PDFDocument({ margin: 48 });
+  const chunks = [];
+  return await new Promise((resolve, reject) => {
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    if (title) {
+      doc.fontSize(20).text(String(title), { align: "center" });
+      doc.moveDown(1);
+    }
+
+    doc.fontSize(11).text(String(templateText || ""), { lineGap: 3 });
+    doc.end();
+  });
+}
+
+function computeDurationLabel({ startDate, endDate }) {
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+  const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+  if (!days) return "";
+  if (days < 30) return `${days} days`;
+  const months = Math.round(days / 30);
+  return `${months} month${months === 1 ? "" : "s"}`;
+}
+
+async function createOfferLetterPdfFromHrTemplate({ templateRow, bundle }) {
+  const templatePdf = decodePdfBase64(templateRow?.custom_pdf);
+  if (templatePdf) return templatePdf;
+
+  const approvedIntern = bundle?.approvedIntern || null;
+  const profile = bundle?.profile || null;
+  const application = bundle?.application || null;
+
+  const internName = application?.applicant_name || profile?.full_name || "Intern";
+  const domain = application?.domain || approvedIntern?.department || "Internship";
+  const startDate = approvedIntern?.start_date || "";
+  const endDate = approvedIntern?.end_date || "";
+  const pmCode = profile?.pm?.pm_code || profile?.pm?.pmCode || "";
+
+  const variables = {
+    "[COMPANY_LETTERHEAD]": "EDCS - Expertise for Business Growth\nInternHub Division",
+    "[DATE]": new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+    "[INTERN_NAME]": internName,
+    "[INTERN_EMAIL]": profile?.email || application?.email || "",
+    "[INTERN_ID]": approvedIntern?.intern_id || "",
+    "[DOMAIN]": domain,
+    "[DURATION]": computeDurationLabel({ startDate, endDate }) || "",
+    "[START_DATE]": startDate,
+    "[END_DATE]": endDate,
+    "[PM_CODE]": pmCode,
+    "[ACCEPTANCE_DEADLINE]": new Date(Date.now() + 48 * 60 * 60 * 1000).toLocaleDateString("en-US"),
+    "[HR_MANAGER_NAME]": "HR Team",
+  };
+
+  const text = replaceTemplateVariables(templateRow?.content || "", variables);
+  return createPdfFromTemplateText({ title: "Offer Letter", templateText: text });
+}
+
 async function createCertificatePdf({ approvedIntern, profile, application, performanceNote }) {
   let PDFDocument;
   try {
@@ -259,6 +363,116 @@ function createHrRouter({ emailService }) {
 
   router.use(auth.requireRole("hr", "admin"));
   const TEMPLATE_SELECT = "id,name,content,custom_pdf,is_custom,created_at,updated_at";
+  const SETTINGS_SELECT = "key,value,updated_at";
+  const DEFAULT_OFFER_TEMPLATE_SETTING = "default_offer_letter_template_id";
+  const DOCUMENTS_SELECT = "key,filename,mime_type,content_base64,updated_at";
+  const DOCUMENT_KEY_CERTIFICATE_TEMPLATE = "certificate_template";
+
+  async function getHrSetting(key) {
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) return null;
+    const rows = await restSelect({
+      table: "hr_settings",
+      select: SETTINGS_SELECT,
+      filters: { key: `eq.${normalizedKey}`, limit: 1 },
+      accessToken: null,
+      useServiceRole: true,
+    });
+    return rows?.[0]?.value ?? null;
+  }
+
+  async function setHrSetting(key, value) {
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) throw httpError(400, "Setting key is required", true);
+
+    const normalizedValue = value === null || value === undefined ? null : String(value);
+
+    const existing = await restSelect({
+      table: "hr_settings",
+      select: "key",
+      filters: { key: `eq.${normalizedKey}`, limit: 1 },
+      accessToken: null,
+      useServiceRole: true,
+    });
+
+    if (normalizedValue === null || normalizedValue === "") {
+      if (existing?.length) {
+        await restDelete({
+          table: "hr_settings",
+          matchQuery: { key: `eq.${normalizedKey}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    if (existing?.length) {
+      await restUpdate({
+        table: "hr_settings",
+        patch: { value: normalizedValue, updated_at: now },
+        matchQuery: { key: `eq.${normalizedKey}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      return normalizedValue;
+    }
+
+    await restInsert({
+      table: "hr_settings",
+      rows: { key: normalizedKey, value: normalizedValue, updated_at: now },
+      accessToken: null,
+      useServiceRole: true,
+    });
+    return normalizedValue;
+  }
+
+  router.get("/settings", async (req, res, next) => {
+    try {
+      let defaultOfferLetterTemplateId = null;
+      try {
+        defaultOfferLetterTemplateId = await getHrSetting(DEFAULT_OFFER_TEMPLATE_SETTING);
+      } catch (err) {
+        if (!isMissingTableError(err, "hr_settings")) throw err;
+      }
+
+      res.status(200).json({
+        success: true,
+        settings: {
+          defaultOfferLetterTemplateId: defaultOfferLetterTemplateId || null,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/settings", async (req, res, next) => {
+    try {
+      const { defaultOfferLetterTemplateId } = req.body || {};
+      let updated = null;
+      try {
+        updated = await setHrSetting(DEFAULT_OFFER_TEMPLATE_SETTING, defaultOfferLetterTemplateId ?? null);
+      } catch (err) {
+        if (isMissingTableError(err, "hr_settings")) {
+          err.status = 400;
+          err.expose = true;
+          err.message = "HR settings table not found. Run Supabase migration 014_add_hr_settings.sql.";
+        }
+        throw err;
+      }
+
+      res.status(200).json({
+        success: true,
+        settings: {
+          defaultOfferLetterTemplateId: updated || null,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   router.get("/templates", async (req, res, next) => {
     try {
@@ -365,6 +579,165 @@ function createHrRouter({ emailService }) {
       });
 
       res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  async function getDocumentRow(key) {
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) return null;
+    const rows = await restSelect({
+      table: "hr_documents",
+      select: DOCUMENTS_SELECT,
+      filters: { key: `eq.${normalizedKey}`, limit: 1 },
+      accessToken: null,
+      useServiceRole: true,
+    });
+    return rows?.[0] || null;
+  }
+
+  async function upsertDocumentRow(key, patch) {
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) throw httpError(400, "Document key is required", true);
+
+    const existing = await restSelect({
+      table: "hr_documents",
+      select: "key",
+      filters: { key: `eq.${normalizedKey}`, limit: 1 },
+      accessToken: null,
+      useServiceRole: true,
+    });
+
+    const now = new Date().toISOString();
+    const nextPatch = { ...(patch || {}), updated_at: now };
+
+    if (existing?.length) {
+      await restUpdate({
+        table: "hr_documents",
+        patch: nextPatch,
+        matchQuery: { key: `eq.${normalizedKey}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      return getDocumentRow(normalizedKey);
+    }
+
+    await restInsert({
+      table: "hr_documents",
+      rows: { key: normalizedKey, ...nextPatch, updated_at: now },
+      accessToken: null,
+      useServiceRole: true,
+    });
+    return getDocumentRow(normalizedKey);
+  }
+
+  router.get("/documents/certificate-template", async (req, res, next) => {
+    try {
+      let row = null;
+      try {
+        row = await getDocumentRow(DOCUMENT_KEY_CERTIFICATE_TEMPLATE);
+      } catch (err) {
+        if (isMissingTableError(err, "hr_documents")) {
+          res.status(200).json({
+            success: true,
+            document: {
+              key: DOCUMENT_KEY_CERTIFICATE_TEMPLATE,
+              filename: null,
+              mimeType: null,
+              updatedAt: null,
+              hasContent: false,
+            },
+            warning: "HR documents table not found. Run Supabase migration 015_add_hr_documents.sql.",
+          });
+          return;
+        }
+        throw err;
+      }
+
+      res.status(200).json({
+        success: true,
+        document: row
+          ? {
+              key: row.key,
+              filename: row.filename || null,
+              mimeType: row.mime_type || null,
+              updatedAt: row.updated_at || null,
+              hasContent: !!row.content_base64,
+            }
+          : {
+              key: DOCUMENT_KEY_CERTIFICATE_TEMPLATE,
+              filename: null,
+              mimeType: null,
+              updatedAt: null,
+              hasContent: false,
+            },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/documents/certificate-template", async (req, res, next) => {
+    try {
+      const { filename, mimeType, contentBase64 } = req.body || {};
+      const normalizedFilename = String(filename || "").trim();
+      const normalizedMime = String(mimeType || "").trim();
+      const normalizedContent = String(contentBase64 || "").trim();
+      if (!normalizedFilename) throw httpError(400, "filename is required", true);
+      if (!normalizedContent) throw httpError(400, "contentBase64 is required", true);
+
+      const { buffer, mimeType: inferredMime } = decodeDataUrlOrBase64(normalizedContent);
+      if (!buffer || !buffer.length) throw httpError(400, "Invalid contentBase64", true);
+
+      const effectiveMime = normalizedMime || inferredMime || "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      const row = await upsertDocumentRow(DOCUMENT_KEY_CERTIFICATE_TEMPLATE, {
+        filename: normalizedFilename,
+        mime_type: effectiveMime,
+        content_base64: normalizedContent,
+      }).catch((err) => {
+        if (isMissingTableError(err, "hr_documents")) {
+          err.status = 400;
+          err.expose = true;
+          err.message = "HR documents table not found. Run Supabase migration 015_add_hr_documents.sql.";
+        }
+        throw err;
+      });
+
+      res.status(200).json({
+        success: true,
+        document: row
+          ? {
+              key: row.key,
+              filename: row.filename || null,
+              mimeType: row.mime_type || null,
+              updatedAt: row.updated_at || null,
+              hasContent: !!row.content_base64,
+            }
+          : null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/documents/certificate-template/download", async (req, res, next) => {
+    try {
+      const row = await getDocumentRow(DOCUMENT_KEY_CERTIFICATE_TEMPLATE).catch((err) => {
+        if (isMissingTableError(err, "hr_documents")) {
+          throw httpError(400, "HR documents table not found. Run Supabase migration 015_add_hr_documents.sql.", true);
+        }
+        throw err;
+      });
+      if (!row?.content_base64) throw httpError(404, "Certificate template not uploaded yet.", true);
+
+      const { buffer, mimeType } = decodeDataUrlOrBase64(row.content_base64);
+      if (!buffer) throw httpError(400, "Stored certificate template is corrupted.", true);
+
+      const filename = String(row.filename || "certificate-template.docx").replace(/[\r\n"]/g, "_");
+      res.setHeader("Content-Type", row.mime_type || mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.status(200).send(buffer);
     } catch (err) {
       next(err);
     }
@@ -1490,11 +1863,35 @@ function createHrRouter({ emailService }) {
       const bundle = await loadApprovedInternBundle(req.params.profileId);
       if (!bundle) throw httpError(404, "Active intern not found", true);
 
-      const buffer = await createOfferLetterPdf({
-        approvedIntern: bundle.approvedIntern,
-        profile: bundle.profile,
-        application: bundle.application,
-      });
+      let buffer = null;
+      let defaultTemplateId = null;
+      try {
+        defaultTemplateId = await getHrSetting(DEFAULT_OFFER_TEMPLATE_SETTING);
+      } catch (err) {
+        if (!isMissingTableError(err, "hr_settings")) throw err;
+      }
+
+      if (defaultTemplateId) {
+        const templateRows = await restSelect({
+          table: "hr_templates",
+          select: TEMPLATE_SELECT,
+          filters: { id: `eq.${defaultTemplateId}`, limit: 1 },
+          accessToken: null,
+          useServiceRole: true,
+        });
+        const templateRow = templateRows?.[0] || null;
+        if (templateRow) {
+          buffer = await createOfferLetterPdfFromHrTemplate({ templateRow, bundle });
+        }
+      }
+
+      if (!buffer) {
+        buffer = await createOfferLetterPdf({
+          approvedIntern: bundle.approvedIntern,
+          profile: bundle.profile,
+          application: bundle.application,
+        });
+      }
 
       const safeId = (bundle.approvedIntern?.intern_id || "intern").replace(/[^a-zA-Z0-9-_]/g, "_");
       res.setHeader("Content-Type", "application/pdf");

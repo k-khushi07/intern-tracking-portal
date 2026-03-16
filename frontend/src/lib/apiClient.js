@@ -142,6 +142,15 @@ export const hrApi = {
       method: "DELETE",
     });
   },
+  settings() {
+    return apiFetch("/hr/settings", { method: "GET" });
+  },
+  updateSettings(patch) {
+    return apiFetch("/hr/settings", {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  },
   internReportLinks(internId) {
     return apiFetch(`/hr/interns/${internId}/report-links`, { method: "GET" });
   },
@@ -206,6 +215,18 @@ export const hrApi = {
     if (performanceNote) params.set("performanceNote", performanceNote);
     const query = params.toString();
     return `/api/hr/active-interns/${profileId}/certificate.pdf${query ? `?${query}` : ""}`;
+  },
+  certificateTemplateInfo() {
+    return apiFetch("/hr/documents/certificate-template", { method: "GET" });
+  },
+  uploadCertificateTemplate({ filename, mimeType, contentBase64 }) {
+    return apiFetch("/hr/documents/certificate-template", {
+      method: "PATCH",
+      body: JSON.stringify({ filename, mimeType, contentBase64 }),
+    });
+  },
+  downloadCertificateTemplate() {
+    return "/api/hr/documents/certificate-template/download";
   },
   reviewReport(reportId, payload) {
     return apiFetch(`/hr/reports/${reportId}/review`, {
@@ -402,8 +423,14 @@ export const internApi = {
   syncTnaFromGoogle() {
     return apiFetch("/intern/tna/sync/from-google", { method: "POST" });
   },
+  syncTnaToGoogle() {
+    return apiFetch("/intern/tna/sync/to-google", { method: "POST" });
+  },
   syncBlueprintFromGoogle() {
     return apiFetch("/intern/blueprint/sync/from-google", { method: "POST" });
+  },
+  syncBlueprintToGoogle() {
+    return apiFetch("/intern/blueprint/sync/to-google", { method: "POST" });
   },
 };
 

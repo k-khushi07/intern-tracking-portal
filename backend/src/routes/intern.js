@@ -719,11 +719,42 @@ function createInternRouter() {
 
   router.post("/tna/sync/to-google", async (req, res, next) => {
     try {
-      throw httpError(
-        400,
-        "Sync to Google requires credentials (Service Account or OAuth). Plan A supports read-only sync from public links.",
-        true
-      );
+      const internId = req.auth.profile.id;
+      let syncTnaToGoogle;
+      try {
+        ({ syncTnaToGoogle } = require("../services/googleSync"));
+      } catch {
+        throw httpError(500, "Google sync dependency missing. Install `googleapis` in backend to enable sync to Google.", true);
+      }
+      const links = await getReportLinksRow(internId);
+      const tnaSheetUrl = links?.tna_sheet_url || "";
+      if (!String(tnaSheetUrl || "").trim()) throw httpError(400, "No TNA Sheet URL saved yet.", true);
+
+      const rows = await restSelect({
+        table: "tna_items",
+        select: "week_number,task,planned_date,plan_of_action,executed_date,status,reason,deliverable,sort_order",
+        filters: { intern_profile_id: `eq.${internId}`, order: "sort_order.asc,created_at.asc", limit: 5000 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      await syncTnaToGoogle({ tnaSheetUrl, items: rows || [] });
+
+      const now = new Date().toISOString();
+      await updateReportLinksMeta(internId, {
+        last_synced_to_google_at: now,
+        last_sync_error: null,
+      });
+
+      const io = req.app.get("io");
+      const pmId = req.auth.profile.pm_id;
+      if (io) {
+        io.to(`user:${internId}`).emit("itp:changed", { entity: "tna", action: "sync_to_google", internId });
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "tna", action: "sync_to_google", internId });
+        io.to("role:hr").emit("itp:changed", { entity: "tna", action: "sync_to_google", internId });
+      }
+
+      res.status(200).json({ success: true });
     } catch (err) {
       try {
         const internId = req.auth?.profile?.id;
@@ -872,11 +903,44 @@ function createInternRouter() {
 
   router.post("/blueprint/sync/to-google", async (req, res, next) => {
     try {
-      throw httpError(
-        400,
-        "Sync to Google requires credentials (Service Account or OAuth). Plan A supports read-only sync from public links.",
-        true
-      );
+      const internId = req.auth.profile.id;
+      let syncBlueprintToGoogle;
+      try {
+        ({ syncBlueprintToGoogle } = require("../services/googleSync"));
+      } catch {
+        throw httpError(500, "Google sync dependency missing. Install `googleapis` in backend to enable sync to Google.", true);
+      }
+      const links = await getReportLinksRow(internId);
+      const blueprintDocUrl = links?.blueprint_doc_url || "";
+      if (!String(blueprintDocUrl || "").trim()) throw httpError(400, "No Blueprint Doc URL saved yet.", true);
+
+      const rows = await restSelect({
+        table: "intern_blueprints",
+        select: "data",
+        filters: { intern_profile_id: `eq.${internId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const data = rows?.[0]?.data || null;
+      if (!data) throw httpError(400, "No Blueprint saved in the portal yet.", true);
+
+      await syncBlueprintToGoogle({ blueprintDocUrl, data });
+
+      const now = new Date().toISOString();
+      await updateReportLinksMeta(internId, {
+        last_synced_to_google_at: now,
+        last_sync_error: null,
+      });
+
+      const io = req.app.get("io");
+      const pmId = req.auth.profile.pm_id;
+      if (io) {
+        io.to(`user:${internId}`).emit("itp:changed", { entity: "blueprint", action: "sync_to_google", internId });
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "blueprint", action: "sync_to_google", internId });
+        io.to("role:hr").emit("itp:changed", { entity: "blueprint", action: "sync_to_google", internId });
+      }
+
+      res.status(200).json({ success: true });
     } catch (err) {
       try {
         const internId = req.auth?.profile?.id;

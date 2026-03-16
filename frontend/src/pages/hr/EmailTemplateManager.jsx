@@ -250,7 +250,8 @@ const pdfToBase64 = (pdf) => {
 // EmailTemplateManager Component
 export const EmailTemplateManager = ({
   internData,
-  onTemplateReady
+  onTemplateReady,
+  onSelectionChange,
 }) => {
   const [customTemplates, setCustomTemplates] = useState([]);
   const templates = useMemo(() => [...DEFAULT_OFFER_TEMPLATES, ...customTemplates], [customTemplates]);
@@ -635,6 +636,11 @@ HR Team`
   };
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+
+  useEffect(() => {
+    if (typeof onSelectionChange !== "function") return;
+    onSelectionChange(selectedTemplate || null);
+  }, [onSelectionChange, selectedTemplate]);
 
   return (
     <div style={{

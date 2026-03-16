@@ -1,6 +1,6 @@
 ﻿// HRHome.jsx - FIXED with PM Dashboard colors
-import React, { useState, useEffect } from "react";
-import { Menu, Bell, LogOut, Sparkles, X, Send } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Menu, Bell, LogOut, Sparkles, X, Send, FileText } from "lucide-react";
 import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
 import {
   DashboardSection,
@@ -11,6 +11,7 @@ import {
   ActiveInterns,
   ProjectSubmissionsSection
 } from "./HRSections";
+import DocumentsSection from "./DocumentsSection";
 import {
   Modal,
   RejectModal,
@@ -40,6 +41,146 @@ export default function HRHome() {
   const [uiNotice, setUiNotice] = useState({ open: false, message: "", tone: "info" });
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const formatTimeAgo = useCallback((iso) => {
+    const t = new Date(iso || "").getTime();
+    if (!Number.isFinite(t)) return "";
+    const diff = Date.now() - t;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }, []);
+
+  const resolveNameFromUsers = useCallback(
+    ({ profileId, email }) => {
+      const id = profileId ? String(profileId) : "";
+      const mail = email ? String(email).trim().toLowerCase() : "";
+      const match = (users || []).find(
+        (u) => (id && String(u.id) === id) || (mail && String(u.email || "").trim().toLowerCase() === mail)
+      );
+      return match?.fullName || match?.name || match?.full_name || match?.email || "";
+    },
+    [users]
+  );
+
+  const parseWeekNumberFromText = (text) => {
+    const match = String(text || "").match(/\\bweek\\s+(\\d+)\\b/i);
+    return match?.[1] ? Number(match[1]) : null;
+  };
+
+  const parseIsoDateFromText = (text) => {
+    const match = String(text || "").match(/\\b(\\d{4}-\\d{2}-\\d{2})\\b/);
+    return match?.[1] || "";
+  };
+
+  const resolveActorName = useCallback(
+    ({ title, rawTitle, message, metadata }) => {
+      const labeled =
+        metadata?.internName ||
+        metadata?.internFullName ||
+        metadata?.applicantName ||
+        metadata?.senderName ||
+        metadata?.actorName ||
+        null;
+      if (labeled) return String(labeled).trim();
+
+      const senderProfileId = metadata?.senderProfileId || metadata?.sender_profile_id || null;
+      if (senderProfileId) {
+        const fromUsers = resolveNameFromUsers({ profileId: senderProfileId });
+        if (fromUsers) return fromUsers;
+      }
+
+      const internId = metadata?.internId || metadata?.intern_id || null;
+      if (internId) {
+        const fromUsers = resolveNameFromUsers({ profileId: internId });
+        if (fromUsers) return fromUsers;
+        return "An intern";
+      }
+
+      const applicantEmail = metadata?.applicantEmail || metadata?.applicant_email || null;
+      if (applicantEmail) {
+        const fromUsers = resolveNameFromUsers({ email: applicantEmail });
+        if (fromUsers) return fromUsers;
+        return String(applicantEmail).trim();
+      }
+
+      if (String(title || "") === "New message") {
+        const prefix = "New message from ";
+        const raw = String(rawTitle || "");
+        if (raw.startsWith(prefix)) return raw.slice(prefix.length).trim() || "Someone";
+      }
+
+      const msg = String(message || "").trim();
+      const bySubmitted = msg.match(/^(.+?)\\s+submitted\\b/i)?.[1];
+      if (bySubmitted) return bySubmitted.trim();
+      const byCompleted = msg.match(/^(.+?)\\s+completed\\b/i)?.[1];
+      if (byCompleted) return byCompleted.trim();
+      const byRegistered = msg.match(/^(.+?)\\s+(has registered|registered)\\b/i)?.[1];
+      if (byRegistered) return byRegistered.trim();
+
+      return "Someone";
+    },
+    [resolveNameFromUsers]
+  );
+
+  const buildNotificationDetail = useCallback(
+    ({ title, rawTitle, message, metadata }) => {
+      const actor = resolveActorName({ title, rawTitle, message, metadata });
+
+      switch (String(title || "")) {
+        case "New intern registration":
+          return `${actor} submitted a new registration.`;
+        case "New report submitted": {
+          const week = metadata?.weekNumber || metadata?.week_number || parseWeekNumberFromText(message);
+          if (Number.isFinite(Number(week)) && Number(week) > 0) {
+            return `${actor} submitted a Week ${Number(week)} report.`;
+          }
+          return message || `${actor} submitted a report.`;
+        }
+        case "Daily log submitted": {
+          const date = metadata?.logDate || metadata?.log_date || parseIsoDateFromText(message);
+          if (date) return `${actor} submitted a daily log for ${date}.`;
+          return message || `${actor} submitted a daily log.`;
+        }
+        case "New message":
+          return `${actor} sent you a message.`;
+        case "Profile completed":
+          return `${actor} completed their profile.`;
+        case "Approval pending":
+          return `${actor}'s application is awaiting approval.`;
+        default:
+          return message || "";
+      }
+    },
+    [resolveActorName]
+  );
+
+  const mapApiNotification = useCallback(
+    (n) => {
+      const rawTitle = n?.title || "";
+      const normalizedTitle = rawTitle.startsWith("New message") ? "New message" : rawTitle;
+      const createdAt = n?.createdAt || n?.created_at || null;
+
+      return {
+        id: n.id,
+        title: normalizedTitle,
+        rawTitle,
+        rawMessage: n.message || n.content || "",
+        metadata: n.metadata || {},
+        time: formatTimeAgo(createdAt) || "Just now",
+        read: !!(n.read || n.is_read || n.readAt || n.read_at),
+        type: n.type || "info",
+        link: n.link || null,
+        category: n.category || null,
+        createdAt,
+      };
+    },
+    [formatTimeAgo]
+  );
 
   // Modal States
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -89,9 +230,25 @@ export default function HRHome() {
       loadAnnouncements();
       loadDashboardMetrics();
     };
+
+    const onNotification = (payload) => {
+      const row = payload?.notification;
+      if (!row) return;
+      const mapped = mapApiNotification(row);
+      setNotifications((prev) => {
+        const next = [mapped, ...(prev || []).filter((p) => String(p.id) !== String(mapped.id))];
+        return next.slice(0, 60);
+      });
+    };
+
     socket.on("itp:changed", onChanged);
-    return () => socket.off("itp:changed", onChanged);
-  }, []);
+    socket.on("itp:notification", onNotification);
+
+    return () => {
+      socket.off("itp:changed", onChanged);
+      socket.off("itp:notification", onNotification);
+    };
+  }, [mapApiNotification]);
 
   useEffect(() => {
     if (!uiNotice.open) return undefined;
@@ -175,15 +332,7 @@ export default function HRHome() {
     try {
       const res = await notificationsApi.list({ limit: 60 });
       const rows = res?.notifications || [];
-      const mapped = rows.map((n) => ({
-        id: n.id,
-        title: n.title,
-        message: n.content,
-        time: n.created_at,
-        read: !!n.is_read,
-        type: "info",
-      }));
-      setNotifications(mapped);
+      setNotifications(rows.map(mapApiNotification));
     } catch {
       setNotifications([]);
     }
@@ -226,6 +375,7 @@ export default function HRHome() {
   const menuItems = [
     ...navItems(stats),
     { id: "project-submissions", label: "Project Submissions", icon: Send },
+    { id: "documents", label: "Documents", icon: FileText },
   ];
 
   // Handlers
@@ -462,6 +612,7 @@ export default function HRHome() {
   const markAllAsRead = () => {
     const updatedNotifications = notifications.map(n => ({ ...n, read: true }));
     setNotifications(updatedNotifications);
+    notificationsApi.markAllRead().catch(() => {});
     showNotice("All notifications marked as read.", "success");
   };
 
@@ -470,6 +621,7 @@ export default function HRHome() {
       n.id === id ? { ...n, read: true } : n
     );
     setNotifications(updatedNotifications);
+    notificationsApi.markRead(id).catch(() => {});
   };
 
   const filteredInterns = (status) => {
@@ -756,140 +908,82 @@ export default function HRHome() {
 
               {/* Notification Dropdown Panel */}
               {showNotifications && (
-                <div
-                  data-notification-dropdown
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: 60,
-                    width: 360,
-                    maxHeight: 480,
-                    overflowY: "auto",
-                    borderRadius: 16,
-                    padding: 16,
-                    zIndex: 2000,
-                    background: "rgba(15, 32, 36, 0.95)",
-                    backdropFilter: "blur(16px)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
-                    animation: "slideUp 0.3s ease",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 16,
-                    }}
-                  >
-                    <h3
-                      style={{
-                        color: COLORS.textPrimary,
-                        fontSize: 16,
-                        fontWeight: 600,
-                        margin: 0,
-                      }}
-                    >
+                <div style={{
+                  position: "absolute", top: "56px", right: 0,
+                  width: "360px", maxHeight: "480px",
+                  background: GRADIENTS.primary,
+                  borderRadius: 20, padding: 0,
+                  border: `1px solid ${COLORS.borderGlass}`,
+                  boxShadow: "0 12px 40px rgba(0, 0, 0, 0.5)",
+                  overflow: "hidden", zIndex: 2000,
+                  animation: "fadeIn 0.2s ease",
+                }} data-notification-dropdown>
+                  <div style={{ padding: "16px 20px", borderBottom: `1px solid ${COLORS.borderGlass}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 600, color: COLORS.textPrimary, margin: 0 }}>
                       Notifications
                     </h3>
                     <button
                       onClick={markAllAsRead}
+                      disabled={unreadCount === 0}
                       style={{
-                        background: "none",
-                        border: "none",
-                        color: COLORS.jungleTeal,
-                        fontSize: 12,
-                        cursor: "pointer",
+                        background: "none", border: "none",
+                        color: COLORS.jungleTeal, fontSize: 12,
+                        cursor: unreadCount === 0 ? "default" : "pointer",
                         fontWeight: 600,
+                        padding: "4px 8px", borderRadius: 6,
+                        opacity: unreadCount === 0 ? 0.55 : 1,
                       }}
                     >
                       Mark all read
                     </button>
                   </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ maxHeight: "400px", overflowY: "auto", padding: "8px" }}>
                     {notifications.length === 0 ? (
-                      <div style={{ textAlign: "center", padding: 20 }}>
+                      <div style={{ padding: "40px 20px", textAlign: "center" }}>
+                        <Bell size={40} color={COLORS.textMuted} style={{ marginBottom: 12 }} />
                         <p style={{ color: COLORS.textMuted, fontSize: 14 }}>No notifications</p>
                       </div>
                     ) : (
-                      notifications.map((notif) => (
-                        <div
-                          key={notif.id}
-                          onClick={() => markNotificationAsRead(notif.id)}
-                          style={{
-                            padding: 12,
-                            background: notif.read
-                              ? "rgba(255,255,255,0.06)"
-                              : "rgba(20, 160, 140, 0.25)",
-                            borderRadius: 12,
-                            cursor: "pointer",
-                            border: `1px solid ${
-                              notif.read ? COLORS.borderGlass : COLORS.jungleTeal
-                            }`,
-                            transition: "all 0.2s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = notif.read
-                              ? "rgba(255,255,255,0.08)"
-                              : `${COLORS.jungleTeal}25`;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = notif.read
-                              ? "rgba(255,255,255,0.06)"
-                              : `${COLORS.jungleTeal}15`;
-                          }}
-                        >
+                      notifications.map((notif) => {
+                        const detail = buildNotificationDetail({
+                          title: notif.title,
+                          rawTitle: notif.rawTitle,
+                          message: notif.rawMessage,
+                          metadata: notif.metadata,
+                        });
+                        const timeLabel = formatTimeAgo(notif.createdAt) || "Just now";
+
+                        return (
                           <div
+                            key={notif.id}
+                            onClick={() => markNotificationAsRead(notif.id)}
                             style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "start",
-                              marginBottom: 4,
+                              padding: 12,
+                              background: notif.read ? COLORS.surfaceGlass : `${COLORS.jungleTeal}15`,
+                              borderRadius: 12,
+                              cursor: "pointer",
+                              border: `1px solid ${notif.read ? COLORS.borderGlass : `${COLORS.jungleTeal}40`}`,
+                              transition: "all 0.2s",
+                              marginBottom: 8
                             }}
                           >
-                            <span
-                              style={{
-                                fontWeight: 600,
-                                fontSize: 14,
-                                color: COLORS.textPrimary,
-                              }}
-                            >
-                              {notif.title}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 4 }}>
+                              <span style={{ fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+                                {notif.title}
+                              </span>
+                              {!notif.read && (
+                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS.red, flexShrink: 0, marginLeft: 8 }} />
+                              )}
+                            </div>
+                            <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: 0, marginBottom: 4 }}>
+                              {detail}
+                            </p>
+                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                              {timeLabel}
                             </span>
-                            {!notif.read && (
-                              <div
-                                style={{
-                                  width: 8,
-                                  height: 8,
-                                  borderRadius: "50%",
-                                  background: COLORS.red,
-                                  flexShrink: 0,
-                                }}
-                              />
-                            )}
                           </div>
-                          <p
-                            style={{
-                              fontSize: 13,
-                              color: "rgba(255,255,255,0.85)",
-                              margin: 0,
-                              marginBottom: 4,
-                            }}
-                          >
-                            {notif.message}
-                          </p>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: "rgba(255,255,255,0.6)",
-                            }}
-                          >
-                            {notif.time}
-                          </span>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -997,6 +1091,8 @@ export default function HRHome() {
             {activeSection === "project-submissions" && (
               <ProjectSubmissionsSection isMobile={isMobile} />
             )}
+
+            {activeSection === "documents" && <DocumentsSection />}
           </div>
         </div>
       </main>
