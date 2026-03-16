@@ -333,20 +333,21 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-<<<<<<< HEAD
-  const status = String(intern.status || "active").toLowerCase();
-  const department = resolveDepartment(intern);
-  const profileData = intern.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
-  const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
-  const resumeUrl = profileData.resumeUrl || profileData.resume_url || intern.resumeUrl || intern.resume_url || null;
-=======
-  const status = String(internDetails?.status || "active").toLowerCase();
+  const status = String(internDetails?.status || intern?.status || "active").toLowerCase();
   const department = resolveDepartment({ ...internDetails, profile_data: profileData });
+  const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
+  const resumeUrl =
+    profileData.resumeUrl ||
+    profileData.resume_url ||
+    internDetails?.resumeUrl ||
+    internDetails?.resume_url ||
+    intern?.resumeUrl ||
+    intern?.resume_url ||
+    null;
   const displayEmail = profileData.email || internDetails?.email || "-";
   const displayInternId = profileData.internId || profileData.intern_id || internDetails?.intern_id || internDetails?.internId || "-";
   const joinedAt = profileData.joinedAt || profileData.joinDate || internDetails?.created_at || null;
   const lastActivity = profileData.lastLogDate || profileData.lastActivity || internDetails?.lastLogDate || null;
->>>>>>> origin/khush
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -948,14 +949,10 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const readOnly = String(report.status || "").toLowerCase() !== "pending";
   const currentStatusColor = statusColor(report.status);
   const isWeekly = String(report.reportType || "").toLowerCase() === "weekly";
-<<<<<<< HEAD
-  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
+  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
   const extra = report?.data && typeof report.data === "object" ? report.data : {};
   const attendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
   const progressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
-=======
-  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
->>>>>>> origin/khush
 
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
