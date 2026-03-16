@@ -1,9 +1,10 @@
 const express = require("express");
 const { httpError } = require("../errors");
-const { adminCreateUser, adminDeleteUser, restInsert, restSelect, restUpdate } = require("../services/supabaseRest");
+const { adminCreateUser, adminUpdateUser, adminDeleteUser, restInsert, restSelect, restUpdate } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { generateNextInternId, peekNextInternId, checkInternIdUsage } = require("../services/internId");
 const { generateNextPmCode, checkPmCodeUsage } = require("../services/pmCode");
+const { generateNextHrCode, normalizeHrCode, checkHrCodeUsage } = require("../services/hrCode");
 
 const ALLOWED_ROLES = new Set(["admin", "hr", "pm", "intern"]);
 const USER_STATUS = new Set(["active", "inactive", "completed", "archived"]);
@@ -157,6 +158,13 @@ async function assertPmCodeAvailable(pmCode, { excludeProfileId = null } = {}) {
   const check = await checkPmCodeUsage(pmCode, { excludeProfileId });
   if (check.exists) {
     throw httpError(409, "PM code already exists", true);
+  }
+}
+
+async function assertHrCodeAvailable(hrCode, { excludeProfileId = null } = {}) {
+  const check = await checkHrCodeUsage(hrCode, { excludeProfileId });
+  if (check.exists) {
+    throw httpError(409, "HR code already exists", true);
   }
 }
 
@@ -396,7 +404,7 @@ function createAdminRouter() {
 
   router.post("/users", async (req, res, next) => {
     try {
-      const { email, password, role, fullName, pmCode, pmId, internId, status, profileData } = req.body || {};
+      const { email, password, role, fullName, pmCode, hrCode, pmId, internId, status, profileData } = req.body || {};
       if (!email || !password || !role) throw httpError(400, "email, password, role are required", true);
 
       const normalizedRole = toRole(role);
@@ -426,11 +434,16 @@ function createAdminRouter() {
         normalizedRole === "intern" ? String(internId || "").trim() || (await generateNextInternId({ prefix: "EDCS" })) : null;
       const resolvedPmCode =
         normalizedRole === "pm" ? String(pmCode || "").trim() || (await generateNextPmCode({ width: 3 })) : null;
+      const resolvedHrCode =
+        normalizedRole === "hr" ? (normalizeHrCode(hrCode) || (await generateNextHrCode({ width: 3 }))) : null;
       if (normalizedRole === "intern") {
         await assertInternIdAvailable(resolvedInternId);
       }
       if (normalizedRole === "pm") {
         await assertPmCodeAvailable(resolvedPmCode);
+      }
+      if (normalizedRole === "hr") {
+        await assertHrCodeAvailable(resolvedHrCode);
       }
       const normalizedStatus = String(status || "active").trim().toLowerCase();
 
@@ -458,7 +471,7 @@ function createAdminRouter() {
         full_name: fullName || "",
         role: normalizedRole,
         status: USER_STATUS.has(normalizedStatus) ? normalizedStatus : "active",
-        pm_code: normalizedRole === "pm" ? resolvedPmCode : null,
+        pm_code: normalizedRole === "hr" ? resolvedHrCode : normalizedRole === "pm" ? resolvedPmCode : null,
         intern_id: normalizedRole === "intern" ? resolvedInternId : null,
         pm_id: normalizedRole === "intern" ? resolvedPmId : null,
         profile_completed: normalizedRole === "intern" ? false : true,
@@ -523,6 +536,12 @@ function createAdminRouter() {
       if (!password || String(password).length < 6) {
         throw httpError(400, "Password must be at least 6 characters", true);
       }
+
+      await adminUpdateUser({
+        userId: String(req.params.userId || "").trim(),
+        attributes: { password: String(password) },
+      });
+
       await restUpdate({
         table: "profiles",
         patch: { temp_password: String(password), updated_at: new Date().toISOString() },
@@ -549,6 +568,15 @@ function createAdminRouter() {
     try {
       const pmCode = await generateNextPmCode({ width: 3 });
       res.status(200).json({ success: true, pmCode });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/hr-code/next", async (req, res, next) => {
+    try {
+      const hrCode = await generateNextHrCode({ width: 3 });
+      res.status(200).json({ success: true, hrCode });
     } catch (err) {
       next(err);
     }
@@ -588,7 +616,7 @@ function createAdminRouter() {
       if (!target) throw httpError(404, "User not found", true);
 
       const targetRole = toRole(target.role);
-      const { internId, department, fullName, pmCode, pmId, status, startDate, endDate, mentorName, stipend } = req.body || {};
+      const { internId, department, fullName, pmCode, hrCode, pmId, status, startDate, endDate, mentorName, stipend } = req.body || {};
       const patch = { updated_at: new Date().toISOString() };
       let hasPatch = false;
       let syncApprovedIntern = false;
@@ -628,6 +656,15 @@ function createAdminRouter() {
         if (!nextPmCode) throw httpError(400, "pmCode cannot be empty for PM user", true);
         await assertPmCodeAvailable(nextPmCode, { excludeProfileId: userId });
         patch.pm_code = nextPmCode;
+        hasPatch = true;
+      }
+
+      if (targetRole === "hr" && (hrCode !== undefined || pmCode !== undefined)) {
+        const nextHrCodeRaw = hrCode !== undefined ? hrCode : pmCode;
+        const nextHrCode = normalizeHrCode(nextHrCodeRaw);
+        if (!nextHrCode) throw httpError(400, "hrCode cannot be empty for HR user", true);
+        await assertHrCodeAvailable(nextHrCode, { excludeProfileId: userId });
+        patch.pm_code = nextHrCode;
         hasPatch = true;
       }
 
