@@ -5,4 +5,3 @@ import { hrApi } from "../../../lib/apiClient";
 export default function HrInternProfilePage(props) {
   return <InternProfilePage {...props} api={hrApi} />;
 }
-

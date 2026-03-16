@@ -23,6 +23,8 @@
 - Run `supabase/migrations/009_add_message_rpc.sql` in Supabase SQL editor.
 - Run `supabase/migrations/010_hr_workflow_upgrade.sql` in Supabase SQL editor.
 - Run `supabase/migrations/013_add_hr_templates.sql` in Supabase SQL editor.
+- Run `supabase/migrations/014_add_attendance.sql` in Supabase SQL editor.
+- Run `supabase/migrations/015_add_leave_requests.sql` in Supabase SQL editor.
 
 Custom HR offer-letter templates are now persisted in `public.hr_templates` (via the migration above), so uploads and edits show up across browsers and HR users instead of living in localStorage.
 
@@ -70,6 +72,10 @@ Legacy routes like `/dashboard/intern` still work and now redirect to the separa
 ### 4) Quick health checks
 - Node running: `GET /api/health`
 - Supabase reachable + schema present: `GET /api/health/supabase`
+
+If `/api/health/supabase` (or login) reports `code: EACCES` / `EPERM`, outbound HTTPS is being blocked for the Node process (often Windows Firewall / corporate policy). Allow `node.exe` outbound access or run the API in an environment with internet access.
+
+If it reports a connect timeout (`code: ETIMEDOUT`), try a VPN or allowlist the Supabase host, and you can also increase `SUPABASE_REQUEST_TIMEOUT_MS` in `backend/.env` (plus `SUPABASE_REQUEST_RETRIES`) to handle slow networks.
 
 ## Core flows implemented
 - Application submit: `POST /api/applications` (from the Apply page)

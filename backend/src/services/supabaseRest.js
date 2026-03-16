@@ -1,5 +1,7 @@
 const { httpError } = require("../errors");
 const { getSupabaseConfig } = require("./supabaseConfig");
+const http = require("node:http");
+const https = require("node:https");
 
 function normalizeUpstreamStatus(status) {
   if (status === 525) return 503;
@@ -9,18 +11,102 @@ function normalizeUpstreamStatus(status) {
   return status;
 }
 
+function safeUrlHost(url) {
+  try {
+    return new URL(String(url)).host || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractNetworkErrorCode(err) {
+  const directCode = err?.code || err?.cause?.code;
+  if (directCode) return String(directCode);
+
+  const cause = err?.cause;
+  const nestedErrors = Array.isArray(cause?.errors) ? cause.errors : null;
+  const nestedCode = nestedErrors?.[0]?.code;
+  return nestedCode ? String(nestedCode) : null;
+}
+
+function buildConnectivityHint({ url, err }) {
+  const host = safeUrlHost(url);
+  const code = extractNetworkErrorCode(err);
+
+  const base =
+    "Cannot reach Supabase from the API server. Check your internet/VPN/firewall, and confirm SUPABASE_URL is reachable.";
+
+  if (!code && !host) return base;
+
+  const details = [];
+  if (host) details.push(`host: ${host}`);
+  if (code) details.push(`code: ${code}`);
+
+  const extra =
+    code === "EACCES" || code === "EPERM"
+      ? "Outbound HTTPS connections appear blocked for this Node process (firewall/policy). Allow Node.js to access the internet, or run the API in an environment with outbound access."
+      : code === "ENOTFOUND"
+        ? "DNS lookup failed for the Supabase host. Verify SUPABASE_URL is correct."
+        : code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT"
+          ? "Connection timed out. Check VPN/proxy/firewall rules (some networks block Supabase/Cloudflare)."
+        : code === "ECONNREFUSED"
+          ? "Connection refused. Check network policy and that SUPABASE_URL is correct."
+          : null;
+
+  return `${base} (${details.join(", ")})${extra ? ` ${extra}` : ""}`;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
+function requestRaw(url, { method, headers, body }, timeoutMs) {
+  const target = new URL(String(url));
+  const isHttps = target.protocol === "https:";
+  const transport = isHttps ? https : http;
+
+  const payload = body ? JSON.stringify(body) : null;
+
+  const requestOptions = {
+    protocol: target.protocol,
+    hostname: target.hostname,
+    port: target.port || (isHttps ? 443 : 80),
+    method,
+    path: `${target.pathname}${target.search}`,
+    headers: {
+      "User-Agent": "intern-tracking-portal-api",
+      ...(headers || {}),
+      ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request(requestOptions, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const buf = Buffer.concat(chunks);
+        resolve({
+          status: res.statusCode || 0,
+          headers: res.headers || {},
+          bodyText: buf.toString("utf8"),
+        });
+      });
+    });
+
+    const timer = setTimeout(() => {
+      const timeoutErr = new Error(`Request timed out after ${timeoutMs}ms`);
+      timeoutErr.name = "TimeoutError";
+      timeoutErr.code = "ETIMEDOUT";
+      req.destroy(timeoutErr);
+    }, timeoutMs);
+
+    req.on("error", (err) => reject(err));
+    req.on("close", () => clearTimeout(timer));
+
+    if (payload) req.write(payload);
+    req.end();
+  });
 }
 
 async function requestJson(url, { method, headers, body }) {
@@ -30,24 +116,21 @@ async function requestJson(url, { method, headers, body }) {
   let lastErr = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const res = await fetchWithTimeout(
-        url,
-        {
-          method,
-          headers: {
-            "User-Agent": "intern-tracking-portal-api",
-            ...(headers || {}),
-          },
-          body: body ? JSON.stringify(body) : undefined,
-        },
-        timeoutMs
-      );
+      const res = await requestRaw(url, { method, headers, body }, timeoutMs);
 
-      const contentType = res.headers.get("content-type") || "";
+      const contentType = String(res.headers?.["content-type"] || "");
       const isJson = contentType.includes("application/json");
-      const payload = isJson ? await res.json().catch(() => null) : await res.text();
+      const payload = isJson
+        ? (() => {
+            try {
+              return JSON.parse(res.bodyText || "null");
+            } catch {
+              return null;
+            }
+          })()
+        : res.bodyText;
 
-      if (!res.ok) {
+      if (res.status < 200 || res.status >= 300) {
         const status = normalizeUpstreamStatus(res.status);
         const isText = typeof payload === "string";
         const cloudflareHint =
@@ -72,7 +155,10 @@ async function requestJson(url, { method, headers, body }) {
         err.upstreamStatus = res.status;
 
         // Retry transient upstream failures (and 429 rate limits).
-        if (attempt < maxAttempts && (res.status >= 500 || res.status === 429 || (res.status >= 520 && res.status <= 529))) {
+        if (
+          attempt < maxAttempts &&
+          (res.status >= 500 || res.status === 429 || (res.status >= 520 && res.status <= 529))
+        ) {
           await sleep(250 * attempt);
           continue;
         }
@@ -83,9 +169,23 @@ async function requestJson(url, { method, headers, body }) {
       return payload;
     } catch (err) {
       lastErr = err;
-      const isAbort = err?.name === "AbortError";
-      const isFetchTypeError = err instanceof TypeError;
-      const retryable = isAbort || isFetchTypeError;
+      const code = String(extractNetworkErrorCode(err) || "");
+      const retryableCodes = new Set([
+        "ETIMEDOUT",
+        "UND_ERR_CONNECT_TIMEOUT",
+        "ENOTFOUND",
+        "EAI_AGAIN",
+        "ECONNREFUSED",
+        "ECONNRESET",
+        "EHOSTUNREACH",
+        "ENETUNREACH",
+        "EACCES",
+        "EPERM",
+      ]);
+      const retryable =
+        err?.name === "TimeoutError" ||
+        retryableCodes.has(code) ||
+        err instanceof TypeError;
 
       if (attempt < maxAttempts && retryable) {
         await sleep(250 * attempt);
@@ -93,8 +193,7 @@ async function requestJson(url, { method, headers, body }) {
       }
 
       if (retryable) {
-        const hint =
-          "Cannot reach Supabase from the API server. Check your internet/VPN/firewall, and confirm SUPABASE_URL is reachable.";
+        const hint = buildConnectivityHint({ url, err });
         const wrapped = httpError(503, hint, true);
         wrapped.cause = err;
         throw wrapped;

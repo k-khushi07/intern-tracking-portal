@@ -7,6 +7,7 @@ import MyInternsPage from './MyInternsPage';
 import InternProfilePage from './InternProfilePage';
 import { authApi, pmApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
+import AccountModal from "../../components/AccountModal";
 
 const COLORS = {
   bgPrimary: "#020617",
@@ -273,6 +274,7 @@ const PMHome = () => {
   const [currentPage, setCurrentPage] = useState("overview");
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [selectedInternSection, setSelectedInternSection] = useState("profile");
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -939,7 +941,14 @@ const PMHome = () => {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 700, color: "white", cursor: "pointer",
               }}>
-              {pmInfo?.avatar || "PM"}
+                <button
+                  type="button"
+                  onClick={() => setShowAccountModal(true)}
+                  style={{ border: "none", background: "transparent", padding: 0, margin: 0, width: "100%", height: "100%", cursor: "pointer", color: "inherit" }}
+                  aria-label="Open profile"
+                >
+                  {pmInfo?.avatar || "PM"}
+                </button>
               </div>
             </div>
           </header>
@@ -985,7 +994,7 @@ const PMHome = () => {
           <div
             onClick={() => setSidebarOpen(false)}
             style={{
-              position: "fixed", 
+              position: "fixed",
               inset: 0, 
               background: "rgba(0,0,0,0.5)",
               zIndex: 999, 
@@ -993,6 +1002,8 @@ const PMHome = () => {
             }}
           />
         )}
+
+        <AccountModal open={showAccountModal} onClose={() => setShowAccountModal(false)} />
       </div>
     </>
   );

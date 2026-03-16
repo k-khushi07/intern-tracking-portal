@@ -63,13 +63,11 @@ function createAuthMiddleware() {
   async function requireAuth(req, res, next) {
     try {
       const session = await loadSession(req, res);
-      if (!session) return next(httpError(401, "Not authenticated", true));
+      if (!session) return next(httpError(401, "Unauthorized", true));
       req.auth = session;
       return next();
     } catch (err) {
-      const status = Number(err?.status || 0);
-      if (status === 401 || isJwtAuthError(err)) return next(httpError(401, "Not authenticated", true));
-      return next(err);
+      return next(httpError(401, "Unauthorized", true));
     }
   }
 
@@ -95,7 +93,7 @@ function createAuthMiddleware() {
       const currentRole = String(req.auth?.profile?.role || "")
         .trim()
         .toLowerCase();
-      if (!currentRole) return next(httpError(401, "Not authenticated", true));
+      if (!currentRole) return next(httpError(401, "Unauthorized", true));
       const required = roles.map((r) => String(r).trim().toLowerCase());
       if (!required.includes(currentRole)) {
         return next(httpError(403, `Forbidden (requires: ${required.join(", ")}; current: ${currentRole})`, true));

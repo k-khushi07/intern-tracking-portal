@@ -1,12 +1,12 @@
 //frontend/src/pages/intern/ProfilePage.jsx
 import React, { useState, useCallback } from "react";
-import { internApi } from "../../lib/apiClient";
 import {
   User, Mail, Phone, MapPin, GraduationCap, Briefcase,
   Calendar, Heart, Shield, Edit3, Save, X, Check,
   Camera, ChevronRight, AlertCircle, Building, Clock,
   BookOpen, Users, FileText, Sparkles
 } from "lucide-react";
+import { internApi } from "../../lib/apiClient";
 
 // ==================== CONSTANTS ====================
 const COLORS = {
@@ -342,14 +342,21 @@ const Toast = ({ message, type, onClose }) => {
 };
 
 // ==================== MAIN COMPONENT ====================
-function ProfilePage({ intern: propIntern, isMobile = false, onBack }) {
+function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUpdated }) {
   const [intern, setIntern] = useState(propIntern || sampleIntern);
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({});
   const [toast, setToast] = useState(null);
   const [newSkill, setNewSkill] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (propIntern) setIntern(propIntern);
+  }, [propIntern]);
 
   const profile = intern?.profile || {};
+  const profilePictureUrl = profile?.profilePictureUrl || profile?.profile_picture_url || null;
+  const resumeUrl = profile?.resumeUrl || profile?.resume_url || null;
 
   // Calculate internship progress
   const calculateProgress = () => {
@@ -389,45 +396,51 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack }) {
 
   // Save changes
   const saveChanges = useCallback(async () => {
+    if (isSaving) return;
+    if (!editingSection) return;
+
+    setIsSaving(true);
+    setToast(null);
+
     try {
-      await internApi.updateMe({
-        profileData: {
-          phone: editData.phone || editData.profile?.phone,
-          dob: editData.dob || editData.profile?.dob,
-          bloodGroup: editData.profile?.bloodGroup,
-          address: editData.profile?.address,
-          city: editData.profile?.city,
-          state: editData.profile?.state,
-          pincode: editData.profile?.pincode,
-          emergencyContactName: editData.profile?.emergencyContactName,
-          emergencyRelation: editData.profile?.emergencyRelation,
-          emergencyContactPhone: editData.profile?.emergencyContactPhone,
-          collegeName: editData.profile?.collegeName,
-          department: editData.profile?.department,
-          semester: editData.profile?.semester,
-          guideName: editData.profile?.guideName,
-          guideEmail: editData.profile?.guideEmail,
-          guidePhone: editData.profile?.guidePhone,
-          internshipDuration: editData.profile?.internshipDuration,
-          startDate: editData.profile?.startDate,
-          endDate: editData.profile?.endDate,
-          workMode: editData.profile?.workMode,
-          expectedOutcome: editData.profile?.expectedOutcome,
-          skills: editData.profile?.skills,
-          linkedIn: editData.profile?.linkedIn,
-          github: editData.profile?.github,
-          bio: editData.profile?.bio,
-          degree: editData.degree || editData.profile?.degree,
-        },
-        profileCompleted: true,
-      });
-      setIntern(editData);
+      const nextProfileData = { ...(editData?.profile || {}) };
+
+      if (editData?.fullName !== undefined) nextProfileData.fullName = editData.fullName;
+      if (editData?.email !== undefined) nextProfileData.email = editData.email;
+      if (editData?.phone !== undefined) nextProfileData.phone = editData.phone;
+      if (editData?.dob !== undefined) nextProfileData.dob = editData.dob;
+      if (editData?.degree !== undefined) nextProfileData.degree = editData.degree;
+
+      const res = await internApi.updateMe({ profileData: nextProfileData });
+      const updated = res?.profile;
+      const updatedProfileData =
+        updated && typeof updated.profile_data === "object" ? updated.profile_data : nextProfileData;
+
+      const nextIntern = {
+        ...intern,
+        fullName: editData.fullName ?? intern.fullName,
+        email: editData.email ?? intern.email,
+        phone: updatedProfileData.phone || editData.phone || intern.phone || "",
+        dob: updatedProfileData.dob || editData.dob || intern.dob || "",
+        degree: updatedProfileData.degree || editData.degree || intern.degree || "",
+        profile: updatedProfileData,
+      };
+
+      setIntern(nextIntern);
       setEditingSection(null);
+      setEditData({});
       setToast({ message: "Profile updated successfully!", type: "success" });
+      onProfileUpdated?.();
     } catch (err) {
-      setToast({ message: err?.message || "Failed to save profile", type: "error" });
+      console.error("Failed to save profile:", err);
+      setToast({
+        message: err?.message || "Failed to update profile. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
     }
-  }, [editData]);
+  }, [editData, editingSection, intern, isSaving, onProfileUpdated]);
 
   // Update edit data
   const updateField = useCallback((field, value) => {
@@ -578,9 +591,23 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack }) {
                 fontSize: 36,
                 color: COLORS.inkBlack,
                 boxShadow: `0 12px 40px rgba(255, 229, 217, 0.3)`,
-                fontFamily: "'Outfit', sans-serif"
+                fontFamily: "'Outfit', sans-serif",
+                overflow: "hidden",
+                position: "relative",
               }}>
-                {intern?.fullName?.split(" ").map(n => n[0]).join("") || "IN"}
+                <span style={{ position: "relative", zIndex: 1 }}>
+                  {intern?.fullName?.split(" ").map(n => n[0]).join("") || "IN"}
+                </span>
+                {profilePictureUrl ? (
+                  <img
+                    src={profilePictureUrl}
+                    alt="Profile"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : null}
               </div>
               <button
                 style={{
@@ -700,6 +727,34 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack }) {
                   <Calendar size={14} />
                   {currentProfile.internshipDuration || "Not set"}
                 </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                {resumeUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => window.open(resumeUrl, "_blank", "noopener,noreferrer")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.28)",
+                      background: "rgba(0,0,0,0.18)",
+                      color: "white",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontWeight: 700,
+                      fontSize: 13,
+                    }}
+                  >
+                    <FileText size={16} /> Open Resume
+                  </button>
+                ) : (
+                  <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
+                    Resume not uploaded yet.
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -4,13 +4,14 @@ import DailyLogPage from './DailyLogPage';
 import ProfilePage from './ProfilePage';
 import MessagesPage from './MessagesPage';
 import ReportsPage from './ReportsPage';
-import { authApi, internApi, announcementsApi } from "../../lib/apiClient";
+import AttendancePage from "./AttendancePage";
+import { authApi, internApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
 import { 
   User, Bell, MessageCircle, FileText, 
   Home, BookOpen, Send, Menu, X, Sparkles,
-  ClipboardList, LogOut
+  ClipboardList, LogOut, Calendar
 } from "lucide-react";
 
 // ==================== COLORS MATCHING PM DASHBOARD ====================
@@ -90,6 +91,34 @@ export default function InternDashboard() {
     progressPercent: 0,
     pendingReports: 0,
   });
+  const [dismissedReportReminder, setDismissedReportReminder] = useState(false);
+  const formatTimeAgo = React.useCallback((iso) => {
+    const t = new Date(iso || "").getTime();
+    if (!Number.isFinite(t)) return "";
+    const diff = Date.now() - t;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }, []);
+
+  const mapApiNotification = React.useCallback(
+    (n) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message || "",
+      time: formatTimeAgo(n.createdAt),
+      read: !!n.read,
+      type: n.type || "info",
+      link: n.link || null,
+      category: n.category || null,
+      createdAt: n.createdAt || null,
+    }),
+    [formatTimeAgo]
+  );
 
   // Responsive Handler
   useEffect(() => {
@@ -104,11 +133,44 @@ export default function InternDashboard() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  const loadNotifications = React.useCallback(async () => {
+    try {
+      const res = await notificationsApi.list({ limit: 60 });
+      const rows = res?.notifications || [];
+      setNotifications(rows.map(mapApiNotification));
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
+      setNotifications([]);
+    }
+  }, [mapApiNotification]);
+
   useEffect(() => { 
     loadCurrentIntern(); 
     loadStats();
     loadAnnouncements();
+    loadNotifications();
   }, []);
+
+  useEffect(() => {
+    const now = new Date();
+    const day = now.getDay(); // 0 Sun ... 6 Sat
+    const isReminderDay = day === 5 || day === 6; // Fri/Sat
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const key = `itp:dismiss_report_reminder:${yyyy}-${mm}-${dd}`;
+    setDismissedReportReminder(!isReminderDay || localStorage.getItem(key) === "1");
+  }, []);
+
+  const dismissReminderForToday = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const key = `itp:dismiss_report_reminder:${yyyy}-${mm}-${dd}`;
+    localStorage.setItem(key, "1");
+    setDismissedReportReminder(true);
+  };
 
   const loadCurrentIntern = async () => {
     try {
@@ -164,6 +226,7 @@ export default function InternDashboard() {
           pmCode: nextIntern.pmCode,
           internId: nextIntern.internId,
           profileCompleted: nextIntern.profileCompleted,
+          profileData: nextIntern.profile,
         })
       );
     } catch (err) {
@@ -176,7 +239,28 @@ export default function InternDashboard() {
       try {
         const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
         if (user.role === "intern") {
-          setCurrentIntern(user);
+          const displayName = user.fullName || user.email || "Intern";
+          const avatar = String(displayName)
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((w) => w[0])
+            .join("")
+            .toUpperCase();
+          setCurrentIntern({
+            id: user.id || null,
+            internId: user.internId || null,
+            fullName: displayName,
+            email: user.email || "",
+            phone: user.phone || "",
+            dob: user.dob || "",
+            role: "intern",
+            pmCode: user.pmCode || null,
+            degree: user.degree || "",
+            avatar: avatar || "IN",
+            profile: user.profileData || user.profile || {},
+            profileCompleted: !!user.profileCompleted,
+          });
         } else {
           window.location.href = "/";
         }
@@ -228,6 +312,7 @@ export default function InternDashboard() {
   const menuItems = [
     { id: "overview", label: "Overview", icon: Home },
     { id: "daily-log", label: "Daily Log", icon: BookOpen },
+    { id: "attendance", label: "Attendance", icon: Calendar },
     { id: "reports", label: "Reports", icon: ClipboardList },
     { id: "chat", label: "Messages", icon: MessageCircle },
     { id: "profile", label: "My Profile", icon: User },
@@ -242,12 +327,42 @@ export default function InternDashboard() {
       loadCurrentIntern();
       loadStats();
       loadAnnouncements();
+      loadNotifications();
     };
     socket.on("itp:changed", onChanged);
     return () => socket.off("itp:changed", onChanged);
   }, []);
 
+  const addNotification = React.useCallback(
+    (notification) => {
+      if (!notification) return;
+      const next = {
+        ...notification,
+        id: notification.id || `local_${Date.now()}`,
+        time: notification.time || formatTimeAgo(notification.createdAt) || "Just now",
+        read: !!notification.read,
+      };
+      setNotifications((prev) => {
+        if (prev.some((n) => String(n.id) === String(next.id))) return prev;
+        return [next, ...prev].slice(0, 60);
+      });
+    },
+    [formatTimeAgo]
+  );
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onNotification = (payload) => {
+      const row = payload?.notification;
+      if (!row?.id) return;
+      addNotification(mapApiNotification(row));
+    };
+    socket.on("itp:notification", onNotification);
+    return () => socket.off("itp:notification", onNotification);
+  }, [addNotification, mapApiNotification]);
+
   const markNotificationAsRead = (id) => {
+    notificationsApi.markRead(id).catch(() => {});
     setNotifications(prev => 
       prev.map(notif => 
         notif.id === id ? { ...notif, read: true } : notif
@@ -256,6 +371,7 @@ export default function InternDashboard() {
   };
 
   const markAllAsRead = () => {
+    notificationsApi.markAllRead().catch(() => {});
     setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
   };
 
@@ -327,19 +443,35 @@ export default function InternDashboard() {
               <div style={{
                 background: COLORS.surfaceGlass, borderRadius: 16, padding: 16,
                 border: `1px solid ${COLORS.borderGlass}`,
+                cursor: "pointer",
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div
+                  onClick={() => setActivePage("profile")}
+                  style={{ display: "flex", alignItems: "center", gap: 12 }}
+                >
                   <div style={{
                     width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 18, fontWeight: 700, color: "white",
+                    overflow: "hidden",
+                    position: "relative",
                   }}>
-                    {currentIntern?.avatar || "IN"}
+                  <span style={{ position: "relative", zIndex: 1 }}>{currentIntern?.avatar || "IN"}</span>
+                  {currentIntern?.profile?.profilePictureUrl ? (
+                    <img
+                      src={currentIntern.profile.profilePictureUrl}
+                      alt="Profile"
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : null}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
+                    {currentIntern?.fullName || "Intern"}
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
-                      {currentIntern?.fullName || "Intern"}
-                    </div>
                     <div style={{ fontSize: 12, color: COLORS.textMuted }}>
                       {currentIntern?.degree || "Student"}
                     </div>
@@ -615,8 +747,27 @@ export default function InternDashboard() {
                 width: 40, height: 40, borderRadius: "50%", background: GRADIENTS.accent,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 700, color: "white", cursor: "pointer",
+                overflow: "hidden",
+                position: "relative",
               }}>
-                {currentIntern?.avatar || "IN"}
+                <button
+                  type="button"
+                  onClick={() => setActivePage("profile")}
+                  style={{ border: "none", background: "transparent", padding: 0, margin: 0, width: "100%", height: "100%", cursor: "pointer", color: "inherit" }}
+                  aria-label="Open profile"
+                >
+                  <span style={{ position: "relative", zIndex: 1 }}>{currentIntern?.avatar || "IN"}</span>
+                  {currentIntern?.profile?.profilePictureUrl ? (
+                    <img
+                      src={currentIntern.profile.profilePictureUrl}
+                      alt="Profile"
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : null}
+                </button>
               </div>
             </div>
           </header>
@@ -645,6 +796,63 @@ export default function InternDashboard() {
               background: COLORS.bgPrimary,
             }}>
               <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+                {!dismissedReportReminder && (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: 14,
+                      borderRadius: 16,
+                      border: `1px solid ${COLORS.borderGlass}`,
+                      background: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(20,184,166,0.10))",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ minWidth: 240 }}>
+                      <div style={{ fontWeight: 900, color: "white" }}>Reminder</div>
+                      <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.75)" }}>
+                        It’s Friday/Saturday — don’t forget to send your weekly report (generate summary from Daily Logs).
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => setActivePage("daily-log")}
+                        style={{
+                          border: "none",
+                          background: GRADIENTS.accent,
+                          color: "white",
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        Open Daily Logs
+                      </button>
+                      <button
+                        type="button"
+                        onClick={dismissReminderForToday}
+                        style={{
+                          border: `1px solid ${COLORS.borderGlass}`,
+                          background: "rgba(255,255,255,0.06)",
+                          color: "rgba(255,255,255,0.85)",
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {activePage === "overview" && (
                   <OverviewPage
                     intern={currentIntern}
@@ -658,9 +866,10 @@ export default function InternDashboard() {
                 {activePage === "daily-log" && (
                   <DailyLogPage isMobile={isMobile} assignedPM={assignedPM} />
                 )}
+                {activePage === "attendance" && <AttendancePage />}
                 {activePage === "reports" && <ReportsPage isMobile={isMobile} />}
                 {activePage === "profile" && (
-                  <ProfilePage intern={currentIntern} isMobile={isMobile} />
+                  <ProfilePage intern={currentIntern} isMobile={isMobile} onProfileUpdated={loadCurrentIntern} />
                 )}
                 {activePage === "project-submission" && (
                   <ProjectSubmissionPage isMobile={isMobile} />
@@ -692,6 +901,7 @@ function getPageTitle(page) {
   return { 
     "overview": "Intern Dashboard", 
     "daily-log": "Daily Log", 
+    "attendance": "Attendance",
     "reports": "Reports", 
     "chat": "Messages", 
     "profile": "My Profile", 
@@ -703,6 +913,7 @@ function getPageSubtitle(page) {
   return { 
     "overview": "Track your internship progress and activities", 
     "daily-log": "Track your daily progress", 
+    "attendance": "View your attendance history",
     "reports": "TNA & Project Blueprint", 
     "chat": "Connect with your team", 
     "profile": "Manage your information", 

@@ -3,6 +3,7 @@ const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { createNotifications, toClientNotification, isMissingTableError } = require("../services/notifications");
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -213,6 +214,9 @@ function createPmRouter() {
 
   router.get("/interns/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const pmId = req.auth.profile.id;
       const rows = await restSelect({
         table: "profiles",
@@ -281,6 +285,9 @@ function createPmRouter() {
 
   router.patch("/announcements/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const pmId = req.auth.profile.id;
       const announcementId = req.params.id;
 
@@ -327,6 +334,9 @@ function createPmRouter() {
 
   router.delete("/announcements/:id", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const pmId = req.auth.profile.id;
       const announcementId = req.params.id;
 
@@ -477,6 +487,9 @@ function createPmRouter() {
 
   router.patch("/reports/:id/review", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const pmId = req.auth.profile.id;
       const { status, reason, remarks, reviewReason } = req.body || {};
       const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
@@ -668,6 +681,9 @@ function createPmRouter() {
 
   router.patch("/project-submissions/:id/review", async (req, res, next) => {
     try {
+      if (!UUID_REGEX.test(req.params.id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
+      }
       const { status, comment } = req.body || {};
       if (!["approved", "rejected"].includes(status)) {
         throw httpError(400, "status must be approved or rejected", true);

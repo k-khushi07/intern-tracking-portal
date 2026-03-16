@@ -88,14 +88,13 @@ export default function InternProfileSetup() {
       const profileData =
         me.profile && typeof me.profile.profile_data === "object" ? me.profile.profile_data : {};
       const existingFiles = buildStoredFilesFromProfile(profileData);
-      if (existingFiles.profilePicture || existingFiles.resume) {
-        setStoredFiles(existingFiles);
-        setProfile((prev) => ({
-          ...prev,
-          profilePicture: prev.profilePicture || existingFiles.profilePicture?.url || null,
-          resume: prev.resume || existingFiles.resume?.url || null,
-        }));
-      }
+      setStoredFiles(existingFiles);
+      setProfile((prev) => ({
+        ...prev,
+        ...(profileData || {}),
+        profilePicture: prev.profilePicture || existingFiles.profilePicture?.url || profileData.profilePictureUrl || null,
+        resume: prev.resume || existingFiles.resume?.url || profileData.resumeUrl || null,
+      }));
 
       const u = {
         role: me.profile.role,
@@ -118,14 +117,13 @@ export default function InternProfileSetup() {
       if (user.role === "intern") {
         const cachedProfileData = user.profileData || {};
         const cachedFiles = buildStoredFilesFromProfile(cachedProfileData);
-        if (cachedFiles.profilePicture || cachedFiles.resume) {
-          setStoredFiles(cachedFiles);
-          setProfile((prev) => ({
-            ...prev,
-            profilePicture: prev.profilePicture || cachedFiles.profilePicture?.url || null,
-            resume: prev.resume || cachedFiles.resume?.url || null,
-          }));
-        }
+        setStoredFiles(cachedFiles);
+        setProfile((prev) => ({
+          ...prev,
+          ...(cachedProfileData || {}),
+          profilePicture: prev.profilePicture || cachedFiles.profilePicture?.url || cachedProfileData.profilePictureUrl || null,
+          resume: prev.resume || cachedFiles.resume?.url || cachedProfileData.resumeUrl || null,
+        }));
         setCurrentUser(user);
       } else {
         window.location.href = "/";

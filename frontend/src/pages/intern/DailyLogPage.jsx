@@ -4,9 +4,9 @@ import {
   BookOpen, X, Clock, CheckCircle, Star, AlertCircle,
   Calendar, ChevronDown, ChevronRight, FileText, Send,
   TrendingUp, BarChart3, Mail, Loader, Filter, Download,
-  CalendarDays, FolderOpen, PieChart, Search, Lightbulb, Target
+  CalendarDays, FolderOpen, PieChart, Search, Lightbulb, Target, Edit3, Lock
 } from "lucide-react";
-import { internApi } from "../../lib/apiClient";
+import { attendanceApi, internApi } from "../../lib/apiClient";
 
 // ==================== CONSTANTS ====================
 const COLORS = {
@@ -296,6 +296,8 @@ const generateMonthlySummary = (month, monthKey) => {
     totalDays,
     weeksCount,
     avgHoursPerDay,
+    firstHalfAvgHours: Number(firstHalfAvg.toFixed(2)),
+    secondHalfAvgHours: Number(secondHalfAvg.toFixed(2)),
     productivityTrend,
     consistencyRating,
     consistencyScore: Math.round(consistencyScore),
@@ -448,20 +450,32 @@ const SearchFilterBar = ({ searchQuery, setSearchQuery, activeFilter, setActiveF
 );
 
 // ==================== LOG ENTRY FORM ====================
-const LogEntryForm = ({ onSubmit, onCancel, isMobile }) => {
-  const [formData, setFormData] = useState({ 
-    date: new Date().toISOString().split("T")[0], 
-    tasks: "", 
-    learnings: "", 
-    blockers: "", 
-    hoursWorked: "" 
+const LogEntryForm = ({ onSubmit, onCancel, isMobile, initialData, mode = "create", canSubmit = true, lockedReason = "" }) => {
+  const defaultDate = new Date().toISOString().split("T")[0];
+  const [formData, setFormData] = useState({
+    date: initialData?.date || defaultDate,
+    tasks: initialData?.tasks || "",
+    learnings: initialData?.learnings || "",
+    blockers: initialData?.blockers || "",
+    hoursWorked: initialData?.hoursWorked ?? "",
   });
+
+  useEffect(() => {
+    setFormData({
+      date: initialData?.date || defaultDate,
+      tasks: initialData?.tasks || "",
+      learnings: initialData?.learnings || "",
+      blockers: initialData?.blockers || "",
+      hoursWorked: initialData?.hoursWorked ?? "",
+    });
+  }, [defaultDate, initialData?.blockers, initialData?.date, initialData?.hoursWorked, initialData?.learnings, initialData?.tasks]);
 
   const handleSubmit = (e) => { 
     e.preventDefault(); 
+    if (!canSubmit) return;
     onSubmit(formData); 
     setFormData({ 
-      date: new Date().toISOString().split("T")[0], 
+      date: defaultDate, 
       tasks: "", 
       learnings: "", 
       blockers: "", 
@@ -488,9 +502,15 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile }) => {
         alignItems: "center", 
         gap: 10 
       }}>
-        <Star size={22} color={COLORS.peachGlow} />
-        Log Today's Progress
+        {mode === "edit" ? <Edit3 size={22} color={COLORS.peachGlow} /> : <Star size={22} color={COLORS.peachGlow} />}
+        {mode === "edit" ? "Edit Daily Log" : "Log Today's Progress"}
       </h3>
+
+      {!canSubmit && (
+        <div style={{ marginBottom: 16, padding: 12, borderRadius: 12, border: "1px solid rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.12)", color: "#fde68a", fontSize: 13 }}>
+          {lockedReason || "This log is locked."}
+        </div>
+      )}
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
           <label style={{ 
@@ -507,7 +527,8 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile }) => {
             value={formData.date} 
             onChange={(e) => setFormData({ ...formData, date: e.target.value })} 
             style={inputStyle} 
-            required 
+            required
+            disabled={mode === "edit"}
           />
         </div>
         <div>
@@ -587,6 +608,7 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile }) => {
         <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
           <button 
             type="submit" 
+            disabled={!canSubmit}
             style={{ 
               padding: "14px 28px", 
               background: `linear-gradient(135deg, ${COLORS.deepOcean} 0%, ${COLORS.jungleTeal} 100%)`, 
@@ -594,7 +616,7 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile }) => {
               border: "none", 
               borderRadius: 12, 
               fontWeight: 600, 
-              cursor: "pointer", 
+              cursor: canSubmit ? "pointer" : "default", 
               fontSize: 14, 
               display: "flex", 
               alignItems: "center", 
@@ -645,7 +667,7 @@ const LogSection = ({ title, content, icon, color }) => (
 );
 
 // ==================== LOG CARD ====================
-const LogCard = ({ log, index }) => {
+const LogCard = ({ log, index, onEdit, canEdit = false, editHint = "" }) => {
   const dayName = new Date(log.date).toLocaleDateString("en-US", { weekday: "long" });
   const hasBlocker = log.blockers && log.blockers.toLowerCase() !== "none";
 
@@ -699,7 +721,7 @@ const LogCard = ({ log, index }) => {
         <div style={{ 
           display: "flex", 
           alignItems: "center", 
-          gap: 6, 
+          gap: 10, 
           background: `${COLORS.jungleTeal}20`, 
           padding: "8px 14px", 
           borderRadius: 20, 
@@ -707,6 +729,36 @@ const LogCard = ({ log, index }) => {
         }}>
           <Clock size={14} color={COLORS.jungleTeal} />
           <span style={{ fontWeight: 600, color: COLORS.jungleTeal, fontSize: 14 }}>{log.hoursWorked}h</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => onEdit?.(log)}
+              style={{
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(255,255,255,0.06)",
+                color: "white",
+                padding: "8px 12px",
+                borderRadius: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+              }}
+              aria-label="Edit log"
+              title="Edit log"
+            >
+              <Edit3 size={14} /> Edit
+            </button>
+          ) : (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.55)", fontWeight: 700 }} title={editHint || ""}>
+              <Lock size={14} /> Locked
+            </div>
+          )}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -719,7 +771,7 @@ const LogCard = ({ log, index }) => {
 };
 
 // ==================== DAILY VIEW ====================
-const DailyView = ({ logs }) => {
+const DailyView = ({ logs, onEditLog, canEditDate }) => {
   if (logs.length === 0) {
     return (
       <div className="glass" style={{ padding: 60, borderRadius: 20, textAlign: "center" }}>
@@ -730,13 +782,22 @@ const DailyView = ({ logs }) => {
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {logs.map((log, idx) => <LogCard key={log.id} log={log} index={idx} />)}
+      {logs.map((log, idx) => (
+        <LogCard
+          key={log.id}
+          log={log}
+          index={idx}
+          onEdit={onEditLog}
+          canEdit={!!canEditDate?.(log.date)}
+          editHint="Daily logs are editable for 7 days only."
+        />
+      ))}
     </div>
   );
 };
 
 // ==================== WEEKLY VIEW ====================
-const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, weeklySummaries, openSummaryModal, isMobile }) => {
+const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, weeklySummaries, openSummaryModal, isMobile, onEditLog, canEditDate }) => {
   if (sortedWeekKeys.length === 0) {
     return (
       <div className="glass" style={{ padding: 60, borderRadius: 20, textAlign: "center" }}>
@@ -835,7 +896,7 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                 }}>
                   <div style={{ 
                     display: "grid", 
-                    gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px", 
+                    gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px 90px", 
                     gap: 12, 
                     padding: "14px 18px", 
                     background: "rgba(103, 146, 137, 0.1)", 
@@ -852,6 +913,7 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                         <div>Learnings</div>
                         <div>Blockers</div>
                         <div>Hours</div>
+                        <div>Edit</div>
                       </>
                     )}
                     {isMobile && <div>Log Details</div>}
@@ -861,7 +923,7 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                       key={log.id} 
                       style={{ 
                         display: "grid", 
-                        gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px", 
+                        gridTemplateColumns: isMobile ? "1fr" : "100px 1fr 1fr 120px 80px 90px", 
                         gap: 12, 
                         padding: "16px 18px", 
                         borderBottom: idx < week.logs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", 
@@ -897,6 +959,37 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                       }}>
                         <Clock size={14} />{log.hoursWorked}h
                       </div>
+                      {!isMobile && (
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          {canEditDate?.(log.date) ? (
+                            <button
+                              type="button"
+                              onClick={() => onEditLog?.(log)}
+                              style={{
+                                border: "1px solid rgba(255,255,255,0.14)",
+                                background: "rgba(255,255,255,0.06)",
+                                color: "white",
+                                padding: "8px 10px",
+                                borderRadius: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                fontSize: 12,
+                              }}
+                              aria-label="Edit log"
+                              title="Edit log"
+                            >
+                              <Edit3 size={14} /> Edit
+                            </button>
+                          ) : (
+                            <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 12, fontWeight: 700 }} title="Daily logs are editable for 7 days only.">
+                              <Lock size={14} style={{ verticalAlign: "middle" }} />{" "}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1243,6 +1336,45 @@ const SummaryModal = ({ type, summary, assignedPM, pmAssigned, onClose, onSend, 
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>{stat.label}</div>
               </div>
             ))}
+          </div>
+
+          {/* Explanation */}
+          <div style={{ 
+            marginTop: -10, 
+            marginBottom: 22, 
+            padding: "12px 14px", 
+            borderRadius: 14, 
+            border: "1px solid rgba(255,255,255,0.08)", 
+            background: "rgba(255,255,255,0.03)" 
+          }}>
+            <div style={{ fontWeight: 900, color: "rgba(255,255,255,0.9)", fontSize: 12, marginBottom: 6 }}>
+              How {isWeekly ? "Productivity" : "Trend"} is calculated
+            </div>
+            {isWeekly ? (
+              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, lineHeight: 1.5 }}>
+                Based on total hours from daily logs in the week:{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>High</span> ≥ 35h,{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>Good</span> ≥ 25h,{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>Moderate</span> ≥ 15h, otherwise{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>Low</span>.
+              </div>
+            ) : (
+              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, lineHeight: 1.5 }}>
+                Trend compares average hours/day between the first half and second half of the month (from daily logs).{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>Increasing</span> if the second half is &gt; 10% higher,{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>Decreasing</span> if it is &lt; 10% lower, otherwise{" "}
+                <span style={{ color: "rgba(255,255,255,0.75)" }}>Stable</span>.
+                {Number.isFinite(Number(summary.firstHalfAvgHours)) && Number.isFinite(Number(summary.secondHalfAvgHours)) ? (
+                  <div style={{ marginTop: 6, color: "rgba(255,255,255,0.6)" }}>
+                    First half avg: {summary.firstHalfAvgHours}h/day • Second half avg: {summary.secondHalfAvgHours}h/day
+                  </div>
+                ) : null}
+              </div>
+            )}
+            <div style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12, lineHeight: 1.5 }}>
+              Consistency score is based on how many days you logged vs expected working days (5 days/week):{" "}
+              {isWeekly ? "daysWorked ÷ 5" : "daysLogged ÷ (weeksInMonth × 5)"}.
+            </div>
           </div>
 
           {/* Content Sections */}
@@ -1797,8 +1929,33 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
   const [dailyLogs, setDailyLogs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [editingLog, setEditingLog] = useState(null);
 
   const pmAssigned = !!assignedPM?.id;
+
+  const canEditDate = useCallback((isoDate) => {
+    if (!isoDate || typeof isoDate !== "string") return false;
+    const match = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return false;
+    const yyyy = Number(match[1]);
+    const mm = Number(match[2]);
+    const dd = Number(match[3]);
+    const date = new Date(yyyy, mm - 1, dd);
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor((startOfToday.getTime() - startOfDate.getTime()) / 86400000);
+    return diffDays >= 0 && diffDays <= 7;
+  }, []);
+
+  const openEditLog = useCallback(
+    (log) => {
+      if (!log?.date) return;
+      setEditingLog(log);
+      setShowForm(true);
+    },
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1953,20 +2110,19 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
       });
       const l = created?.log;
       if (l?.id) {
-        setDailyLogs((prev) => [
-          {
-            id: l.id,
-            date: l.log_date,
-            tasks: l.tasks,
-            learnings: l.learnings,
-            blockers: l.blockers,
-            hoursWorked: Number(l.hours_worked) || 0,
-            status: l.status,
-          },
-          ...prev,
-        ]);
+        const mapped = {
+          id: l.id,
+          date: l.log_date,
+          tasks: l.tasks,
+          learnings: l.learnings,
+          blockers: l.blockers,
+          hoursWorked: Number(l.hours_worked) || 0,
+          status: l.status,
+        };
+        setDailyLogs((prev) => [mapped, ...(prev || []).filter((x) => x?.date !== mapped.date && x?.id !== mapped.id)]);
       }
       setShowForm(false);
+      setEditingLog(null);
     } catch (err) {
       console.error("Failed to create daily log:", err);
       alert(err?.message || "Failed to save daily log");
@@ -2044,6 +2200,70 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
 
     setIsSending(true);
     try {
+      const [attendanceRes, tnaRes, blueprintRes] = await Promise.allSettled([
+        attendanceApi.self({ start: period.periodStart, end: period.periodEnd }),
+        internApi.tna(),
+        internApi.blueprint(),
+      ]);
+
+      const attendanceSummary = (() => {
+        if (attendanceRes.status !== "fulfilled") {
+          return { error: attendanceRes.reason?.message || "Failed to load attendance" };
+        }
+        const rows = attendanceRes.value?.attendance || [];
+        const counts = { present: 0, remote: 0, half_day: 0, leave: 0, absent: 0, unknown: 0 };
+        rows.forEach((r) => {
+          const status = String(r.status || "").toLowerCase();
+          if (counts[status] !== undefined) counts[status] += 1;
+          else counts.unknown += 1;
+        });
+        return {
+          periodStart: period.periodStart,
+          periodEnd: period.periodEnd,
+          totalRecordedDays: rows.length,
+          counts,
+        };
+      })();
+
+      const progressSummary = (() => {
+        const progress = {};
+        if (tnaRes.status === "fulfilled") {
+          const tnaItems = tnaRes.value?.items || [];
+          const tnaCounts = tnaItems.reduce(
+            (acc, i) => {
+              const s = String(i.status || "pending").toLowerCase();
+              if (acc[s] === undefined) acc.other += 1;
+              else acc[s] += 1;
+              acc.total += 1;
+              return acc;
+            },
+            { total: 0, pending: 0, in_progress: 0, completed: 0, blocked: 0, other: 0 }
+          );
+          const completionPercent = tnaCounts.total ? Math.round((tnaCounts.completed / tnaCounts.total) * 100) : 0;
+          progress.tna = { counts: tnaCounts, completionPercent };
+        } else {
+          progress.tna = { error: tnaRes.reason?.message || "Failed to load TNA" };
+        }
+
+        if (blueprintRes.status === "fulfilled") {
+          const bp = blueprintRes.value?.blueprint?.data || {};
+          const milestones = Array.isArray(bp.milestones) ? bp.milestones : [];
+          const total = milestones.length;
+          const completed = milestones.filter((m) => String(m?.status || "").toLowerCase() === "completed").length;
+          progress.blueprint = {
+            milestones: {
+              total,
+              completed,
+              completionPercent: total ? Math.round((completed / total) * 100) : 0,
+            },
+          };
+        } else {
+          progress.blueprint = { error: blueprintRes.reason?.message || "Failed to load blueprint" };
+        }
+
+        return progress;
+      })();
+
       await internApi.createReport({
         reportType,
         weekNumber: reportType === "weekly" ? summary.weekNumber : undefined,
@@ -2053,7 +2273,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         totalHours: summary.totalHours,
         daysWorked: reportType === "weekly" ? summary.daysWorked : summary.totalDays,
         summary: text,
-        data: summary,
+        data: { ...summary, attendanceSummary, progressSummary },
         recipientRoles: recipientRoles || ["pm"],
       });
 
@@ -2183,7 +2403,10 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
             </button>
 
             <button 
-              onClick={() => setShowForm(!showForm)} 
+              onClick={() => {
+                if (!showForm) setEditingLog(null);
+                setShowForm(!showForm);
+              }} 
               style={{ 
                 padding: "12px 24px", 
                 background: showForm 
@@ -2212,8 +2435,22 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         {showForm && (
           <LogEntryForm 
             onSubmit={handleSubmit} 
-            onCancel={() => setShowForm(false)} 
+            onCancel={() => { setShowForm(false); setEditingLog(null); }} 
             isMobile={isMobile} 
+            mode={editingLog ? "edit" : "create"}
+            initialData={
+              editingLog
+                ? {
+                    date: editingLog.date,
+                    tasks: editingLog.tasks,
+                    learnings: editingLog.learnings,
+                    blockers: editingLog.blockers,
+                    hoursWorked: editingLog.hoursWorked,
+                  }
+                : null
+            }
+            canSubmit={editingLog ? canEditDate(editingLog.date) : true}
+            lockedReason="Daily logs are editable for 7 days only."
           />
         )}
 
@@ -2229,7 +2466,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         )}
 
         {/* Views */}
-        {viewMode === "daily" && <DailyView logs={filteredLogs} />}
+        {viewMode === "daily" && <DailyView logs={filteredLogs} onEditLog={openEditLog} canEditDate={canEditDate} />}
         {viewMode === "weekly" && (
           <WeeklyView 
             logsByWeek={logsByWeek} 
@@ -2239,6 +2476,8 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
             weeklySummaries={weeklySummaries} 
             openSummaryModal={openSummaryModal} 
             isMobile={isMobile} 
+            onEditLog={openEditLog}
+            canEditDate={canEditDate}
           />
         )}
         {viewMode === "monthly" && (

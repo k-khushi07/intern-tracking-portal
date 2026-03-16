@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Mail } from 'lucide-react';
-import { authApi } from '../../lib/apiClient';
 
 const COLORS = {
   inkBlack: "#020617",
@@ -19,37 +18,26 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
     setError("");
 
     try {
-      const trimmedEmail = String(email || "").trim();
-      const rawPassword = String(password || "");
-      if (!trimmedEmail || !rawPassword) {
-        setError("Email and password are required.");
-        return;
-      }
-
-      const res = await authApi.login({
-        email: trimmedEmail,
-        password: rawPassword,
-        expectedRole: "admin",
-        rememberMe: false,
-      });
-
-      localStorage.setItem(
-        "currentUser",
-        JSON.stringify({
-          role: res.profile.role,
-          fullName: res.profile.full_name,
-          email: res.profile.email,
-        })
+      const users = JSON.parse(localStorage.getItem("users") || "[]");
+      const admin = users.find(
+        (u) => u.role === "admin" && 
+              u.email.toLowerCase() === email.toLowerCase() && 
+              u.password === password
       );
-      navigate("/admin/dashboard");
+
+      if (admin) {
+        localStorage.setItem("currentUser", JSON.stringify(admin));
+        navigate("/admin");
+      } else {
+        setError("Invalid credentials");
+      }
     } catch (err) {
-      localStorage.removeItem("currentUser");
-      setError(err.message || "Error. Please try again.");
+      setError("Error. Please try again.");
     }
   };
 

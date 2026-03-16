@@ -640,7 +640,9 @@ function createMessagesRouter() {
       const requester = req.auth.profile;
       const convId = req.params.id;
       const { body } = req.body || {};
-      if (!String(body || "").trim()) throw httpError(400, "body is required", true);
+      const trimmedBody = String(body || "").trim();
+      if (!trimmedBody) throw httpError(400, "body is required", true);
+      if (trimmedBody.length > 5000) throw httpError(400, "body exceeds 5000 characters", true);
 
       const member = await assertActiveMember({ conversationId: convId, profileId: requester.id });
       const conv = await getConversation(convId);
@@ -651,7 +653,7 @@ function createMessagesRouter() {
       const now = isoNow();
       const inserted = await restInsert({
         table: "messages",
-        rows: { conversation_id: convId, sender_profile_id: requester.id, body: String(body).trim(), created_at: now },
+        rows: { conversation_id: convId, sender_profile_id: requester.id, body: trimmedBody, created_at: now },
         accessToken: null,
         useServiceRole: true,
       });
@@ -662,7 +664,7 @@ function createMessagesRouter() {
         table: "conversations",
         patch: {
           last_message_at: now,
-          last_message_body: String(body).trim().slice(0, 500),
+          last_message_body: trimmedBody.slice(0, 500),
           last_message_sender_profile_id: requester.id,
           updated_at: now,
         },
