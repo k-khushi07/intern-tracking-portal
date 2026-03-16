@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User } from "lucide-react";
 import { pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
@@ -18,7 +19,8 @@ const COLORS = {
 };
 
 function resolveDepartment(intern) {
-  const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+  const profileDataRaw = intern?.profile_data || intern?.profileData;
+  const profileData = profileDataRaw && typeof profileDataRaw === "object" ? profileDataRaw : {};
   const raw = intern?.department || profileData.department || profileData.domain || profileData.team || "";
   const text = String(raw || "").trim();
   const normalized = text.toLowerCase();
@@ -86,7 +88,29 @@ function getGoogleEmbedUrl(url, type) {
   return url;
 }
 
-const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile" }) => {
+function resolveMonthLabel(report) {
+  const raw = String(report?.month || "").trim();
+  if (raw) return raw;
+
+  const iso =
+    report?.submittedAt ||
+    report?.submitted_at ||
+    report?.createdAt ||
+    report?.created_at ||
+    null;
+
+  if (!iso) return "Unknown Month";
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return "Unknown Month";
+  return dt.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile", api = pmApi }) => {
+  const params = useParams();
+  const internIdParam = params?.id || params?.internId || null;
+  const [internDetails, setInternDetails] = useState(intern || null);
+  const [internLoading, setInternLoading] = useState(false);
+  const [internLoadError, setInternLoadError] = useState("");
   const [tnaItems, setTnaItems] = useState([]);
   const [blueprint, setBlueprint] = useState(null);
   const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
@@ -99,20 +123,79 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
   const [activeTab, setActiveTab] = useState(initialSection === "reports" ? "reports" : "profile");
   const [reportTab, setReportTab] = useState("weekly");
 
-  const internId = intern?.id || null;
+  const internId = internIdParam || internDetails?.id || intern?.id || null;
+  const profileData = useMemo(() => {
+    const raw = internDetails?.profile_data || internDetails?.profileData;
+    return raw && typeof raw === "object" ? raw : {};
+  }, [internDetails]);
 
   useEffect(() => {
-    setInternReports(normalizeReportsForIntern(reports, internId));
-  }, [reports, internId]);
+    if (!intern) return;
+    setInternDetails(intern);
+  }, [intern]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadIntern = async () => {
+      if (!internId) return;
+      setInternLoading(true);
+      setInternLoadError("");
+      try {
+        if (typeof api?.getIntern !== "function") throw new Error("getIntern is not available");
+        const res = await api.getIntern(internId);
+        if (cancelled) return;
+        setInternDetails(res?.intern || null);
+      } catch (err) {
+        if (cancelled) return;
+        setInternLoadError(err?.message || "Failed to load intern profile.");
+      } finally {
+        if (!cancelled) setInternLoading(false);
+      }
+    };
+    loadIntern();
+    return () => {
+      cancelled = true;
+    };
+  }, [internId, api]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fromProps = Array.isArray(reports) ? reports : [];
+    if (fromProps.length > 0) {
+      setInternReports(normalizeReportsForIntern(fromProps, internId));
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const load = async () => {
+      if (!internId) return;
+      if (typeof api?.getInternReports !== "function") return;
+      try {
+        const res = await api.getInternReports(internId);
+        if (cancelled) return;
+        const rows = Array.isArray(res?.reports) ? res.reports : [];
+        setInternReports(normalizeReportsForIntern(rows, internId));
+      } catch {
+        // ignore
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [reports, internId, api]);
 
   const loadInternArtifacts = useCallback(async () => {
     if (!internId) return;
     setProfileError("");
     try {
       const [tnaRes, blueprintRes, linksRes] = await Promise.all([
-        pmApi.internTna(internId),
-        pmApi.internBlueprint(internId),
-        pmApi.internReportLinks(internId),
+        api.internTna(internId),
+        api.internBlueprint(internId),
+        api.internReportLinks(internId),
       ]);
       setTnaItems(tnaRes?.items || []);
       setBlueprint(blueprintRes?.blueprint || null);
@@ -126,7 +209,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
       setBlueprint(null);
       setLinks({ tnaSheetUrl: "", blueprintDocUrl: "" });
     }
-  }, [internId]);
+  }, [internId, api]);
 
   useEffect(() => {
     if (!internId) return;
@@ -204,7 +287,8 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
       setSavingReviewId(reportId);
       setReviewError("");
       const text = String(remarks[reportId] || "").trim();
-      await pmApi.reviewReport(reportId, { status: statusValue, remarks: text || null });
+      if (typeof api?.reviewReport !== "function") throw new Error("reviewReport is not available");
+      await api.reviewReport(reportId, { status: statusValue, remarks: text || null });
       setInternReports((prev) =>
         prev.map((report) =>
           report.id === reportId
@@ -225,7 +309,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     }
   }
 
-  if (!intern) {
+  if (!internDetails && !internLoading) {
     return (
       <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,229,217,0.7)" }}>
         No intern selected.
@@ -233,7 +317,15 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     );
   }
 
-  const name = intern.full_name || intern.fullName || intern.name || intern.email || "Intern";
+  const name =
+    profileData.full_name ||
+    profileData.fullName ||
+    profileData.name ||
+    internDetails?.full_name ||
+    internDetails?.fullName ||
+    internDetails?.name ||
+    internDetails?.email ||
+    "Intern";
   const avatar = name
     .split(" ")
     .filter(Boolean)
@@ -241,11 +333,20 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+<<<<<<< HEAD
   const status = String(intern.status || "active").toLowerCase();
   const department = resolveDepartment(intern);
   const profileData = intern.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
   const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
   const resumeUrl = profileData.resumeUrl || profileData.resume_url || intern.resumeUrl || intern.resume_url || null;
+=======
+  const status = String(internDetails?.status || "active").toLowerCase();
+  const department = resolveDepartment({ ...internDetails, profile_data: profileData });
+  const displayEmail = profileData.email || internDetails?.email || "-";
+  const displayInternId = profileData.internId || profileData.intern_id || internDetails?.intern_id || internDetails?.internId || "-";
+  const joinedAt = profileData.joinedAt || profileData.joinDate || internDetails?.created_at || null;
+  const lastActivity = profileData.lastLogDate || profileData.lastActivity || internDetails?.lastLogDate || null;
+>>>>>>> origin/khush
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -307,10 +408,10 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               />
             ) : null}
           </div>
-          <div style={{ minWidth: 260, flex: 1 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "white" }}>{name}</div>
-            <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.9)" }}>
-              {intern.email || "-"} | Intern ID: {intern.intern_id || intern.internId || "-"} | Department: {department}
+            <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.9)", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.4 }}>
+              {displayEmail} | Intern ID: {displayInternId} | Department: {department}
             </div>
             <div style={{ marginTop: 8 }}>
               <span
@@ -461,11 +562,11 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               Intern Information
             </div>
             <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
-              <ProfileField icon={<Mail size={15} />} label="Email" value={intern.email || "-"} />
-              <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={intern.intern_id || intern.internId || "-"} />
+              <ProfileField icon={<Mail size={15} />} label="Email" value={displayEmail} />
+              <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={displayInternId} />
               <ProfileField icon={<ListChecks size={15} />} label="Department" value={department || "-"} />
-              <ProfileField icon={<Calendar size={15} />} label="Joined" value={intern.created_at ? new Date(intern.created_at).toLocaleDateString() : "-"} />
-              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={intern.lastLogDate ? new Date(intern.lastLogDate).toLocaleDateString() : "No logs"} />
+              <ProfileField icon={<Calendar size={15} />} label="Joined" value={joinedAt ? new Date(joinedAt).toLocaleDateString() : "-"} />
+              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={lastActivity ? new Date(lastActivity).toLocaleDateString() : "No logs"} />
             </div>
           </div>
 
@@ -720,7 +821,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                     if (weeklies.length === 0) return <div style={{ color: "rgba(255,255,255,0.6)", textAlign: "center", padding: 20 }}>No weekly reports found.</div>;
 
                     const byMonth = weeklies.reduce((acc, r) => {
-                      const m = r.month || "Unknown Month";
+                      const m = resolveMonthLabel(r);
                       if (!acc[m]) acc[m] = [];
                       acc[m].push(r);
                       return acc;
@@ -798,7 +899,7 @@ function ProfileField({ icon, label, value }) {
         {icon}
         {label}
       </div>
-      <div style={{ marginTop: 8, color: "white", fontWeight: 800, fontSize: 13 }}>
+      <div style={{ marginTop: 8, color: "white", fontWeight: 800, fontSize: 13, overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.4 }}>
         {value}
       </div>
     </div>
@@ -847,10 +948,14 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   const readOnly = String(report.status || "").toLowerCase() !== "pending";
   const currentStatusColor = statusColor(report.status);
   const isWeekly = String(report.reportType || "").toLowerCase() === "weekly";
+<<<<<<< HEAD
   const label = isWeekly ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
   const extra = report?.data && typeof report.data === "object" ? report.data : {};
   const attendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
   const progressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
+=======
+  const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
+>>>>>>> origin/khush
 
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,

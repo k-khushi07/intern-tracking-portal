@@ -1,3 +1,4 @@
+// backend/src/routes/hr.js
 const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
@@ -412,6 +413,8 @@ function createHrRouter({ emailService }) {
     stipend,
     password,
     pmCode,
+    cc,
+    bcc,
     offerLetterAttachment,
     sendEmail = true,
   }) {
@@ -572,6 +575,8 @@ function createHrRouter({ emailService }) {
 
         await emailService.sendEmail({
           to: app.email,
+          cc: cc || undefined,
+          bcc: bcc || undefined,
           subject: "🎉 InternHub Selection - Offer Letter Attached",
           html: buildApprovalEmailHtml({
             name: app.applicant_name,
@@ -1099,7 +1104,7 @@ function createHrRouter({ emailService }) {
 
   router.post("/applications/:id/approve", async (req, res, next) => {
     try {
-      const { startDate, endDate, department, mentorName, stipend, password, pmCode, offerLetterAttachment, sendEmail } = req.body || {};
+      const { startDate, endDate, department, mentorName, stipend, password, pmCode, cc, bcc, offerLetterAttachment, sendEmail } = req.body || {};
       const approval = await approveApplicationRecord({
         applicationId: req.params.id,
         approvedByProfileId: req.auth.profile.id,
@@ -1110,6 +1115,8 @@ function createHrRouter({ emailService }) {
         stipend,
         password,
         pmCode,
+        cc,
+        bcc,
         offerLetterAttachment,
         sendEmail,
       });
@@ -1255,7 +1262,6 @@ function createHrRouter({ emailService }) {
       if (!pmCode) throw httpError(400, "pmCode is required", true);
       const normalizedPmCode = String(pmCode || "").trim();
 
-      // Fetch current intern state (for chat archival on reassignment).
       const internRows = await restSelect({
         table: "profiles",
         select: "id,role,pm_id,status",
@@ -1285,7 +1291,6 @@ function createHrRouter({ emailService }) {
         useServiceRole: true,
       });
 
-      // If reassigned, archive old direct conversations (intern <-> old PM, intern <-> old teammates).
       if (oldPmId && String(oldPmId) !== String(pm.id)) {
         const now = new Date().toISOString();
         const [a, b] = String(req.params.id) < String(oldPmId) ? [req.params.id, oldPmId] : [oldPmId, req.params.id];
@@ -1420,21 +1425,11 @@ function createHrRouter({ emailService }) {
         const pattern = search.toLowerCase();
         interns = interns.filter((row) => {
           return (
-            String(row.fullName || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.email || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.department || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.mentor || "")
-              .toLowerCase()
-              .includes(pattern) ||
-            String(row.internId || "")
-              .toLowerCase()
-              .includes(pattern)
+            String(row.fullName || "").toLowerCase().includes(pattern) ||
+            String(row.email || "").toLowerCase().includes(pattern) ||
+            String(row.department || "").toLowerCase().includes(pattern) ||
+            String(row.mentor || "").toLowerCase().includes(pattern) ||
+            String(row.internId || "").toLowerCase().includes(pattern)
           );
         });
       }
@@ -1627,19 +1622,8 @@ function createHrRouter({ emailService }) {
 
       res.status(200).json({
         success: true,
-        stats: {
-          totalApplications,
-          pendingCount,
-          approvedCount,
-          rejectedCount,
-          approvalRate,
-        },
-        charts: {
-          domainWise,
-          monthlyTrend,
-          topColleges,
-          departmentWise,
-        },
+        stats: { totalApplications, pendingCount, approvedCount, rejectedCount, approvalRate },
+        charts: { domainWise, monthlyTrend, topColleges, departmentWise },
       });
     } catch (err) {
       next(err);
@@ -1758,7 +1742,6 @@ function createHrRouter({ emailService }) {
 
       res.status(200).json({ success: true, reports: mapped });
     } catch (err) {
-      // Back-compat if migration hasn't run yet: no HR recipients, so return empty.
       if (String(err.message || "").includes("recipient_roles")) {
         res.status(200).json({ success: true, reports: [] });
         return;
@@ -1769,15 +1752,22 @@ function createHrRouter({ emailService }) {
 
   router.patch("/reports/:id/review", async (req, res, next) => {
     try {
+<<<<<<< HEAD
       const reviewerId = req.auth.profile.id;
       const reviewerRole = String(req.auth.profile.role || "").toLowerCase();
       const { status, reason, remarks, reviewReason } = req.body || {};
       const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
 
+=======
+      const hrId = req.auth.profile.id;
+      const { status, reason, remarks, reviewReason } = req.body || {};
+      const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
+>>>>>>> origin/khush
       if (!status || !["approved", "rejected"].includes(status)) {
         throw httpError(400, "status must be approved or rejected", true);
       }
 
+<<<<<<< HEAD
       const existing = await restSelect({
         table: "reports",
         select: "id,intern_profile_id,pm_profile_id,recipient_roles,status,submitted_at",
@@ -1800,6 +1790,13 @@ function createHrRouter({ emailService }) {
         patch: {
           status,
           reviewed_by: reviewerId,
+=======
+      await restUpdate({
+        table: "reports",
+        patch: {
+          status,
+          reviewed_by: hrId,
+>>>>>>> origin/khush
           reviewed_at: new Date().toISOString(),
           review_reason: finalRemarks || null,
           updated_at: new Date().toISOString(),
@@ -1809,6 +1806,7 @@ function createHrRouter({ emailService }) {
         useServiceRole: true,
       });
 
+<<<<<<< HEAD
       const nextReportRow = Array.isArray(updated) ? updated[0] : updated;
       const internId = nextReportRow?.intern_profile_id || reportRow.intern_profile_id;
       const pmId = nextReportRow?.pm_profile_id || reportRow.pm_profile_id;
@@ -1851,6 +1849,15 @@ function createHrRouter({ emailService }) {
       }
 
       res.status(200).json({ success: true, report: nextReportRow || null });
+=======
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user:${hrId}`).emit("itp:changed", { entity: "reports", action: "update" });
+        io.to("role:hr").emit("itp:changed", { entity: "reports", action: "update" });
+      }
+
+      res.status(200).json({ success: true });
+>>>>>>> origin/khush
     } catch (err) {
       next(err);
     }
@@ -1907,7 +1914,6 @@ function createHrRouter({ emailService }) {
       const msg = msgRows?.[0];
       if (!msg) throw httpError(404, "Message not found", true);
 
-      // Surrounding context: 8 before + 8 after.
       const before = await restSelect({
         table: "messages",
         select: "id,conversation_id,sender_profile_id,body,created_at,deleted_at,deleted_by_profile_id,delete_reason",
@@ -2100,6 +2106,22 @@ function createHrRouter({ emailService }) {
     }
   });
 
+  router.get("/interns/:id", async (req, res, next) => {
+    try {
+      const rows = await restSelect({
+        table: "profiles",
+        select: "id,full_name,email,role,status,intern_id,pm_id,profile_data,profile_completed,created_at",
+        filters: { id: `eq.${req.params.id}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      if (!rows?.[0]) throw httpError(404, "Intern not found", true);
+      res.status(200).json({ success: true, intern: rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post("/announcements", async (req, res, next) => {
     try {
       const { title, content, priority, audienceRoles, pinned } = req.body || {};
@@ -2191,6 +2213,80 @@ function createHrRouter({ emailService }) {
       if (io) io.to("role:pm").emit("itp:changed", { entity: "announcements", action: "delete" });
 
       res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/project-submissions", async (req, res, next) => {
+    try {
+      const rows = await restSelect({
+        table: "project_submissions",
+        select:
+          "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at,intern_profile_id,pm_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
+        filters: { order: "submitted_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, submissions: rows || [] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ==================== PROJECT SUBMISSION REVIEW ====================
+  router.patch("/project-submissions/:id/review", async (req, res, next) => {
+    try {
+      const { status, comment } = req.body || {};
+      if (!["approved", "rejected"].includes(status)) {
+        throw httpError(400, "status must be approved or rejected", true);
+      }
+      await restUpdate({
+        table: "project_submissions",
+        patch: {
+          status,
+          review_comment: comment || null,
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        matchQuery: { id: `eq.${req.params.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/interns/:id/daily-logs", async (req, res, next) => {
+    try {
+      await assertInternExists(req.params.id);
+      const rows = await restSelect({
+        table: "daily_logs",
+        select: "id,log_date,hours_worked,tasks_completed,status,created_at",
+        filters: { intern_profile_id: `eq.${req.params.id}`, order: "log_date.desc", limit: 20 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, logs: rows || [] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/interns/:id/reports", async (req, res, next) => {
+    try {
+      await assertInternExists(req.params.id);
+      const rows = await restSelect({
+        table: "reports",
+        select:
+          "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,created_at",
+        filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, reports: rows || [] });
     } catch (err) {
       next(err);
     }

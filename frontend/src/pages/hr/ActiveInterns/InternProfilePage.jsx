@@ -1,39 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2,
-  XCircle, Link2, ListChecks, User, Award, TrendingUp, GraduationCap,
-  Phone, MapPin, Target, Activity, Users, BookOpen, Star,
-} from "lucide-react";
+import React from "react";
+import InternProfilePage from "../../pm/InternProfilePage";
 import { hrApi } from "../../../lib/apiClient";
+<<<<<<< HEAD
 import { getRealtimeSocket } from "../../../lib/realtime";
 import AttendancePanel from "../../../components/AttendancePanel";
+=======
+>>>>>>> origin/khush
 
-const COLORS = {
-  inkBlack: "#071e22",
-  deepOcean: "#1d7874",
-  jungleTeal: "#679289",
-  peachGlow: "#ffe5d9",
-  racingRed: "#d90429",
-  panel: "rgba(255,255,255,0.06)",
-  border: "rgba(255,255,255,0.14)",
-  muted: "rgba(255,229,217,0.65)",
-  success: "#4ade80",
-  warning: "#f59e0b",
-  danger: "#ef4444",
-};
-
-function resolveDepartment(intern) {
-  const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
-  const raw = intern?.department || profileData.department || profileData.domain || profileData.team || "";
-  const text = String(raw || "").trim();
-  const normalized = text.toLowerCase();
-  if (normalized === "sap") return "SAP";
-  if (normalized === "oracle") return "Oracle";
-  if (normalized === "accounts") return "Accounts";
-  if (normalized === "hr") return "HR";
-  return text || "Unassigned";
+export default function HrInternProfilePage(props) {
+  return <InternProfilePage {...props} api={hrApi} />;
 }
 
+<<<<<<< HEAD
 function normalizeReports(reports, internId) {
   return (Array.isArray(reports) ? reports : [])
     .map((r) => ({
@@ -887,3 +865,5 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
 }
 
 export default InternProfilePage;
+=======
+>>>>>>> origin/khush

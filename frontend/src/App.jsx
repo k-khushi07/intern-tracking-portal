@@ -9,6 +9,8 @@ import AdminLogin from "./pages/Admin/AdminLogin";
 import PMHome from "./pages/pm/PMHome";
 import HRHome from "./pages/hr/HRHome";
 import InternHome from "./pages/intern/InternHome";
+import HRInternProfilePage from "./pages/hr/ActiveInterns/InternProfilePage";
+import PMInternProfilePage from "./pages/pm/InternProfilePage";
 
 import ProfileSetup from "./pages/intern/ProfileSetup";
 import InternApplicationForm from './pages/InternApplicationForm';
@@ -28,9 +30,11 @@ function App() {
 
       <Route path="/hr/login" element={<AuthPage forcedRole="hr" />} />
       <Route path="/hr/dashboard" element={<HRHome />} />
+      <Route path="/hr/interns/:internId" element={<HRInternProfilePage />} />
 
       <Route path="/pm/login" element={<AuthPage forcedRole="pm" />} />
       <Route path="/pm/dashboard" element={<PMHome />} />
+      <Route path="/pm/interns/:internId" element={<PMInternProfilePage />} />
 
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/admin/dashboard" element={<AdminHome />} />

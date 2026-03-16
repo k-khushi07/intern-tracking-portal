@@ -1,6 +1,6 @@
 // MessagesPage.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Search, MoreVertical, Paperclip, Smile, Check, CheckCheck, Plus, X } from "lucide-react";
+import { Send, Search, MoreVertical, Smile, Check, CheckCheck, Plus, X } from "lucide-react";
 import { authApi, messagesApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
@@ -11,6 +11,13 @@ const COLORS = {
   peachGlow: "#ffe5d9",
   racingRed: "#d90429",
 };
+
+const EMOJI_OPTIONS = [
+  "😀","😁","😂","🤣","😅","😊","😉","😍",
+  "😘","😎","🤔","😴","😢","😭","😡","🙏",
+  "👏","👍","👎","🤝","🎉","✨","🔥","⭐",
+  "✅","❌","❤️","💯","🚀","📌","📅","📎",
+];
 
 function initials(nameOrEmail) {
   const s = String(nameOrEmail || "").trim();
@@ -46,6 +53,7 @@ const MessagesPage = ({ selectedIntern }) => {
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -59,6 +67,9 @@ const MessagesPage = ({ selectedIntern }) => {
   const socketRef = useRef(null);
   const activeChatRef = useRef(null);
   const meRef = useRef(null);
+  const messageInputRef = useRef(null);
+  const emojiButtonRef = useRef(null);
+  const emojiPickerRef = useRef(null);
 
   const showNotice = useCallback((message, tone = "info") => {
     setUiNotice({ open: true, message, tone });
@@ -71,6 +82,51 @@ const MessagesPage = ({ selectedIntern }) => {
   useEffect(() => {
     meRef.current = me;
   }, [me]);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setShowEmojiPicker(false);
+    };
+
+    const onMouseDown = (e) => {
+      const picker = emojiPickerRef.current;
+      const button = emojiButtonRef.current;
+      const target = e.target;
+      if (picker && picker.contains(target)) return;
+      if (button && button.contains(target)) return;
+      setShowEmojiPicker(false);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [showEmojiPicker]);
+
+  const insertEmoji = useCallback((emoji) => {
+    const input = messageInputRef.current;
+    const value = String(messageInput || "");
+    const start = typeof input?.selectionStart === "number" ? input.selectionStart : value.length;
+    const end = typeof input?.selectionEnd === "number" ? input.selectionEnd : value.length;
+
+    const next = value.slice(0, start) + emoji + value.slice(end);
+    setMessageInput(next);
+    setShowEmojiPicker(false);
+
+    window.setTimeout(() => {
+      try {
+        input?.focus();
+        const pos = start + emoji.length;
+        input?.setSelectionRange(pos, pos);
+      } catch {
+        // ignore
+      }
+    }, 0);
+  }, [messageInput]);
 
   const refreshConversations = useCallback(async () => {
     const res = await messagesApi.conversations();
@@ -244,8 +300,9 @@ const MessagesPage = ({ selectedIntern }) => {
     const load = async () => {
       setLoadError("");
       try {
-        const meRes = await authApi.me();
-        if (!cancelled) setMe(meRes?.profile || null);
+      const meRes = await authApi.me();
+      const profile = meRes?.profile || null;
+      if (!cancelled) setMe(profile);
         await refreshConversations();
       } catch (err) {
         if (!cancelled) setLoadError(err?.message || "Failed to load conversations");
@@ -955,6 +1012,7 @@ const MessagesPage = ({ selectedIntern }) => {
           >
             <div
               style={{
+                position: "relative",
                 display: "flex",
                 alignItems: "center",
                 gap: "12px",
@@ -964,27 +1022,6 @@ const MessagesPage = ({ selectedIntern }) => {
                 borderRadius: "12px",
               }}
             >
-              <button
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(255, 229, 217, 0.6)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "6px",
-                  transition: "color 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = COLORS.peachGlow;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "rgba(255, 229, 217, 0.6)";
-                }}
-              >
-                <Paperclip size={20} />
-              </button>
-
               <input
                 type="text"
                 placeholder="Type a message..."
@@ -1003,9 +1040,13 @@ const MessagesPage = ({ selectedIntern }) => {
                   fontSize: "14px",
                   outline: "none",
                 }}
+                ref={messageInputRef}
               />
 
               <button
+                type="button"
+                ref={emojiButtonRef}
+                onClick={() => setShowEmojiPicker((v) => !v)}
                 style={{
                   background: "transparent",
                   border: "none",
@@ -1025,6 +1066,52 @@ const MessagesPage = ({ selectedIntern }) => {
               >
                 <Smile size={20} />
               </button>
+
+              {showEmojiPicker && (
+                <div
+                  ref={emojiPickerRef}
+                  style={{
+                    position: "absolute",
+                    right: 72,
+                    bottom: 56,
+                    width: 260,
+                    maxHeight: 220,
+                    overflowY: "auto",
+                    padding: 10,
+                    borderRadius: 14,
+                    background: "rgba(7, 30, 34, 0.98)",
+                    border: `1px solid rgba(103, 146, 137, 0.35)`,
+                    boxShadow: "0 18px 60px rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(10px)",
+                    zIndex: 50,
+                  }}
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+                    {EMOJI_OPTIONS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => insertEmoji(emoji)}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 10,
+                          border: "none",
+                          background: "rgba(255,255,255,0.04)",
+                          cursor: "pointer",
+                          fontSize: 16,
+                          lineHeight: "28px",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.10)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                        aria-label={`Insert ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <button
                 onClick={handleSendMessage}

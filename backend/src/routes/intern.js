@@ -1254,6 +1254,63 @@ function createInternRouter() {
     }
   });
 
+  router.post("/project-submission", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      const pmId = req.auth.profile.pm_id;
+      const { title, description, githubLink, demoLink } = req.body || {};
+
+      if (!title) throw httpError(400, "title is required", true);
+      if (!description) throw httpError(400, "description is required", true);
+      if (!githubLink) throw httpError(400, "githubLink is required", true);
+
+      const row = {
+        intern_profile_id: internId,
+        pm_profile_id: pmId || null,
+        title: String(title),
+        description: String(description),
+        github_link: String(githubLink),
+        demo_link: demoLink ? String(demoLink) : null,
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const inserted = await restInsert({
+        table: "project_submissions",
+        rows: row,
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const io = req.app.get("io");
+      if (io) {
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "project_submissions", action: "insert" });
+        io.to("role:hr").emit("itp:changed", { entity: "project_submissions", action: "insert" });
+      }
+
+      res.status(201).json({ success: true, submission: inserted?.[0] || inserted });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+
+  router.get("/project-submissions", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      const rows = await restSelect({
+        table: "project_submissions",
+        select: "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at",
+        filters: { intern_profile_id: `eq.${internId}`, order: "submitted_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      res.status(200).json({ success: true, submissions: rows || [] });
+    } catch (err) { next(err); }
+  });
+
   return router;
 }
 

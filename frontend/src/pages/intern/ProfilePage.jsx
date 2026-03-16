@@ -1,5 +1,6 @@
 //frontend/src/pages/intern/ProfilePage.jsx
 import React, { useState, useCallback } from "react";
+import { internApi } from "../../lib/apiClient";
 import {
   User, Mail, Phone, MapPin, GraduationCap, Briefcase,
   Calendar, Heart, Shield, Edit3, Save, X, Check,
@@ -396,6 +397,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
 
   // Save changes
   const saveChanges = useCallback(async () => {
+<<<<<<< HEAD
     if (isSaving) return;
     if (!editingSection) return;
 
@@ -436,6 +438,47 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
       setIsSaving(false);
     }
   }, [editData, editingSection, intern, isSaving, onProfileUpdated]);
+=======
+    try {
+      await internApi.updateMe({
+        profileData: {
+          phone: editData.phone || editData.profile?.phone,
+          dob: editData.dob || editData.profile?.dob,
+          bloodGroup: editData.profile?.bloodGroup,
+          address: editData.profile?.address,
+          city: editData.profile?.city,
+          state: editData.profile?.state,
+          pincode: editData.profile?.pincode,
+          emergencyContactName: editData.profile?.emergencyContactName,
+          emergencyRelation: editData.profile?.emergencyRelation,
+          emergencyContactPhone: editData.profile?.emergencyContactPhone,
+          collegeName: editData.profile?.collegeName,
+          department: editData.profile?.department,
+          semester: editData.profile?.semester,
+          guideName: editData.profile?.guideName,
+          guideEmail: editData.profile?.guideEmail,
+          guidePhone: editData.profile?.guidePhone,
+          internshipDuration: editData.profile?.internshipDuration,
+          startDate: editData.profile?.startDate,
+          endDate: editData.profile?.endDate,
+          workMode: editData.profile?.workMode,
+          expectedOutcome: editData.profile?.expectedOutcome,
+          skills: editData.profile?.skills,
+          linkedIn: editData.profile?.linkedIn,
+          github: editData.profile?.github,
+          bio: editData.profile?.bio,
+          degree: editData.degree || editData.profile?.degree,
+        },
+        profileCompleted: true,
+      });
+      setIntern(editData);
+      setEditingSection(null);
+      setToast({ message: "Profile updated successfully!", type: "success" });
+    } catch (err) {
+      setToast({ message: err?.message || "Failed to save profile", type: "error" });
+    }
+  }, [editData]);
+>>>>>>> origin/khush
 
   // Update edit data
   const updateField = useCallback((field, value) => {

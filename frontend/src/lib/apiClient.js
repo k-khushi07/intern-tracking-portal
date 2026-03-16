@@ -62,6 +62,15 @@ export const hrApi = {
   users() {
     return apiFetch("/hr/users", { method: "GET" });
   },
+  getIntern(internId) {
+    return apiFetch(`/hr/interns/${internId}`, { method: "GET" });
+  },
+  getInternDailyLogs(internId) {
+    return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
+  },
+  getInternReports(internId) {
+    return apiFetch(`/hr/interns/${internId}/reports`, { method: "GET" });
+  },
   applications(params = {}) {
     const searchParams = new URLSearchParams();
     Object.entries(params || {}).forEach(([key, value]) => {
@@ -204,6 +213,15 @@ export const hrApi = {
       body: JSON.stringify(payload || {}),
     });
   },
+  projectSubmissions() {
+    return apiFetch("/hr/project-submissions", { method: "GET" });
+  },
+  reviewProjectSubmission(submissionId, payload) {
+    return apiFetch(`/hr/project-submissions/${submissionId}/review`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
 };
 
 export const adminApi = {
@@ -279,6 +297,15 @@ export const pmApi = {
       body: JSON.stringify(payload || {}),
     });
   },
+  projectSubmissions() {
+    return apiFetch("/pm/project-submissions", { method: "GET" });
+  },
+  reviewProjectSubmission(submissionId, payload) {
+    return apiFetch(`/pm/project-submissions/${submissionId}/review`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
   createAnnouncement({ title, content, priority, audienceRoles, pinned }) {
     return apiFetch("/pm/announcements", {
       method: "POST",
@@ -302,6 +329,15 @@ export const internApi = {
   },
   stats() {
     return apiFetch("/intern/stats", { method: "GET" });
+  },
+  submitProject({ title, description, githubLink, demoLink } = {}) {
+    return apiFetch("/intern/project-submission", {
+      method: "POST",
+      body: JSON.stringify({ title, description, githubLink, demoLink }),
+    });
+  },
+  mySubmissions() {
+    return apiFetch("/intern/project-submissions", { method: "GET" });
   },
   updateMe({ profileData, profileCompleted, fileUploads } = {}) {
     return apiFetch("/intern/me", {
