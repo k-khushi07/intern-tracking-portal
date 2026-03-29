@@ -46,9 +46,9 @@ function buildConnectivityHint({ url, err }) {
     code === "EACCES" || code === "EPERM"
       ? "Outbound HTTPS connections appear blocked for this Node process (firewall/policy). Allow Node.js to access the internet, or run the API in an environment with outbound access."
       : code === "ENOTFOUND"
-        ? "DNS lookup failed for the Supabase host. Verify SUPABASE_URL is correct."
+        ? "DNS lookup failed for the Supabase host. Verify SUPABASE_URL is correct (or use a local Supabase URL like http://127.0.0.1:54321)."
         : code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT"
-          ? "Connection timed out. Check VPN/proxy/firewall rules (some networks block Supabase/Cloudflare)."
+          ? "Connection timed out. Check VPN/proxy/firewall rules (some networks block Supabase/Cloudflare), or use a local Supabase URL like http://127.0.0.1:54321."
         : code === "ECONNREFUSED"
           ? "Connection refused. Check network policy and that SUPABASE_URL is correct."
           : null;

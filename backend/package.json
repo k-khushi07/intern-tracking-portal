@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node api-server.js",
     "dev": "nodemon api-server.js",
+    "test:supabase": "node test-supabase.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

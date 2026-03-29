@@ -72,6 +72,7 @@ Legacy routes like `/dashboard/intern` still work and now redirect to the separa
 ### 4) Quick health checks
 - Node running: `GET /api/health`
 - Supabase reachable + schema present: `GET /api/health/supabase`
+- From CLI (loads `backend/.env`): `cd backend` then `npm run test:supabase`
 
 If `/api/health/supabase` (or login) reports `code: EACCES` / `EPERM`, outbound HTTPS is being blocked for the Node process (often Windows Firewall / corporate policy). Allow `node.exe` outbound access or run the API in an environment with internet access.
 
