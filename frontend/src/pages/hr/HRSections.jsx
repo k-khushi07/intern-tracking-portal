@@ -679,7 +679,14 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
     setApprovalFeedback({ open: true, title, message, tone });
   };
 
-  const minDate = new Date().toISOString().slice(0, 10);
+  const isValidIsoDate = (value) => {
+    const raw = String(value || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+    const [year, month, day] = raw.split("-").map((part) => Number(part));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
+  };
 
   const resolveDepartmentValue = () => {
     return String(department || "").trim();
@@ -807,10 +814,10 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
       });
       return;
     }
-    if (startDate < minDate || endDate < minDate) {
+    if (!isValidIsoDate(startDate) || !isValidIsoDate(endDate)) {
       openApprovalFeedback({
         title: "Invalid date",
-        message: "Past dates are not allowed.",
+        message: "Dates must be in YYYY-MM-DD format.",
         tone: "error",
       });
       return;
@@ -955,10 +962,10 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
         });
         return;
       }
-      if (startDate < minDate || endDate < minDate) {
+      if (!isValidIsoDate(startDate) || !isValidIsoDate(endDate)) {
         openApprovalFeedback({
           title: "Invalid date",
-          message: "Past dates are not allowed.",
+          message: "Dates must be in YYYY-MM-DD format.",
           tone: "error",
         });
         return;
@@ -1189,7 +1196,6 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     <input
                       type="date"
                       value={startDate}
-                      min={minDate}
                       onChange={(event) => {
                         const nextStartDate = event.target.value;
                         setStartDate(nextStartDate);
@@ -1205,7 +1211,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     <input
                       type="date"
                       value={endDate}
-                      min={startDate || minDate}
+                      min={startDate || ""}
                       onChange={(event) => setEndDate(event.target.value)}
                       style={inputStyle}
                     />

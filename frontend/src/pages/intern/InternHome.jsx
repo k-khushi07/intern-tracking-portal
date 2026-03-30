@@ -5,6 +5,7 @@ import ProfilePage from './ProfilePage';
 import MessagesPage from './MessagesPage';
 import ReportsPage from './ReportsPage';
 import AttendancePage from "./AttendancePage";
+import DocumentsPage from "./DocumentsPage";
 import { authApi, internApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
@@ -314,6 +315,7 @@ export default function InternDashboard() {
     { id: "daily-log", label: "Daily Log", icon: BookOpen },
     { id: "attendance", label: "Attendance", icon: Calendar },
     { id: "reports", label: "Reports", icon: ClipboardList },
+    { id: "documents", label: "Documents", icon: FileText },
     { id: "chat", label: "Messages", icon: MessageCircle },
     { id: "profile", label: "My Profile", icon: User },
     { id: "project-submission", label: "Submit Project", icon: Send },
@@ -868,6 +870,7 @@ export default function InternDashboard() {
                 )}
                 {activePage === "attendance" && <AttendancePage />}
                 {activePage === "reports" && <ReportsPage isMobile={isMobile} />}
+                {activePage === "documents" && <DocumentsPage />}
                 {activePage === "profile" && (
                   <ProfilePage intern={currentIntern} isMobile={isMobile} onProfileUpdated={loadCurrentIntern} />
                 )}
@@ -903,6 +906,7 @@ function getPageTitle(page) {
     "daily-log": "Daily Log", 
     "attendance": "Attendance",
     "reports": "Reports", 
+    "documents": "Documents",
     "chat": "Messages", 
     "profile": "My Profile", 
     "project-submission": "Submit Project" 
@@ -915,6 +919,7 @@ function getPageSubtitle(page) {
     "daily-log": "Track your daily progress", 
     "attendance": "View your attendance history",
     "reports": "TNA & Project Blueprint", 
+    "documents": "View and download your files",
     "chat": "Connect with your team", 
     "profile": "Manage your information", 
     "project-submission": "Share your work" 

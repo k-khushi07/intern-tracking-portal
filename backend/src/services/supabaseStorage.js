@@ -60,6 +60,11 @@ function buildPublicUrl(bucket, objectPath) {
   return `${url}/storage/v1/object/public/${bucket}/${encodePathSegments(objectPath)}`;
 }
 
+function publicUrlForObjectPath(objectPath, bucket) {
+  const resolvedBucket = bucket || ensureBucket();
+  return buildPublicUrl(resolvedBucket, objectPath);
+}
+
 async function uploadProfileFile({ profileId, field, filePayload }) {
   if (!filePayload) return null;
   const { buffer, contentType: inferredType } = parseDataUrl(filePayload.dataUrl || filePayload.base64 || filePayload.data || "");
@@ -85,4 +90,5 @@ async function uploadProfileFile({ profileId, field, filePayload }) {
 
 module.exports = {
   uploadProfileFile,
+  publicUrlForObjectPath,
 };

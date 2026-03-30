@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { RefreshCw, LogOut, Trash2, Plus, Users, UserCheck, BarChart3, Activity, Save, Eye, X, Sparkles, Menu, Clock, Mail, Archive, FileText, FolderOpen, ClipboardList } from "lucide-react";
-import { adminApi, authApi } from "../../lib/apiClient";
+import { adminApi, announcementsApi, authApi, hrApi } from "../../lib/apiClient";
 import AttendancePanel from "../../components/AttendancePanel";
 import LeaveRequestsPanel from "../../components/LeaveRequestsPanel";
 import AccountModal from "../../components/AccountModal";
@@ -55,6 +55,7 @@ const TABS = [
   { id: "intern", label: "Interns", icon: Activity },
   { id: "archived", label: "Archived Interns", icon: Archive },
   { id: "leave", label: "Leave Requests", icon: Clock },
+  { id: "announcements", label: "Announcements", icon: FileText },
   { id: "departments", label: "Departments", icon: Users },
   { id: "progress", label: "Progress", icon: Activity },
 ];
@@ -64,6 +65,14 @@ const DEPARTMENT_SECTIONS = ["SAP", "Oracle", "Accounts", "HR"];
 const OTHER_DEPARTMENT_LABEL = "Unassigned";
 
 function resolveDepartmentValue(selected) { return String(selected || "").trim(); }
+function isValidIsoDate(value) {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const [year, month, day] = raw.split("-").map((part) => Number(part));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
+}
 function normalizeDepartmentForSection(value) {
   const raw = String(value || "").trim();
   if (!raw) return OTHER_DEPARTMENT_LABEL;
@@ -99,6 +108,17 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString();
+}
+function normalizeDepartmentLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "All";
+  const lowered = raw.toLowerCase();
+  if (lowered === "sap") return "SAP";
+  if (lowered === "oracle") return "Oracle";
+  if (lowered === "accounts") return "Accounts";
+  if (lowered === "hr") return "HR";
+  if (lowered === "pm") return "PM";
+  return raw;
 }
 
 function StatCard({ label, value }) {
@@ -351,7 +371,20 @@ export default function AdminHome() {
   // NEW: profile modal tab state
   const [profileModalTab, setProfileModalTab] = useState("profile");
 
-  const minDate = new Date().toISOString().slice(0, 10);
+  const [announcementDraft, setAnnouncementDraft] = useState({
+    title: "",
+    content: "",
+    priority: "medium",
+    pinned: false,
+    department: "all",
+    targetInterns: true,
+    targetPMs: true,
+  });
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+  const [announcementsError, setAnnouncementsError] = useState("");
+  const [announcementsFilterDepartment, setAnnouncementsFilterDepartment] = useState("all");
+
   const pmUsers = useMemo(() => users.filter((user) => user.role === "pm"), [users]);
   const archivedInterns = useMemo(() => users.filter((u) => u.role === "intern" && u.status === "archived"), [users]);
 
@@ -468,6 +501,22 @@ export default function AdminHome() {
     setInternProgress(progressRes?.interns || []);
   }
 
+  async function loadAdminAnnouncements({ departmentFilter } = {}) {
+    setAnnouncementsLoading(true);
+    setAnnouncementsError("");
+    try {
+      const normalized = String(departmentFilter || announcementsFilterDepartment || "").trim();
+      const deptParam = normalized && normalized !== "all" ? normalized : "";
+      const res = await announcementsApi.list(deptParam ? { department: deptParam } : {});
+      setAnnouncements(res?.announcements || []);
+    } catch (err) {
+      setAnnouncements([]);
+      setAnnouncementsError(err?.message || "Failed to load announcements.");
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  }
+
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -492,10 +541,16 @@ export default function AdminHome() {
 
   useEffect(() => { setInfo(""); setError(""); }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== "announcements") return;
+    loadAdminAnnouncements().catch(() => { });
+  }, [activeTab]);
+
   async function refreshData() {
     try {
       setLoading(true); setError("");
       await loadAll();
+      if (activeTab === "announcements") await loadAdminAnnouncements();
     } catch (err) {
       if (isAuthOrRoleError(err)) { redirectToAdminLogin(err); return; }
       setError(err?.message || "Failed to refresh data.");
@@ -601,9 +656,11 @@ export default function AdminHome() {
       let nextInternId = String(form.internId || "").trim();
       if (!nextInternId) nextInternId = String(await loadGeneratedIdForRole("intern")).trim();
       if (!nextInternId) { setError("Intern ID is required."); return; }
-      if (form.startDate && form.startDate < minDate) { setError("Start date cannot be in the past."); return; }
-      if (form.endDate && form.endDate < minDate) { setError("End date cannot be in the past."); return; }
-      if (form.startDate && form.endDate && form.endDate < form.startDate) { setError("End date must be on or after start date."); return; }
+      const normalizedStart = String(form.startDate || "").trim();
+      const normalizedEnd = String(form.endDate || "").trim();
+      if ((normalizedStart && !normalizedEnd) || (!normalizedStart && normalizedEnd)) { setError("Both start date and end date must be provided together."); return; }
+      if (normalizedStart && (!isValidIsoDate(normalizedStart) || !isValidIsoDate(normalizedEnd))) { setError("Dates must be in YYYY-MM-DD format."); return; }
+      if (normalizedStart && normalizedEnd && normalizedEnd < normalizedStart) { setError("End date must be on or after start date."); return; }
       if (form.pmId) payload.pmId = form.pmId;
       payload.internId = nextInternId;
       payload.profileData = { startDate: form.startDate || null, endDate: form.endDate || null, department: resolvedDepartment || null, mentorName: form.mentor || null, stipend: form.stipend || null };
@@ -620,6 +677,48 @@ export default function AdminHome() {
       if (isAuthOrRoleError(err)) { redirectToAdminLogin(err); return; }
       setError(err?.message || "Failed to create user.");
     } finally { setSaving(false); }
+  }
+
+  async function createAdminAnnouncement(event) {
+    event.preventDefault();
+    const title = String(announcementDraft.title || "").trim();
+    const content = String(announcementDraft.content || "").trim();
+    if (!title || !content) { setAnnouncementsError("Title and content are required."); return; }
+
+    const roles = [];
+    if (announcementDraft.targetInterns) roles.push("intern");
+    if (announcementDraft.targetPMs) roles.push("pm");
+    if (!roles.length) { setAnnouncementsError("Select at least one audience (Interns and/or PMs)."); return; }
+
+    const dept = String(announcementDraft.department || "").trim();
+    const department = !dept || dept === "all" ? null : dept;
+
+    try {
+      setAnnouncementsError("");
+      await hrApi.createAnnouncement({
+        title,
+        content,
+        priority: announcementDraft.priority || "medium",
+        pinned: !!announcementDraft.pinned,
+        audienceRoles: roles,
+        department,
+      });
+      setAnnouncementDraft({
+        title: "",
+        content: "",
+        priority: "medium",
+        pinned: false,
+        department: "all",
+        targetInterns: true,
+        targetPMs: true,
+      });
+      await loadAdminAnnouncements();
+      setInfo("Announcement created.");
+      setTimeout(() => setInfo(""), 2500);
+    } catch (err) {
+      if (isAuthOrRoleError(err)) { redirectToAdminLogin(err); return; }
+      setAnnouncementsError(err?.message || "Failed to create announcement.");
+    }
   }
 
   async function deleteUser(user) {
@@ -691,7 +790,7 @@ export default function AdminHome() {
     const nextEndDate = String(profileDraft.endDate || "").trim();
     if (!String(profileDraft.internId || "").trim()) { setError("Intern ID cannot be empty."); return; }
     if (!nextStartDate || !nextEndDate) { setError("Start date and end date are required."); return; }
-    if (nextStartDate < minDate || nextEndDate < minDate) { setError("Past dates are not allowed."); return; }
+    if (!isValidIsoDate(nextStartDate) || !isValidIsoDate(nextEndDate)) { setError("Dates must be in YYYY-MM-DD format."); return; }
     if (nextEndDate < nextStartDate) { setError("End date must be on or after start date."); return; }
     try {
       setProfileSaving(true); setError(""); setInfo("");
@@ -768,7 +867,7 @@ export default function AdminHome() {
                   <span style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary }}>AdminHub</span>
                 </div>
                 {isMobile && (
-                  <button onClick={() => setSidebarOpen(false)} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "transparent", color: COLORS.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <button type="button" onClick={() => setSidebarOpen(false)} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "transparent", color: COLORS.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <X size={20} />
                   </button>
                 )}
@@ -792,7 +891,7 @@ export default function AdminHome() {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
-                  <button key={tab.id} onClick={() => { setActiveTab(tab.id); if (isMobile) setSidebarOpen(false); }}
+                  <button key={tab.id} type="button" onClick={() => { setActiveTab(tab.id); if (isMobile) setSidebarOpen(false); }}
                     style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", marginBottom: 4, borderRadius: 12, border: "none", cursor: "pointer", background: isActive ? GRADIENTS.accent : "transparent", color: isActive ? "white" : COLORS.textSecondary, fontWeight: isActive ? 600 : 400, fontSize: 14, transition: "all 0.2s ease", animation: "slideIn 0.4s ease-out forwards", animationDelay: `${idx * 0.05}s` }}>
                     <Icon size={20} />
                     <span style={{ flex: 1, textAlign: "left" }}>{tab.label}</span>
@@ -804,7 +903,7 @@ export default function AdminHome() {
               })}
             </nav>
             <div style={{ padding: 16, borderTop: `1px solid ${COLORS.borderGlass}` }}>
-              <button onClick={logout} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 16px", borderRadius: 12, border: `1px solid ${COLORS.borderGlass}`, background: "transparent", color: COLORS.textSecondary, cursor: "pointer", fontSize: 14, fontWeight: 500 }}>
+              <button type="button" onClick={logout} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 16px", borderRadius: 12, border: `1px solid ${COLORS.borderGlass}`, background: "transparent", color: COLORS.textSecondary, cursor: "pointer", fontSize: 14, fontWeight: 500 }}>
                 <LogOut size={18} /> Logout
               </button>
             </div>
@@ -816,7 +915,7 @@ export default function AdminHome() {
           <header style={{ height: 72, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", background: COLORS.surfaceGlass, backdropFilter: "blur(20px)", borderBottom: `1px solid ${COLORS.borderGlass}`, position: "sticky", top: 0, zIndex: 50, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               {(!sidebarOpen || isMobile) && (
-                <button onClick={() => setSidebarOpen(true)} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "transparent", color: COLORS.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <button type="button" onClick={() => setSidebarOpen(true)} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${COLORS.borderGlass}`, background: "transparent", color: COLORS.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Menu size={22} />
                 </button>
               )}
@@ -915,11 +1014,11 @@ export default function AdminHome() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 13, color: COLORS.muted, fontWeight: 600 }}>Start Date</span>
-                        <input type="date" value={form.startDate} min={minDate} onChange={(event) => setForm((prev) => { const nextStartDate = event.target.value; const nextEndDate = prev.endDate && nextStartDate && prev.endDate < nextStartDate ? nextStartDate : prev.endDate; return { ...prev, startDate: nextStartDate, endDate: nextEndDate }; })} style={inputStyle} />
+                        <input type="date" value={form.startDate} onChange={(event) => setForm((prev) => { const nextStartDate = event.target.value; const nextEndDate = prev.endDate && nextStartDate && prev.endDate < nextStartDate ? nextStartDate : prev.endDate; return { ...prev, startDate: nextStartDate, endDate: nextEndDate }; })} style={inputStyle} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 13, color: COLORS.muted, fontWeight: 600 }}>End Date</span>
-                        <input type="date" value={form.endDate} min={form.startDate || minDate} onChange={(event) => setForm((prev) => ({ ...prev, endDate: event.target.value }))} style={inputStyle} />
+                        <input type="date" value={form.endDate} min={form.startDate || ""} onChange={(event) => setForm((prev) => ({ ...prev, endDate: event.target.value }))} style={inputStyle} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 13, color: COLORS.muted, fontWeight: 600 }}>Mentor Name</span>
@@ -995,6 +1094,125 @@ export default function AdminHome() {
                           <div style={{ textTransform: "uppercase", fontWeight: 700 }}>{user.role}</div>
                           <div>{user.status || "-"}</div>
                           <div>{formatDate(user.createdAt)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "announcements" && (
+                <div style={{ display: "grid", gap: 14 }}>
+                  <form onSubmit={createAdminAnnouncement} style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 18, display: "grid", gap: 14 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+                      <FileText size={18} /> Create Announcement
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 13, color: COLORS.muted, fontWeight: 700 }}>Title</div>
+                        <input value={announcementDraft.title} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, title: e.target.value }))} placeholder="Announcement title" style={inputStyle} />
+                      </div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 13, color: COLORS.muted, fontWeight: 700 }}>Priority</div>
+                        <select value={announcementDraft.priority} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, priority: e.target.value }))} style={inputStyle}>
+                          <option value="low">low</option>
+                          <option value="medium">medium</option>
+                          <option value="high">high</option>
+                        </select>
+                      </div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 13, color: COLORS.muted, fontWeight: 700 }}>Department</div>
+                        <select value={announcementDraft.department} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, department: e.target.value }))} style={inputStyle}>
+                          <option value="all">All</option>
+                          <option value="HR">HR</option>
+                          <option value="SAP">SAP</option>
+                          <option value="Oracle">Oracle</option>
+                          <option value="Accounts">Accounts</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 13, color: COLORS.muted, fontWeight: 700 }}>Content</div>
+                      <textarea value={announcementDraft.content} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, content: e.target.value }))} placeholder="Write announcement…" style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} />
+                    </div>
+
+                    <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input type="checkbox" checked={announcementDraft.targetInterns} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, targetInterns: e.target.checked }))} />
+                        <span style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: 700 }}>Interns</span>
+                      </label>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input type="checkbox" checked={announcementDraft.targetPMs} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, targetPMs: e.target.checked }))} />
+                        <span style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: 700 }}>PMs</span>
+                      </label>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input type="checkbox" checked={announcementDraft.pinned} onChange={(e) => setAnnouncementDraft((p) => ({ ...p, pinned: e.target.checked }))} />
+                        <span style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: 700 }}>Pinned</span>
+                      </label>
+                      <div style={{ flex: 1 }} />
+                      <button type="submit" style={btnStyle("primary")}><Plus size={16} /> Create</button>
+                    </div>
+
+                    {announcementsError ? (
+                      <div style={{ background: "rgba(239, 68, 68, 0.18)", border: "1px solid rgba(239, 68, 68, 0.48)", color: "#fecaca", borderRadius: 12, padding: "10px 12px", fontSize: 13 }}>
+                        {announcementsError}
+                      </div>
+                    ) : null}
+                  </form>
+
+                  <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 18, display: "grid", gap: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>Recent announcements</div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                        <select value={announcementsFilterDepartment} onChange={(e) => { const next = e.target.value; setAnnouncementsFilterDepartment(next); loadAdminAnnouncements({ departmentFilter: next }).catch(() => {}); }} style={inputStyle}>
+                          <option value="all">All departments</option>
+                          <option value="HR">HR</option>
+                          <option value="SAP">SAP</option>
+                          <option value="Oracle">Oracle</option>
+                          <option value="Accounts">Accounts</option>
+                          <option value="PM">PM</option>
+                        </select>
+                        <button type="button" onClick={() => loadAdminAnnouncements().catch(() => {})} disabled={announcementsLoading} style={btnStyle("secondary")}><RefreshCw size={16} /> Refresh</button>
+                      </div>
+                    </div>
+
+                    {announcementsLoading ? (
+                      <div style={{ color: COLORS.muted, fontSize: 13 }}>Loading…</div>
+                    ) : null}
+
+                    {!announcementsLoading && announcements.length === 0 ? (
+                      <div style={{ color: COLORS.muted, fontSize: 13 }}>No announcements found.</div>
+                    ) : null}
+
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {announcements.slice(0, 12).map((a) => (
+                        <div key={a.id} style={{ border: `1px solid ${COLORS.border}`, background: "rgba(255,255,255,0.04)", borderRadius: 14, padding: 14, display: "grid", gap: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                            <div style={{ fontWeight: 900, color: COLORS.textPrimary }}>{a.title}</div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                              <span style={{ fontSize: 11, fontWeight: 900, padding: "4px 10px", borderRadius: 999, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.06)", color: COLORS.textSecondary }}>
+                                {normalizeDepartmentLabel(a.department)}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 900, padding: "4px 10px", borderRadius: 999, border: `1px solid ${COLORS.borderGlass}`, background: "rgba(255,255,255,0.06)", color: COLORS.textSecondary }}>
+                                {(a.priority || "medium").toUpperCase()}
+                              </span>
+                              {a.pinned ? (
+                                <span style={{ fontSize: 11, fontWeight: 900, padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}>
+                                  PINNED
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div style={{ color: COLORS.textSecondary, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                            {a.content}
+                          </div>
+                          <div style={{ color: COLORS.muted, fontSize: 12, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                            <span>Audience: {(a.audience_roles || []).join(", ") || "—"}</span>
+                            <span>{formatDateTime(a.created_at || a.createdAt)}</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1360,8 +1578,8 @@ export default function AdminHome() {
                           <option value="completed">completed</option>
                           <option value="archived">archived</option>
                         </select>
-                        <input type="date" value={profileDraft.startDate} min={minDate} onChange={(event) => setProfileDraft((prev) => { const nextStartDate = event.target.value; const nextEndDate = prev.endDate && nextStartDate && prev.endDate < nextStartDate ? nextStartDate : prev.endDate; return { ...prev, startDate: nextStartDate, endDate: nextEndDate }; })} style={inputStyle} />
-                        <input type="date" value={profileDraft.endDate} min={profileDraft.startDate || minDate} onChange={(event) => setProfileDraft((prev) => ({ ...prev, endDate: event.target.value }))} style={inputStyle} />
+                        <input type="date" value={profileDraft.startDate} onChange={(event) => setProfileDraft((prev) => { const nextStartDate = event.target.value; const nextEndDate = prev.endDate && nextStartDate && prev.endDate < nextStartDate ? nextStartDate : prev.endDate; return { ...prev, startDate: nextStartDate, endDate: nextEndDate }; })} style={inputStyle} />
+                        <input type="date" value={profileDraft.endDate} min={profileDraft.startDate || ""} onChange={(event) => setProfileDraft((prev) => ({ ...prev, endDate: event.target.value }))} style={inputStyle} />
                         <input placeholder="Mentor" value={profileDraft.mentorName} onChange={(event) => setProfileDraft((prev) => ({ ...prev, mentorName: event.target.value }))} style={inputStyle} />
                         <input placeholder="Stipend" value={profileDraft.stipend} onChange={(event) => setProfileDraft((prev) => ({ ...prev, stipend: event.target.value }))} style={inputStyle} />
                       </div>

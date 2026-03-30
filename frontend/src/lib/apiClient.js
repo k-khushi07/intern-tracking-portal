@@ -169,10 +169,10 @@ export const hrApi = {
   internReportLinks(internId) {
     return apiFetch(`/hr/interns/${internId}/report-links`, { method: "GET" });
   },
-  createAnnouncement({ title, content, priority, audienceRoles, pinned }) {
+  createAnnouncement({ title, content, priority, audienceRoles, pinned, department }) {
     return apiFetch("/hr/announcements", {
       method: "POST",
-      body: JSON.stringify({ title, content, priority, audienceRoles, pinned }),
+      body: JSON.stringify({ title, content, priority, audienceRoles, pinned, department }),
     });
   },
   updateAnnouncement(announcementId, patch) {
@@ -375,10 +375,10 @@ export const pmApi = {
       body: JSON.stringify(payload || {}),
     });
   },
-  createAnnouncement({ title, content, priority, audienceRoles, pinned }) {
+  createAnnouncement({ title, content, priority, audienceRoles, pinned, department }) {
     return apiFetch("/pm/announcements", {
       method: "POST",
-      body: JSON.stringify({ title, content, priority, audienceRoles, pinned }),
+      body: JSON.stringify({ title, content, priority, audienceRoles, pinned, department }),
     });
   },
   updateAnnouncement(announcementId, patch) {
@@ -398,6 +398,12 @@ export const internApi = {
   },
   stats() {
     return apiFetch("/intern/stats", { method: "GET" });
+  },
+  reportFeedback() {
+    return apiFetch("/intern/report-feedback", { method: "GET" });
+  },
+  documents() {
+    return apiFetch("/intern/documents", { method: "GET" });
   },
   submitProject({ title, description, githubLink, demoLink } = {}) {
     return apiFetch("/intern/project-submission", {
@@ -483,8 +489,14 @@ export const internApi = {
 };
 
 export const announcementsApi = {
-  list() {
-    return apiFetch("/announcements", { method: "GET" });
+  list(params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/announcements${query ? `?${query}` : ""}`, { method: "GET" });
   },
 };
 

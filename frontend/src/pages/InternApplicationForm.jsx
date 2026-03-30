@@ -31,9 +31,14 @@ const InternApplicationForm = () => {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [resumeFile, setResumeFile] = useState(null);
-  const todayLocalISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 10);
+  const isValidIsoDate = (value) => {
+    const raw = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+    const [year, month, day] = raw.split('-').map((part) => Number(part));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
+  };
   
   const [formData, setFormData] = useState({
     // Personal Details
@@ -176,8 +181,8 @@ const InternApplicationForm = () => {
           setError('Please fill all required fields');
           return false;
         }
-        if (formData.availableFrom && formData.availableFrom < todayLocalISO) {
-          setError('Available From date cannot be in the past');
+        if (!isValidIsoDate(formData.availableFrom)) {
+          setError('Available From must be a valid date (YYYY-MM-DD)');
           return false;
         }
         return true;
@@ -770,6 +775,7 @@ const InternApplicationForm = () => {
             You'll hear from us shortly.
           </p>
           <button
+            type="button"
             onClick={() => window.location.reload()}
             style={{
               background: '#d90429',
@@ -1221,7 +1227,6 @@ const InternApplicationForm = () => {
                       value={formData.availableFrom}
                       onChange={handleInputChange}
                       style={inputStyle}
-                      min={todayLocalISO}
                       required
                     />
                   </div>

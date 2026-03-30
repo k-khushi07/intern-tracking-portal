@@ -1,7 +1,7 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
-const { uploadProfileFile } = require("../services/supabaseStorage");
+const { uploadProfileFile, publicUrlForObjectPath } = require("../services/supabaseStorage");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { syncTnaFromPublicGoogle, syncBlueprintFromPublicGoogle } = require("../services/googlePublicSync");
 const { createNotifications, listProfilesByRole, toClientNotification, isMissingTableError } = require("../services/notifications");
@@ -30,6 +30,28 @@ function utcMsToIsoDate(ms) {
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+const INTERN_DOCUMENTS_SELECT = "id,intern_profile_id,document_type,title,filename,mime_type,file_path,file_url,metadata,created_at,updated_at";
+
+function toClientInternDocument(row) {
+  if (!row) return null;
+  const filePath = row.file_path || null;
+  const fileUrl = row.file_url || (filePath && /^https?:\/\//i.test(String(filePath)) ? filePath : null);
+  return {
+    id: row.id,
+    internProfileId: row.intern_profile_id,
+    documentType: row.document_type,
+    title: row.title || "",
+    filename: row.filename || null,
+    mimeType: row.mime_type || null,
+    filePath,
+    fileUrl,
+    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    downloadUrl: `/api/intern/documents/${row.id}/download`,
+  };
 }
 
 function createInternRouter() {
@@ -450,15 +472,68 @@ function createInternRouter() {
   router.get("/reports", async (req, res, next) => {
     try {
       const internId = req.auth.profile.id;
-      const rows = await restSelect({
-        table: "reports",
-        select:
-          "id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,created_at,updated_at",
-        filters: { intern_profile_id: `eq.${internId}`, order: "submitted_at.desc" },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      let rows;
+      try {
+        rows = await restSelect({
+          table: "reports",
+          select:
+            "id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,created_at,updated_at,reviewer:reviewed_by(id,email,full_name,role)",
+          filters: { intern_profile_id: `eq.${internId}`, order: "submitted_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("review_score") && !msg.includes("reviewer") && !msg.includes("reviewed_by")) throw err;
+        rows = await restSelect({
+          table: "reports",
+          select:
+            "id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,created_at,updated_at",
+          filters: { intern_profile_id: `eq.${internId}`, order: "submitted_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
       res.status(200).json({ success: true, reports: rows || [] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/report-feedback", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      let rows;
+      try {
+        rows = await restSelect({
+          table: "reports",
+          select: "id,reviewed_by,reviewed_at,review_reason,review_score,reviewer:reviewed_by(id,email,full_name,role)",
+          filters: { intern_profile_id: `eq.${internId}`, reviewed_at: "not.is.null", order: "reviewed_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("review_score") && !msg.includes("reviewer") && !msg.includes("reviewed_by")) throw err;
+        rows = await restSelect({
+          table: "reports",
+          select: "id,reviewed_at,review_reason",
+          filters: { intern_profile_id: `eq.${internId}`, reviewed_at: "not.is.null", order: "reviewed_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
+
+      const feedback = (rows || []).map((r) => ({
+        reportId: r.id,
+        reviewedBy: r.reviewed_by || null,
+        reviewedAt: r.reviewed_at || null,
+        comment: r.review_reason || null,
+        score: typeof r.review_score === "number" ? r.review_score : r.review_score ?? null,
+        reviewer: r.reviewer || null,
+      }));
+
+      res.status(200).json({ success: true, feedback });
     } catch (err) {
       next(err);
     }
@@ -967,6 +1042,32 @@ function createInternRouter() {
         io.to("role:hr").emit("itp:changed", { entity: "blueprint", action: "upsert", internId });
       }
 
+      if (io) {
+        try {
+          const hrIds = await listProfilesByRole("hr");
+          const recipients = new Set([...(pmId ? [pmId] : []), ...(hrIds || [])].filter(Boolean));
+          const internLabel = req.auth.profile.full_name || req.auth.profile.email || "An intern";
+
+          const insertedNotifs = await createNotifications({
+            rows: Array.from(recipients).map((rid) => ({
+              recipient_profile_id: rid,
+              title: "Blueprint updated",
+              message: `Intern ${internLabel} has updated their blueprint.`,
+              type: "info",
+              category: "blueprint",
+              metadata: { internId },
+            })),
+          });
+
+          const rows = Array.isArray(insertedNotifs) ? insertedNotifs : [insertedNotifs];
+          rows.filter(Boolean).forEach((row) => {
+            io.to(`user:${row.recipient_profile_id}`).emit("itp:notification", { notification: toClientNotification(row) });
+          });
+        } catch (err) {
+          if (!isMissingTableError(err, "notifications")) console.error("Failed to notify blueprint update:", err);
+        }
+      }
+
       scheduleGoogleSync(internId, pmId, io, "blueprint");
       res.status(200).json({ success: true });
     } catch (err) {
@@ -1265,6 +1366,93 @@ function createInternRouter() {
           pendingReports: (pendingReports || []).length,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/documents", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      let rows = [];
+      try {
+        rows = await restSelect({
+          table: "intern_documents",
+          select: INTERN_DOCUMENTS_SELECT,
+          filters: { intern_profile_id: `eq.${internId}`, order: "updated_at.desc,created_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (isMissingTableError(err, "intern_documents")) {
+          res.status(200).json({
+            success: true,
+            documents: [],
+            warning: "Intern documents table not found. Run Supabase migration 016_add_intern_documents.sql.",
+          });
+          return;
+        }
+        throw err;
+      }
+
+      res.status(200).json({
+        success: true,
+        documents: (rows || []).map(toClientInternDocument).filter(Boolean),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/documents/:documentId", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      const documentId = String(req.params.documentId || "").trim();
+      if (!UUID_REGEX.test(documentId)) throw httpError(400, "Invalid documentId", true);
+
+      const rows = await restSelect({
+        table: "intern_documents",
+        select: INTERN_DOCUMENTS_SELECT,
+        filters: { id: `eq.${documentId}`, intern_profile_id: `eq.${internId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const row = rows?.[0] || null;
+      if (!row) throw httpError(404, "Document not found", true);
+
+      res.status(200).json({ success: true, document: toClientInternDocument(row) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/documents/:documentId/download", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      const documentId = String(req.params.documentId || "").trim();
+      if (!UUID_REGEX.test(documentId)) throw httpError(400, "Invalid documentId", true);
+
+      const rows = await restSelect({
+        table: "intern_documents",
+        select: INTERN_DOCUMENTS_SELECT,
+        filters: { id: `eq.${documentId}`, intern_profile_id: `eq.${internId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const row = rows?.[0] || null;
+      if (!row) throw httpError(404, "Document not found", true);
+
+      const rawUrl = String(row.file_url || "").trim();
+      const rawPath = String(row.file_path || "").trim();
+      let target = "";
+      if (rawUrl) {
+        target = rawUrl;
+      } else if (rawPath) {
+        target = /^https?:\/\//i.test(rawPath) ? rawPath : publicUrlForObjectPath(rawPath);
+      }
+
+      if (!target) throw httpError(404, "Document file not available", true);
+      res.redirect(302, target);
     } catch (err) {
       next(err);
     }

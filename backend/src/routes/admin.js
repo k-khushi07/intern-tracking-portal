@@ -9,12 +9,13 @@ const { generateNextHrCode, normalizeHrCode, checkHrCodeUsage } = require("../se
 const ALLOWED_ROLES = new Set(["admin", "hr", "pm", "intern"]);
 const USER_STATUS = new Set(["active", "inactive", "completed", "archived"]);
 
-function isIsoDateString(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
-}
-
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
+function isValidIsoDate(value) {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const [year, month, day] = raw.split("-").map((part) => Number(part));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
 }
 
 function validateInternDateRange({ startDate, endDate, required = false }) {
@@ -27,13 +28,9 @@ function validateInternDateRange({ startDate, endDate, required = false }) {
   if (!normalizedStart || !normalizedEnd) {
     throw httpError(400, "Both startDate and endDate must be provided together", true);
   }
-  if (!isIsoDateString(normalizedStart) || !isIsoDateString(normalizedEnd)) {
+  if (!isValidIsoDate(normalizedStart) || !isValidIsoDate(normalizedEnd)) {
     throw httpError(400, "Dates must be in YYYY-MM-DD format", true);
   }
-
-  const today = todayIsoDate();
-  if (normalizedStart < today) throw httpError(400, "Start date cannot be in the past", true);
-  if (normalizedEnd < today) throw httpError(400, "End date cannot be in the past", true);
   if (normalizedEnd < normalizedStart) throw httpError(400, "End date must be on or after start date", true);
 
   return { startDate: normalizedStart, endDate: normalizedEnd };

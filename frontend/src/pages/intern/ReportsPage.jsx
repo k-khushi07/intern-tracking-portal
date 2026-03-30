@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ExternalLink, FileSpreadsheet, FileText, Loader, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, FileSpreadsheet, FileText, Loader, Plus, RefreshCw, Save, Star, Trash2 } from "lucide-react";
 import { internApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
@@ -54,10 +54,13 @@ const STATUS_OPTIONS = [
 
 export default function ReportsPage({ isMobile = false }) {
   const [tab, setTab] = useState("tna");
-  const [reportTab, setReportTab] = useState("weekly");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [submissionsLoading, setSubmissionsLoading] = useState(true);
+  const [submissionsError, setSubmissionsError] = useState("");
+  const [submissions, setSubmissions] = useState([]);
+  const [expandedReportIds, setExpandedReportIds] = useState(() => new Set());
 
   const [links, setLinks] = useState({ tnaSheetUrl: "", blueprintDocUrl: "" });
   const [linksDirty, setLinksDirty] = useState(false);
@@ -155,8 +158,23 @@ export default function ReportsPage({ isMobile = false }) {
     }
   };
 
+  const loadSubmissions = async () => {
+    setSubmissionsLoading(true);
+    setSubmissionsError("");
+    try {
+      const res = await internApi.reports();
+      setSubmissions(res?.reports || []);
+    } catch (e) {
+      setSubmissions([]);
+      setSubmissionsError(e?.message || "Failed to load submitted reports");
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadAll();
+    loadSubmissions();
   }, []);
 
   useEffect(() => {
@@ -171,6 +189,16 @@ export default function ReportsPage({ isMobile = false }) {
     socket.on("itp:changed", onChanged);
     return () => socket.off("itp:changed", onChanged);
   }, [hasUnsaved]);
+
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onChanged = (payload) => {
+      if (payload?.entity !== "reports") return;
+      loadSubmissions();
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, []);
 
   const buttonStyle = (enabled) => ({
     padding: "10px 12px",
@@ -192,6 +220,60 @@ export default function ReportsPage({ isMobile = false }) {
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return String(ts);
     return d.toLocaleString();
+  };
+
+  const toggleExpanded = (reportId) => {
+    const id = String(reportId || "").trim();
+    if (!id) return;
+    setExpandedReportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const renderFeedback = (report) => {
+    const comment = report?.review_reason || report?.reviewReason || null;
+    const score = report?.review_score ?? report?.reviewScore ?? null;
+    const reviewedAt = report?.reviewed_at || report?.reviewedAt || null;
+    const reviewer = report?.reviewer || null;
+    const reviewerLabel =
+      reviewer?.full_name || reviewer?.email
+        ? `${reviewer.full_name || reviewer.email}${reviewer.role ? ` (${String(reviewer.role).toUpperCase()})` : ""}`
+        : report?.reviewed_by
+          ? "Reviewer"
+          : null;
+
+    if (!comment && (score === null || score === undefined) && !reviewedAt) {
+      return (
+        <div style={{ marginTop: 10, color: COLORS.muted, fontSize: 13 }}>
+          No feedback yet.
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: `1px solid ${COLORS.border}`, background: "rgba(255,255,255,0.04)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ fontWeight: 900, color: "white", fontSize: 13 }}>Feedback</div>
+          <div style={{ color: COLORS.muted, fontSize: 12 }}>
+            {reviewerLabel ? `${reviewerLabel} • ` : ""}{reviewedAt ? formatTs(reviewedAt) : ""}
+          </div>
+        </div>
+        {(score !== null && score !== undefined && score !== "") ? (
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.9)", fontSize: 13 }}>
+            <Star size={16} color={COLORS.orange} />
+            <span style={{ fontWeight: 900 }}>Score:</span> {String(score)}
+          </div>
+        ) : null}
+        {comment ? (
+          <div style={{ marginTop: 8, color: "rgba(255,255,255,0.85)", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+            {String(comment)}
+          </div>
+        ) : null}
+      </div>
+    );
   };
 
   const syncTnaFromGoogle = async () => {
@@ -632,7 +714,7 @@ export default function ReportsPage({ isMobile = false }) {
         </div>
 
         <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {["tna", "blueprint"].map((t) => (
+          {["tna", "blueprint", "submissions"].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -647,7 +729,7 @@ export default function ReportsPage({ isMobile = false }) {
                 fontSize: 13,
               }}
             >
-              {t === "tna" ? "TNA Tracker" : "Blueprint"}
+              {t === "tna" ? "TNA Tracker" : t === "blueprint" ? "Blueprint" : "Submitted Reports"}
             </button>
           ))}
         </div>
@@ -831,6 +913,98 @@ export default function ReportsPage({ isMobile = false }) {
                 />
               </div>
             </div>
+          </div>
+        )}
+
+        {!loading && !error && tab === "submissions" && (
+          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 16, color: "white" }}>Submitted Reports</div>
+                <div style={{ marginTop: 6, color: COLORS.muted, fontSize: 13 }}>
+                  Your weekly/monthly reports and feedback from PM/HR.
+                </div>
+              </div>
+              <button
+                onClick={loadSubmissions}
+                disabled={submissionsLoading}
+                style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
+              >
+                {submissionsLoading ? <Loader size={16} /> : <RefreshCw size={16} />}
+                Refresh
+              </button>
+            </div>
+
+            {submissionsLoading ? (
+              <div style={{ ...cardStyle, color: COLORS.muted, display: "flex", alignItems: "center", gap: 10 }}>
+                <Loader size={18} /> Loading submissions...
+              </div>
+            ) : null}
+
+            {!submissionsLoading && submissionsError ? (
+              <div style={{ ...cardStyle, borderLeft: `4px solid ${COLORS.red}` }}>
+                <div style={{ fontWeight: 900 }}>Could not load submissions</div>
+                <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 13 }}>{submissionsError}</div>
+              </div>
+            ) : null}
+
+            {!submissionsLoading && !submissionsError && submissions.length === 0 ? (
+              <div style={{ ...cardStyle, color: COLORS.muted }}>
+                No submitted reports yet. Use the Daily Log page to generate and send your weekly/monthly report.
+              </div>
+            ) : null}
+
+            {!submissionsLoading && !submissionsError && submissions.length > 0 ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {submissions.map((r) => {
+                  const id = String(r.id || "");
+                  const expanded = expandedReportIds.has(id);
+                  const label =
+                    String(r.report_type || "").toLowerCase() === "monthly"
+                      ? `Monthly report${r.month ? ` • ${r.month}` : ""}`
+                      : `Weekly report${r.week_number ? ` • Week ${r.week_number}` : ""}`;
+
+                  const status = String(r.status || "pending").toLowerCase();
+                  const statusColor =
+                    status === "approved" ? "rgba(16,185,129,0.95)" : status === "rejected" ? "rgba(239,68,68,0.95)" : "rgba(251,191,36,0.95)";
+
+                  return (
+                    <div key={id} style={{ ...cardStyle }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        <div style={{ minWidth: 240 }}>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ fontWeight: 900, color: "white" }}>{label}</div>
+                            <span style={{ fontSize: 12, fontWeight: 900, padding: "4px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}`, color: statusColor }}>
+                              {status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: 6, color: COLORS.muted, fontSize: 12 }}>
+                            Submitted: {formatTs(r.submitted_at)}{r.reviewed_at ? ` • Reviewed: ${formatTs(r.reviewed_at)}` : ""}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(id)}
+                          style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
+                        >
+                          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          {expanded ? "Hide" : "View"} details
+                        </button>
+                      </div>
+
+                      {expanded ? (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                            {String(r.summary || "").trim() || "—"}
+                          </div>
+                          {renderFeedback(r)}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

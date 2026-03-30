@@ -33,13 +33,26 @@ function priorityColor(priority) {
   return COLORS.accent;
 }
 
+function normalizeDepartmentLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "All";
+  const lowered = raw.toLowerCase();
+  if (lowered === "sap") return "SAP";
+  if (lowered === "oracle") return "Oracle";
+  if (lowered === "accounts") return "Accounts";
+  if (lowered === "hr") return "HR";
+  if (lowered === "pm") return "PM";
+  if (["all", "*", "any"].includes(lowered)) return "All";
+  return raw;
+}
+
 export default function OverviewPage({ pm, interns = [], stats = null }) {
   const [announcements, setAnnouncements] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ title: "", content: "", priority: "medium", pinned: false });
+  const [form, setForm] = useState({ title: "", content: "", priority: "medium", pinned: false, department: "all" });
 
   const pmAnnouncementIds = useMemo(() => {
     const myId = pm?.id ? String(pm.id) : "";
@@ -93,6 +106,7 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
           priority: form.priority,
           pinned: !!form.pinned,
           audienceRoles: ["intern"],
+          department: form.department === "all" ? null : form.department,
         });
       } else {
         await pmApi.createAnnouncement({
@@ -101,12 +115,13 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
           priority: form.priority,
           pinned: !!form.pinned,
           audienceRoles: ["intern"],
+          department: form.department === "all" ? null : form.department,
         });
       }
       await loadAnnouncements();
       setShowForm(false);
       setEditing(null);
-      setForm({ title: "", content: "", priority: "medium", pinned: false });
+      setForm({ title: "", content: "", priority: "medium", pinned: false, department: "all" });
     } catch (err) {
       setError(err?.message || "Failed to save announcement");
     } finally {
@@ -121,6 +136,7 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
       content: announcement.content || "",
       priority: announcement.priority || "medium",
       pinned: !!announcement.pinned,
+      department: announcement.department ? normalizeDepartmentLabel(announcement.department) : "all",
     });
     setShowForm(true);
   }
@@ -185,7 +201,7 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
           <button
             onClick={() => {
               setEditing(null);
-              setForm({ title: "", content: "", priority: "medium", pinned: false });
+              setForm({ title: "", content: "", priority: "medium", pinned: false, department: "all" });
               setShowForm(true);
             }}
             style={btnStyle("primary")}
@@ -202,7 +218,7 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>{a.title}</div>
                   <div style={{ marginTop: 4, fontSize: 12, color: priorityColor(a.priority), fontWeight: 700, textTransform: "uppercase" }}>
-                    {a.priority || "medium"} {a.pinned ? "• PINNED" : ""}
+                    {a.priority || "medium"} • {normalizeDepartmentLabel(a.department)} {a.pinned ? "• PINNED" : ""}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -259,11 +275,20 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
                 <option value="medium" style={{ color: "black" }}>medium</option>
                 <option value="high" style={{ color: "black" }}>high</option>
               </select>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.text, fontSize: 13 }}>
-                <input type="checkbox" checked={form.pinned} onChange={(e) => setForm((f) => ({ ...f, pinned: e.target.checked }))} />
-                Pin this announcement
-              </label>
+              <select value={form.department} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} style={inputStyle}>
+                <option value="all" style={{ color: "black" }}>All</option>
+                <option value="SAP" style={{ color: "black" }}>SAP</option>
+                <option value="Oracle" style={{ color: "black" }}>Oracle</option>
+                <option value="Accounts" style={{ color: "black" }}>Accounts</option>
+              </select>
             </div>
+            <div style={{ color: COLORS.muted, fontSize: 12 }}>
+              Department is an optional filter for which of your assigned interns can see this.
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, color: COLORS.text, fontSize: 13 }}>
+              <input type="checkbox" checked={form.pinned} onChange={(e) => setForm((f) => ({ ...f, pinned: e.target.checked }))} />
+              Pin this announcement
+            </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" onClick={() => setShowForm(false)} disabled={saving} style={btnStyle("ghost")}>
                 Cancel

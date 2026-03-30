@@ -18,27 +18,41 @@ function sumNumeric(list, field) {
 }
 
 async function loadPmReports(pmId) {
-  try {
-    return await restSelect({
-      table: "reports",
-      select:
-        "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)",
-      filters: { pm_profile_id: `eq.${pmId}`, recipient_roles: "cs.{pm}", order: "submitted_at.desc" },
-      accessToken: null,
-      useServiceRole: true,
-    });
-  } catch (err) {
-    // Back-compat if recipient_roles column hasn't been migrated yet.
-    if (!String(err.message || "").includes("recipient_roles")) throw err;
-    return restSelect({
-      table: "reports",
-      select:
-        "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)",
-      filters: { pm_profile_id: `eq.${pmId}`, order: "submitted_at.desc" },
-      accessToken: null,
-      useServiceRole: true,
-    });
+  const withRecipientRoles =
+    "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id)";
+  const withRecipientRolesNoScore =
+    "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)";
+  const noRecipientRoles =
+    "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id)";
+  const noRecipientRolesNoScore =
+    "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)";
+
+  const attempts = [
+    { select: withRecipientRoles, filters: { pm_profile_id: `eq.${pmId}`, recipient_roles: "cs.{pm}", order: "submitted_at.desc" } },
+    { select: withRecipientRolesNoScore, filters: { pm_profile_id: `eq.${pmId}`, recipient_roles: "cs.{pm}", order: "submitted_at.desc" } },
+    { select: noRecipientRoles, filters: { pm_profile_id: `eq.${pmId}`, order: "submitted_at.desc" } },
+    { select: noRecipientRolesNoScore, filters: { pm_profile_id: `eq.${pmId}`, order: "submitted_at.desc" } },
+  ];
+
+  // eslint-disable-next-line no-restricted-syntax
+  for (const attempt of attempts) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await restSelect({
+        table: "reports",
+        select: attempt.select,
+        filters: attempt.filters,
+        accessToken: null,
+        useServiceRole: true,
+      });
+    } catch (err) {
+      const msg = String(err?.message || "").toLowerCase();
+      const isSchemaError = msg.includes("recipient_roles") || msg.includes("review_score") || msg.includes("reviewed_by");
+      if (!isSchemaError) throw err;
+    }
   }
+
+  return [];
 }
 
 function mapReportRow(r) {
@@ -70,6 +84,7 @@ function mapReportRow(r) {
     submittedAt: r.submitted_at,
     reviewedAt: r.reviewed_at,
     reviewReason: r.review_reason || null,
+    reviewScore: r.review_score ?? null,
     data: r.data || {},
   };
 }
@@ -249,7 +264,7 @@ function createPmRouter() {
   router.post("/announcements", async (req, res, next) => {
     try {
       const pmId = req.auth.profile.id;
-      const { title, content, priority, audienceRoles, pinned } = req.body || {};
+      const { title, content, priority, audienceRoles, pinned, department } = req.body || {};
       if (!title || !content) throw httpError(400, "title and content are required", true);
 
       const roles = Array.isArray(audienceRoles)
@@ -257,21 +272,37 @@ function createPmRouter() {
         : ["intern"];
       const finalRoles = roles.includes("intern") ? roles : ["intern", ...roles];
 
-      const inserted = await restInsert({
-        table: "announcements",
-        rows: {
-          created_by_profile_id: pmId,
-          title: String(title).trim(),
-          content: String(content).trim(),
-          priority: ["low", "medium", "high"].includes(priority) ? priority : "medium",
-          audience_roles: Array.from(new Set(finalRoles)),
-          pinned: !!pinned,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      const rawDepartment = String(department || "").trim();
+      const normalizedDepartment = rawDepartment && !["all", "*", "any"].includes(rawDepartment.toLowerCase()) ? rawDepartment : null;
+
+      let inserted;
+      const baseRow = {
+        created_by_profile_id: pmId,
+        title: String(title).trim(),
+        content: String(content).trim(),
+        priority: ["low", "medium", "high"].includes(priority) ? priority : "medium",
+        audience_roles: Array.from(new Set(finalRoles)),
+        pinned: !!pinned,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        inserted = await restInsert({
+          table: "announcements",
+          rows: { ...baseRow, department: normalizedDepartment },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("department")) throw err;
+        inserted = await restInsert({
+          table: "announcements",
+          rows: baseRow,
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const announcement = inserted?.[0] || inserted || null;
       const io = req.app.get("io");
@@ -302,12 +333,16 @@ function createPmRouter() {
       if (!row) throw httpError(404, "Announcement not found", true);
       if (String(row.created_by_profile_id) !== String(pmId)) throw httpError(403, "Forbidden", true);
 
-      const { title, content, priority, audienceRoles, pinned } = req.body || {};
+      const { title, content, priority, audienceRoles, pinned, department } = req.body || {};
       const patch = { updated_at: new Date().toISOString() };
       if (title !== undefined) patch.title = String(title || "").trim();
       if (content !== undefined) patch.content = String(content || "").trim();
       if (priority !== undefined) patch.priority = ["low", "medium", "high"].includes(priority) ? priority : "medium";
       if (pinned !== undefined) patch.pinned = !!pinned;
+      if (department !== undefined) {
+        const rawDepartment = String(department || "").trim();
+        patch.department = rawDepartment && !["all", "*", "any"].includes(rawDepartment.toLowerCase()) ? rawDepartment : null;
+      }
       if (audienceRoles !== undefined) {
         const roles = Array.isArray(audienceRoles)
           ? audienceRoles.map((r) => normalizeRole(r)).filter((r) => ["intern", "pm"].includes(r))
@@ -315,13 +350,28 @@ function createPmRouter() {
         patch.audience_roles = Array.from(new Set(roles.includes("intern") ? roles : ["intern", ...roles]));
       }
 
-      await restUpdate({
-        table: "announcements",
-        patch,
-        matchQuery: { id: `eq.${announcementId}` },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      try {
+        await restUpdate({
+          table: "announcements",
+          patch,
+          matchQuery: { id: `eq.${announcementId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("department")) throw err;
+        // Back-compat if department column hasn't been migrated yet.
+        // eslint-disable-next-line no-unused-vars
+        const { department: _department, ...fallbackPatch } = patch;
+        await restUpdate({
+          table: "announcements",
+          patch: fallbackPatch,
+          matchQuery: { id: `eq.${announcementId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const io = req.app.get("io");
       await emitPmAnnouncementUpdate(io, pmId, "update", announcementId);
@@ -491,25 +541,47 @@ function createPmRouter() {
         return res.status(400).json({ error: "Invalid ID format" });
       }
       const pmId = req.auth.profile.id;
-      const { status, reason, remarks, reviewReason } = req.body || {};
+      const { status, reason, remarks, reviewReason, score, reviewScore, rating } = req.body || {};
       const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
+      const rawScore = score ?? reviewScore ?? rating ?? null;
+      const normalizedScore = rawScore === null || rawScore === undefined || rawScore === "" ? null : Number(rawScore);
+      if (normalizedScore !== null && (!Number.isFinite(normalizedScore) || normalizedScore < 0 || normalizedScore > 100)) {
+        throw httpError(400, "score must be a number between 0 and 100", true);
+      }
       if (!status || !["approved", "rejected"].includes(status)) {
         throw httpError(400, "status must be approved or rejected", true);
       }
 
-      const updated = await restUpdate({
-        table: "reports",
-        patch: {
-          status,
-          reviewed_by: pmId,
-          reviewed_at: new Date().toISOString(),
-          review_reason: finalRemarks || null,
-          updated_at: new Date().toISOString(),
-        },
-        matchQuery: { id: `eq.${req.params.id}`, pm_profile_id: `eq.${pmId}` },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      let updated;
+      const patch = {
+        status,
+        reviewed_by: pmId,
+        reviewed_at: new Date().toISOString(),
+        review_reason: finalRemarks || null,
+        review_score: normalizedScore === null ? null : Math.round(normalizedScore),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        updated = await restUpdate({
+          table: "reports",
+          patch,
+          matchQuery: { id: `eq.${req.params.id}`, pm_profile_id: `eq.${pmId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!String(err?.message || "").toLowerCase().includes("review_score")) throw err;
+        // Back-compat if review_score column hasn't been migrated yet.
+        // eslint-disable-next-line no-unused-vars
+        const { review_score, ...fallbackPatch } = patch;
+        updated = await restUpdate({
+          table: "reports",
+          patch: fallbackPatch,
+          matchQuery: { id: `eq.${req.params.id}`, pm_profile_id: `eq.${pmId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const reportRow = Array.isArray(updated) ? updated[0] : updated;
       const internId = reportRow?.intern_profile_id;

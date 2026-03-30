@@ -25,11 +25,19 @@ import { authApi, hrApi, announcementsApi, notificationsApi } from "../../lib/ap
 import { getRealtimeSocket } from "../../lib/realtime";
 import AccountModal from "../../components/AccountModal";
 
+const DASHBOARD_PATH_BY_ROLE = {
+  intern: "/intern/dashboard",
+  pm: "/pm/dashboard",
+  hr: "/hr/dashboard",
+  admin: "/admin/dashboard",
+};
+
 export default function HRHome() {
   // State Management
   const [activeSection, setActiveSection] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentHR, setCurrentHR] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [users, setUsers] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [apiStats, setApiStats] = useState(null);
@@ -264,27 +272,116 @@ export default function HRHome() {
     setUiNotice({ open: true, message, tone });
   };
 
+  const handleAuthMismatch = async (err) => {
+    const status = err?.status;
+    if (status !== 401 && status !== 403) return false;
+
+    try {
+      const me = await authApi.me();
+      const role = String(me?.profile?.role || "").trim().toLowerCase();
+      if (role && role !== "hr") {
+        showNotice(`You're currently logged in as ${role}. Redirecting...`, "error");
+        window.setTimeout(() => {
+          window.location.href = DASHBOARD_PATH_BY_ROLE[role] || "/";
+        }, 350);
+        return true;
+      }
+    } catch {
+      // Ignore and fall through to HR login.
+    }
+
+    showNotice("Your session no longer has HR access. Please sign in again.", "error");
+    window.setTimeout(() => {
+      window.location.href = "/hr/login";
+    }, 350);
+    return true;
+  };
+
   // Data Loading Functions
   const loadCurrentHR = async () => {
     try {
       const me = await authApi.me();
-      if (me?.profile?.role === "hr") {
-        const hr = {
-          role: me.profile.role,
-          fullName: me.profile.full_name,
-          email: me.profile.email,
-        };
+      const role = String(me?.profile?.role || "").trim().toLowerCase();
+      if (role === "hr") {
+        const hr = { role, fullName: me.profile.full_name, email: me.profile.email };
         localStorage.setItem("currentUser", JSON.stringify(hr));
         setCurrentHR(hr);
         return;
       }
+
+      if (role) {
+        const next = {
+          role,
+          fullName: me?.profile?.full_name || "",
+          email: me?.profile?.email || "",
+          pmCode: me?.profile?.pm_code || null,
+          internId: me?.profile?.intern_id || null,
+          profileCompleted: !!me?.profile?.profile_completed,
+        };
+        localStorage.setItem("currentUser", JSON.stringify(next));
+        window.location.href = DASHBOARD_PATH_BY_ROLE[role] || "/";
+        return;
+      }
+
       throw new Error("Forbidden");
     } catch (e) {
       console.error("Error loading HR (API):", e);
       localStorage.removeItem("currentUser");
       window.location.href = "/hr/login";
+    } finally {
+      setAuthChecked(true);
     }
   };
+
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key !== "currentUser") return;
+      if (!event.newValue) return;
+      try {
+        const next = JSON.parse(event.newValue);
+        const role = String(next?.role || "").trim().toLowerCase();
+        if (role && role !== "hr") {
+          window.location.href = DASHBOARD_PATH_BY_ROLE[role] || "/";
+        }
+      } catch {
+        // Ignore invalid JSON.
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const recheck = async () => {
+      try {
+        const me = await authApi.me();
+        if (!alive) return;
+        const role = String(me?.profile?.role || "").trim().toLowerCase();
+        if (role && role !== "hr") {
+          window.location.href = DASHBOARD_PATH_BY_ROLE[role] || "/";
+        }
+      } catch (e) {
+        if (!alive) return;
+        console.error("HR session recheck failed:", e);
+        window.location.href = "/hr/login";
+      }
+    };
+
+    const onFocus = () => recheck();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") recheck();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   const loadUsers = async () => {
     try {
@@ -568,12 +665,14 @@ export default function HRHome() {
         priority: announcement.priority || "medium",
         audienceRoles: announcement.audienceRoles,
         pinned: announcement.pinned,
+        department: announcement.department || null,
       });
       await loadAnnouncements();
       setShowAnnouncementModal(false);
       showNotice("Announcement created successfully.", "success");
     } catch (err) {
       console.error("Create announcement failed:", err);
+      if (await handleAuthMismatch(err)) return;
       showNotice(err.message || "Failed to create announcement", "error");
     }
   };
@@ -586,6 +685,7 @@ export default function HRHome() {
       showNotice(`"${announcement?.title || "Announcement"}" has been deleted.`, "success");
     } catch (err) {
       console.error("Delete announcement failed:", err);
+      if (await handleAuthMismatch(err)) return;
       showNotice(err.message || "Failed to delete announcement", "error");
     }
   };
@@ -603,6 +703,7 @@ export default function HRHome() {
       }
     } catch (err) {
       console.error("Pin announcement failed:", err);
+      if (await handleAuthMismatch(err)) return;
       showNotice(err.message || "Failed to update announcement", "error");
     }
   };
@@ -667,6 +768,20 @@ export default function HRHome() {
     alignItems: "center",
     justifyContent: "center",
   };
+
+  if (!authChecked) {
+    return (
+        <div style={{ minHeight: "100vh", background: GRADIENTS.primary, display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.textPrimary, fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <div style={{ background: COLORS.surfaceGlass, border: `1px solid ${COLORS.borderGlass}`, borderRadius: 14, padding: "14px 16px", color: COLORS.textSecondary }}>
+          Loading HR portal...
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentHR) {
+    return null;
+  }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: GRADIENTS.primary, fontFamily: "'Inter', system-ui, sans-serif" }}>

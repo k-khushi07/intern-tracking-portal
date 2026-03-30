@@ -977,6 +977,7 @@ function PerformanceTab() {
 export function AnnouncementModal({ onSave, onClose }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [department, setDepartment] = useState("all");
   const [pinned, setPinned] = useState(false);
   const [targetInterns, setTargetInterns] = useState(true);
   const [targetPMs, setTargetPMs] = useState(true);
@@ -994,6 +995,22 @@ export function AnnouncementModal({ onSave, onClose }) {
       <div style={{ marginBottom: 16 }}>
         <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>Content</label>
         <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Announcement content..." style={{ ...inputStyle, minHeight: 100 }} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: COLORS.textPrimary }}>
+          Department
+        </label>
+        <select value={department} onChange={(e) => setDepartment(e.target.value)} style={inputStyle}>
+          <option value="all">All</option>
+          <option value="HR">HR</option>
+          <option value="SAP">SAP</option>
+          <option value="Oracle">Oracle</option>
+          <option value="Accounts">Accounts</option>
+          <option value="PM">PM</option>
+        </select>
+        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>
+          “All” shows to everyone in the selected audience; otherwise it’s limited to that department.
+        </div>
       </div>
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.textPrimary, marginBottom: 10 }}>
@@ -1034,7 +1051,7 @@ export function AnnouncementModal({ onSave, onClose }) {
               return;
             }
             setAudienceError("");
-            onSave({ title, content, pinned, audienceRoles: roles });
+            onSave({ title, content, pinned, audienceRoles: roles, department: department === "all" ? null : department });
           }}
           style={primaryButtonStyle}
         >

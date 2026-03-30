@@ -30,12 +30,13 @@ function normalizeApplicationStatus(value) {
   return null;
 }
 
-function isIsoDateString(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
-}
-
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
+function isValidIsoDate(value) {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const [year, month, day] = raw.split("-").map((part) => Number(part));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
 }
 
 function validateApprovalDateRange({ startDate, endDate }) {
@@ -44,13 +45,9 @@ function validateApprovalDateRange({ startDate, endDate }) {
   if (!normalizedStart || !normalizedEnd) {
     throw httpError(400, "startDate and endDate are required", true);
   }
-  if (!isIsoDateString(normalizedStart) || !isIsoDateString(normalizedEnd)) {
+  if (!isValidIsoDate(normalizedStart) || !isValidIsoDate(normalizedEnd)) {
     throw httpError(400, "Dates must be in YYYY-MM-DD format", true);
   }
-
-  const today = todayIsoDate();
-  if (normalizedStart < today) throw httpError(400, "Start date cannot be in the past", true);
-  if (normalizedEnd < today) throw httpError(400, "End date cannot be in the past", true);
   if (normalizedEnd < normalizedStart) throw httpError(400, "End date must be on or after start date", true);
 
   return { startDate: normalizedStart, endDate: normalizedEnd };
@@ -373,6 +370,25 @@ function createHrRouter({ emailService }) {
   const DEFAULT_OFFER_TEMPLATE_SETTING = "default_offer_letter_template_id";
   const DOCUMENTS_SELECT = "key,filename,mime_type,content_base64,updated_at";
   const DOCUMENT_KEY_CERTIFICATE_TEMPLATE = "certificate_template";
+  const INTERN_DOCUMENTS_SELECT = "id,intern_profile_id,document_type,title,filename,mime_type,file_path,file_url,metadata,created_at,updated_at";
+  const INTERN_DOCUMENT_TYPES = new Set(["offer_letter", "certificate", "submission", "other"]);
+
+  function normalizeInternDocumentRow(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      internProfileId: row.intern_profile_id,
+      documentType: row.document_type,
+      title: row.title || "",
+      filename: row.filename || null,
+      mimeType: row.mime_type || null,
+      filePath: row.file_path || null,
+      fileUrl: row.file_url || null,
+      metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      createdAt: row.created_at || null,
+      updatedAt: row.updated_at || null,
+    };
+  }
 
   async function getHrSetting(key) {
     const normalizedKey = String(key || "").trim();
@@ -745,6 +761,83 @@ function createHrRouter({ emailService }) {
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.status(200).send(buffer);
     } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/interns/:profileId/documents", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!UUID_REGEX.test(profileId)) throw httpError(400, "Invalid profileId", true);
+
+      const rows = await restSelect({
+        table: "intern_documents",
+        select: INTERN_DOCUMENTS_SELECT,
+        filters: { intern_profile_id: `eq.${profileId}`, order: "updated_at.desc,created_at.desc" },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      res.status(200).json({ success: true, documents: (rows || []).map(normalizeInternDocumentRow).filter(Boolean) });
+    } catch (err) {
+      if (isMissingTableError(err, "intern_documents")) {
+        err.status = 400;
+        err.expose = true;
+        err.message = "Intern documents table not found. Run Supabase migration 016_add_intern_documents.sql.";
+      }
+      next(err);
+    }
+  });
+
+  router.post("/interns/:profileId/documents", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!UUID_REGEX.test(profileId)) throw httpError(400, "Invalid profileId", true);
+
+      const { documentType, title, filename, mimeType, filePath, fileUrl, metadata } = req.body || {};
+      const normalizedType = String(documentType || "").trim();
+      if (!INTERN_DOCUMENT_TYPES.has(normalizedType)) {
+        throw httpError(400, "Invalid documentType", true);
+      }
+
+      const normalizedTitle = String(title || "").trim();
+      const normalizedFilename = filename ? String(filename).trim() : null;
+      const normalizedMime = mimeType ? String(mimeType).trim() : null;
+      const normalizedFilePath = filePath ? String(filePath).trim() : null;
+      const normalizedFileUrl = fileUrl ? String(fileUrl).trim() : null;
+
+      if (!normalizedFilePath && !normalizedFileUrl) {
+        throw httpError(400, "filePath or fileUrl is required", true);
+      }
+
+      const now = new Date().toISOString();
+      const row = {
+        intern_profile_id: profileId,
+        document_type: normalizedType,
+        title: normalizedTitle,
+        filename: normalizedFilename,
+        mime_type: normalizedMime,
+        file_path: normalizedFilePath,
+        file_url: normalizedFileUrl,
+        metadata: metadata && typeof metadata === "object" ? metadata : {},
+        created_at: now,
+        updated_at: now,
+      };
+
+      const inserted = await restInsert({
+        table: "intern_documents",
+        rows: row,
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      res.status(201).json({ success: true, document: normalizeInternDocumentRow(inserted?.[0] || inserted) });
+    } catch (err) {
+      if (isMissingTableError(err, "intern_documents")) {
+        err.status = 400;
+        err.expose = true;
+        err.message = "Intern documents table not found. Run Supabase migration 016_add_intern_documents.sql.";
+      }
       next(err);
     }
   });
@@ -2120,14 +2213,29 @@ function createHrRouter({ emailService }) {
 
   router.get("/reports", async (req, res, next) => {
     try {
-      const rows = await restSelect({
-        table: "reports",
-        select:
-          "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id),pm:pm_profile_id(id,email,full_name,pm_code)",
-        filters: { recipient_roles: "cs.{hr}", order: "submitted_at.desc" },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      let rows = [];
+      try {
+        rows = await restSelect({
+          table: "reports",
+          select:
+            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id),pm:pm_profile_id(id,email,full_name,pm_code)",
+          filters: { recipient_roles: "cs.{hr}", order: "submitted_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (msg.includes("recipient_roles")) throw err;
+        if (!msg.includes("review_score") && !msg.includes("reviewed_by")) throw err;
+        rows = await restSelect({
+          table: "reports",
+          select:
+            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id),pm:pm_profile_id(id,email,full_name,pm_code)",
+          filters: { recipient_roles: "cs.{hr}", order: "submitted_at.desc" },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const mapped = (rows || []).map((r) => {
         const intern = r.intern || {};
@@ -2164,6 +2272,7 @@ function createHrRouter({ emailService }) {
           submittedAt: r.submitted_at,
           reviewedAt: r.reviewed_at,
           reviewReason: r.review_reason || null,
+          reviewScore: r.review_score ?? null,
           data: r.data || {},
         };
       });
@@ -2182,8 +2291,13 @@ function createHrRouter({ emailService }) {
     try {
       const reviewerId = req.auth.profile.id;
       const reviewerRole = String(req.auth.profile.role || "").toLowerCase();
-      const { status, reason, remarks, reviewReason } = req.body || {};
+      const { status, reason, remarks, reviewReason, score, reviewScore, rating } = req.body || {};
       const finalRemarks = reason ?? remarks ?? reviewReason ?? null;
+      const rawScore = score ?? reviewScore ?? rating ?? null;
+      const normalizedScore = rawScore === null || rawScore === undefined || rawScore === "" ? null : Number(rawScore);
+      if (normalizedScore !== null && (!Number.isFinite(normalizedScore) || normalizedScore < 0 || normalizedScore > 100)) {
+        throw httpError(400, "score must be a number between 0 and 100", true);
+      }
       if (!status || !["approved", "rejected"].includes(status)) {
         throw httpError(400, "status must be approved or rejected", true);
       }
@@ -2205,19 +2319,36 @@ function createHrRouter({ emailService }) {
         throw httpError(403, "Not allowed to review this report", true);
       }
 
-      const updated = await restUpdate({
-        table: "reports",
-        patch: {
-          status,
-          reviewed_by: reviewerId,
-          reviewed_at: new Date().toISOString(),
-          review_reason: finalRemarks || null,
-          updated_at: new Date().toISOString(),
-        },
-        matchQuery: { id: `eq.${req.params.id}` },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      let updated;
+      const patch = {
+        status,
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString(),
+        review_reason: finalRemarks || null,
+        review_score: normalizedScore === null ? null : Math.round(normalizedScore),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        updated = await restUpdate({
+          table: "reports",
+          patch,
+          matchQuery: { id: `eq.${req.params.id}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!String(err?.message || "").toLowerCase().includes("review_score")) throw err;
+        // Back-compat if review_score column hasn't been migrated yet.
+        // eslint-disable-next-line no-unused-vars
+        const { review_score, ...fallbackPatch } = patch;
+        updated = await restUpdate({
+          table: "reports",
+          patch: fallbackPatch,
+          matchQuery: { id: `eq.${req.params.id}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const nextReportRow = Array.isArray(updated) ? updated[0] : updated;
       const internId = nextReportRow?.intern_profile_id || reportRow.intern_profile_id;
@@ -2536,7 +2667,7 @@ function createHrRouter({ emailService }) {
 
   router.post("/announcements", async (req, res, next) => {
     try {
-      const { title, content, priority, audienceRoles, pinned } = req.body || {};
+      const { title, content, priority, audienceRoles, pinned, department } = req.body || {};
       if (!title || !content) throw httpError(400, "title and content are required", true);
 
       const roles = Array.isArray(audienceRoles)
@@ -2544,21 +2675,37 @@ function createHrRouter({ emailService }) {
         : [];
       if (!roles.length) throw httpError(400, "audienceRoles must include intern and/or pm", true);
 
-      const inserted = await restInsert({
-        table: "announcements",
-        rows: {
-          created_by_profile_id: req.auth.profile.id,
-          title,
-          content,
-          priority: ["low", "medium", "high"].includes(priority) ? priority : "medium",
-          audience_roles: roles,
-          pinned: !!pinned,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      const rawDepartment = String(department || "").trim();
+      const normalizedDepartment = rawDepartment && !["all", "*", "any"].includes(rawDepartment.toLowerCase()) ? rawDepartment : null;
+
+      let inserted;
+      const baseRow = {
+        created_by_profile_id: req.auth.profile.id,
+        title,
+        content,
+        priority: ["low", "medium", "high"].includes(priority) ? priority : "medium",
+        audience_roles: roles,
+        pinned: !!pinned,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        inserted = await restInsert({
+          table: "announcements",
+          rows: { ...baseRow, department: normalizedDepartment },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("department")) throw err;
+        inserted = await restInsert({
+          table: "announcements",
+          rows: baseRow,
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const io = req.app.get("io");
       if (io) {
@@ -2577,12 +2724,16 @@ function createHrRouter({ emailService }) {
       if (!UUID_REGEX.test(req.params.id)) {
         return res.status(400).json({ error: "Invalid ID format" });
       }
-      const { title, content, priority, audienceRoles, pinned } = req.body || {};
+      const { title, content, priority, audienceRoles, pinned, department } = req.body || {};
 
       const patch = { updated_at: new Date().toISOString() };
       if (title !== undefined) patch.title = title;
       if (content !== undefined) patch.content = content;
       if (pinned !== undefined) patch.pinned = !!pinned;
+      if (department !== undefined) {
+        const rawDepartment = String(department || "").trim();
+        patch.department = rawDepartment && !["all", "*", "any"].includes(rawDepartment.toLowerCase()) ? rawDepartment : null;
+      }
       if (priority !== undefined) {
         patch.priority = ["low", "medium", "high"].includes(priority) ? priority : "medium";
       }
@@ -2594,13 +2745,28 @@ function createHrRouter({ emailService }) {
         patch.audience_roles = roles;
       }
 
-      await restUpdate({
-        table: "announcements",
-        patch,
-        matchQuery: { id: `eq.${req.params.id}` },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      try {
+        await restUpdate({
+          table: "announcements",
+          patch,
+          matchQuery: { id: `eq.${req.params.id}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("department")) throw err;
+        // Back-compat if department column hasn't been migrated yet.
+        // eslint-disable-next-line no-unused-vars
+        const { department: _department, ...fallbackPatch } = patch;
+        await restUpdate({
+          table: "announcements",
+          patch: fallbackPatch,
+          matchQuery: { id: `eq.${req.params.id}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
 
       const io = req.app.get("io");
       if (io) io.to("role:hr").emit("itp:changed", { entity: "announcements", action: "update" });
@@ -2705,14 +2871,28 @@ function createHrRouter({ emailService }) {
         return res.status(400).json({ error: "Invalid ID format" });
       }
       await assertInternExists(req.params.id);
-      const rows = await restSelect({
-        table: "reports",
-        select:
-          "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,created_at",
-        filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
-        accessToken: null,
-        useServiceRole: true,
-      });
+      let rows = [];
+      try {
+        rows = await restSelect({
+          table: "reports",
+          select:
+            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,created_at",
+          filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || "").toLowerCase();
+        if (!msg.includes("review_score") && !msg.includes("reviewed_by")) throw err;
+        rows = await restSelect({
+          table: "reports",
+          select:
+            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,created_at",
+          filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
       res.status(200).json({ success: true, reports: rows || [] });
     } catch (err) {
       next(err);
