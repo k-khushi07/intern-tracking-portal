@@ -555,12 +555,10 @@ export default function ReportsPage({ isMobile = false }) {
             <div>Last sync from Google: {formatTs(meta.lastSyncedFromGoogleAt)}</div>
             <div>Last sync to Google: {formatTs(meta.lastSyncedToGoogleAt)}</div>
           </div>
-          {meta.lastSyncError && (
-            <div style={{ marginTop: 10, padding: 10, borderRadius: 12, border: `1px solid ${COLORS.orange}40`, background: `${COLORS.orange}10`, color: "rgba(255,255,255,0.85)", fontSize: 12 }}>
-              <div style={{ fontWeight: 900, marginBottom: 4 }}>Last sync error</div>
-              <div style={{ color: "rgba(255,255,255,0.75)" }}>{meta.lastSyncError}</div>
-            </div>
-          )}
+          {/*
+            Last sync error is hidden in UI to avoid noisy alerts.
+            The backend can still record it for diagnostics.
+          */}
 
           <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: `1px dashed ${COLORS.border}`, background: "rgba(255,255,255,0.03)" }}>
             <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 10 }}>
@@ -654,15 +652,6 @@ export default function ReportsPage({ isMobile = false }) {
                   {syncing.tnaFrom ? <Loader size={16} /> : <RefreshCw size={16} />}
                   Sync from Google
                 </button>
-                <button
-                  onClick={() => syncTnaToGoogle()}
-                  disabled={syncing.tnaTo || saving || loading || tnaHasUnsaved || !String(links.tnaSheetUrl || "").trim()}
-                  style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
-                  title="Push portal rows into Google Sheets"
-                >
-                  {syncing.tnaTo ? <Loader size={16} /> : <Save size={16} />}
-                  Sync to Google
-                </button>
               </div>
             </div>
             <div>
@@ -698,15 +687,6 @@ export default function ReportsPage({ isMobile = false }) {
                 >
                   {syncing.blueprintFrom ? <Loader size={16} /> : <RefreshCw size={16} />}
                   Sync from Google
-                </button>
-                <button
-                  onClick={() => syncBlueprintToGoogle()}
-                  disabled={syncing.blueprintTo || saving || loading || blueprintHasUnsaved || !String(links.blueprintDocUrl || "").trim()}
-                  style={{ ...buttonStyle(true), background: "rgba(255,255,255,0.06)", border: `1px solid ${COLORS.border}` }}
-                  title="Push portal blueprint into Google Docs"
-                >
-                  {syncing.blueprintTo ? <Loader size={16} /> : <Save size={16} />}
-                  Sync to Google
                 </button>
               </div>
             </div>

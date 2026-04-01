@@ -1,10 +1,11 @@
 const express = require("express");
 const { httpError } = require("../errors");
-const { adminCreateUser, adminUpdateUser, adminDeleteUser, restInsert, restSelect, restUpdate } = require("../services/supabaseRest");
+const { adminCreateUser, adminUpdateUser, adminDeleteUser, restInsert, restSelect, restUpdate, restDelete } = require("../services/supabaseRest");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { generateNextInternId, peekNextInternId, checkInternIdUsage } = require("../services/internId");
 const { generateNextPmCode, checkPmCodeUsage } = require("../services/pmCode");
 const { generateNextHrCode, normalizeHrCode, checkHrCodeUsage } = require("../services/hrCode");
+const { computeLifecycleStatus } = require("../services/internLifecycle");
 
 const ALLOWED_ROLES = new Set(["admin", "hr", "pm", "intern"]);
 const USER_STATUS = new Set(["active", "inactive", "completed", "archived"]);
@@ -34,6 +35,17 @@ function validateInternDateRange({ startDate, endDate, required = false }) {
   if (normalizedEnd < normalizedStart) throw httpError(400, "End date must be on or after start date", true);
 
   return { startDate: normalizedStart, endDate: normalizedEnd };
+}
+
+async function loadApprovedInternByProfileId(profileId) {
+  const rows = await restSelect({
+    table: "approved_interns",
+    select: "id,intern_id,application_id,profile_id,start_date,end_date,department,mentor,stipend,status,approved_by,approved_at,updated_at,override_reason,override_at",
+    filters: { profile_id: `eq.${profileId}`, limit: 1 },
+    accessToken: null,
+    useServiceRole: true,
+  });
+  return rows?.[0] || null;
 }
 
 function isDuplicateAuthUserError(err) {
@@ -233,6 +245,8 @@ function withInternProgress({ intern, approvedIntern, logStats, reportStats }) {
     startDate,
     endDate,
     internshipStatus: approvedIntern?.status || intern.status || "active",
+    overrideReason: approvedIntern?.override_reason || null,
+    overrideAt: approvedIntern?.override_at || null,
     department: approvedIntern?.department || profileData.department || null,
     mentor: approvedIntern?.mentor || profileData.mentor || profileData.mentorName || null,
     stipend: approvedIntern?.stipend || profileData.stipend || null,
@@ -266,7 +280,7 @@ async function buildInternProgress(users) {
   try {
     approvedInterns = await restSelect({
       table: "approved_interns",
-      select: "profile_id,start_date,end_date,department,mentor,stipend,status",
+      select: "profile_id,start_date,end_date,department,mentor,stipend,status,override_reason,override_at",
       filters: { profile_id: inFilter },
       accessToken: null,
       useServiceRole: true,
@@ -413,10 +427,13 @@ function createAdminRouter() {
         safeProfileData.department = resolvedDepartment || null;
       }
       if (normalizedRole === "intern") {
+        if (!safeProfileData || typeof safeProfileData !== "object") {
+          throw httpError(400, "Intern profile data (including startDate and endDate) is required", true);
+        }
         const validatedDates = validateInternDateRange({
           startDate: safeProfileData?.startDate || safeProfileData?.start_date || null,
           endDate: safeProfileData?.endDate || safeProfileData?.end_date || null,
-          required: false,
+          required: true,
         });
         if (safeProfileData) {
           safeProfileData.startDate = validatedDates.startDate;
@@ -509,6 +526,36 @@ function createAdminRouter() {
         }
       }
 
+      if (normalizedRole === "intern") {
+        const department = String(safeProfileData?.department || "").trim();
+        const mentorName = String(safeProfileData?.mentor || safeProfileData?.mentorName || "").trim();
+        const stipend = safeProfileData?.stipend ? String(safeProfileData.stipend) : null;
+        try {
+          await restInsert({
+            table: "approved_interns",
+            rows: {
+              intern_id: resolvedInternId,
+              application_id: null,
+              profile_id: createdId,
+              start_date: safeProfileData.startDate,
+              end_date: safeProfileData.endDate,
+              department: department || null,
+              mentor: mentorName || null,
+              stipend,
+              status: "active",
+              approved_by: req.auth.profile.id,
+              approved_at: now,
+              created_at: now,
+              updated_at: now,
+            },
+            accessToken: null,
+            useServiceRole: true,
+          });
+        } catch (err) {
+          if (!isMissingSchemaError(err, "approved_interns")) throw err;
+        }
+      }
+
       res.status(201).json({
         success: true,
         user: {
@@ -527,30 +574,33 @@ function createAdminRouter() {
     }
   });
 
-  router.patch("/users/:userId/password", async (req, res, next) => {
-    try {
-      const { password } = req.body || {};
-      if (!password || String(password).length < 6) {
-        throw httpError(400, "Password must be at least 6 characters", true);
-      }
+    router.patch("/users/:userId/password", async (req, res, next) => {
+      try {
+        const { password } = req.body || {};
+        if (!password || String(password).length < 6) {
+          throw httpError(400, "Password must be at least 6 characters", true);
+        }
 
       await adminUpdateUser({
         userId: String(req.params.userId || "").trim(),
         attributes: { password: String(password) },
       });
 
-      await restUpdate({
-        table: "profiles",
-        patch: { temp_password: String(password), updated_at: new Date().toISOString() },
-        matchQuery: { id: `eq.${req.params.userId}` },
-        accessToken: null,
-        useServiceRole: true,
-      });
-      res.status(200).json({ success: true });
-    } catch (err) {
-      next(err);
-    }
-  });
+        await restUpdate({
+          table: "profiles",
+          patch: { temp_password: String(password), updated_at: new Date().toISOString() },
+          matchQuery: { id: `eq.${req.params.userId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+        res.status(200).json({
+          success: true,
+          message: "Password updated. Intern can now login with the new password.",
+        });
+      } catch (err) {
+        next(err);
+      }
+    });
 
   router.get("/intern-id/next", async (req, res, next) => {
     try {
@@ -596,7 +646,186 @@ function createAdminRouter() {
       if (target.id === req.auth.profile.id) throw httpError(400, "You cannot delete your own admin account", true);
       if (toRole(target.role) === "admin") throw httpError(400, "Admin deletion is blocked for safety", true);
 
+      const targetRole = toRole(target.role);
+      if (targetRole === "pm") {
+        await restUpdate({
+          table: "profiles",
+          patch: { pm_id: null, updated_at: new Date().toISOString() },
+          matchQuery: { pm_id: `eq.${target.id}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
+      if (targetRole === "hr") {
+        await restUpdate({
+          table: "profiles",
+          patch: { hr_id: null, updated_at: new Date().toISOString() },
+          matchQuery: { hr_id: `eq.${target.id}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
+      const profileId = target.id;
+      try {
+        await restDelete({
+          table: "conversation_members",
+          matchQuery: { profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "conversation_members")) throw err;
+      }
+      try {
+        await restDelete({
+          table: "messages",
+          matchQuery: { sender_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "messages")) throw err;
+      }
+      try {
+        await restDelete({
+          table: "message_reports",
+          matchQuery: { reported_by_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "message_reports")) throw err;
+      }
+      try {
+        await restDelete({
+          table: "message_reports",
+          matchQuery: { reviewed_by_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "message_reports")) throw err;
+      }
+      try {
+        await restUpdate({
+          table: "conversations",
+          patch: { owner_profile_id: null, updated_at: new Date().toISOString() },
+          matchQuery: { owner_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "conversations")) throw err;
+      }
+      try {
+        await restUpdate({
+          table: "conversations",
+          patch: { created_by_profile_id: null, updated_at: new Date().toISOString() },
+          matchQuery: { created_by_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "conversations")) throw err;
+      }
+      try {
+        await restUpdate({
+          table: "conversations",
+          patch: { last_message_sender_profile_id: null, updated_at: new Date().toISOString() },
+          matchQuery: { last_message_sender_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "conversations")) throw err;
+      }
+      try {
+        await restDelete({
+          table: "conversations",
+          matchQuery: {
+            type: "eq.direct",
+            or: `(direct_a.eq.${profileId},direct_b.eq.${profileId})`,
+          },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "conversations")) throw err;
+      }
+      try {
+        await restDelete({
+          table: "announcements",
+          matchQuery: { created_by_profile_id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "announcements")) throw err;
+      }
+      try {
+        await restUpdate({
+          table: "internship_applications",
+          patch: { reviewed_by: null, reviewed_at: null, updated_at: new Date().toISOString() },
+          matchQuery: { reviewed_by: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "internship_applications")) throw err;
+      }
+      try {
+        await restUpdate({
+          table: "application_status_history",
+          patch: { changed_by: null },
+          matchQuery: { changed_by: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (!isMissingSchemaError(err, "application_status_history")) throw err;
+      }
+      if (targetRole === "intern") {
+        const internId = target.id;
+        const deletes = [
+          { table: "approved_interns", matchQuery: { profile_id: `eq.${internId}` } },
+          { table: "daily_logs", matchQuery: { intern_profile_id: `eq.${internId}` } },
+          { table: "reports", matchQuery: { intern_profile_id: `eq.${internId}` } },
+          { table: "tna_items", matchQuery: { intern_profile_id: `eq.${internId}` } },
+          { table: "report_links", matchQuery: { intern_profile_id: `eq.${internId}` } },
+          { table: "intern_blueprints", matchQuery: { intern_profile_id: `eq.${internId}` } },
+          { table: "intern_documents", matchQuery: { intern_profile_id: `eq.${internId}` } },
+          { table: "project_submissions", matchQuery: { intern_profile_id: `eq.${internId}` } },
+        ];
+
+        for (const entry of deletes) {
+          try {
+            await restDelete({
+              table: entry.table,
+              matchQuery: entry.matchQuery,
+              accessToken: null,
+              useServiceRole: true,
+            });
+          } catch (err) {
+            if (!isMissingSchemaError(err, entry.table)) throw err;
+          }
+        }
+
+        await restDelete({
+          table: "profiles",
+          matchQuery: { id: `eq.${internId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      }
+
       await adminDeleteUser({ userId: target.id, softDelete: false });
+      const io = req.app.get("io");
+      if (io) {
+        const payload = { type: "user_deleted", userId: target.id, role: targetRole };
+        io.to("role:admin").emit("itp:changed", payload);
+        io.to("role:hr").emit("itp:changed", payload);
+        io.to("role:pm").emit("itp:changed", payload);
+      }
       res.status(200).json({ success: true });
     } catch (err) {
       next(err);
@@ -776,6 +1005,271 @@ function createAdminRouter() {
       const updatedRows = await loadProfiles({ id: `eq.${userId}`, limit: 1 });
       const updated = updatedRows?.[0] || null;
       res.status(200).json({ success: true, user: updated ? mapUserRow(updated) : null });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/extend", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!/^[0-9a-f-]{36}$/i.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      const endDate = String(req.body?.end_date || "").trim();
+      if (!isValidIsoDate(endDate)) throw httpError(400, "end_date must be in YYYY-MM-DD format", true);
+
+      const approvedIntern = await loadApprovedInternByProfileId(profileId);
+      if (!approvedIntern) throw httpError(404, "Approved intern not found", true);
+
+      const now = new Date().toISOString();
+      const today = new Date().toISOString().slice(0, 10);
+      const updated = await restUpdate({
+        table: "approved_interns",
+        patch: { end_date: endDate, updated_at: now },
+        matchQuery: { id: `eq.${approvedIntern.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const profileRows = await restSelect({
+        table: "profiles",
+        select: "id,status",
+        filters: { id: `eq.${profileId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const profile = profileRows?.[0] || null;
+      if (profile && String(profile.status || "").toLowerCase() === "inactive" && endDate >= today) {
+        await restUpdate({
+          table: "profiles",
+          patch: { status: "active", updated_at: now },
+          matchQuery: { id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch(() => {});
+      }
+
+      const approvedRow = Array.isArray(updated) ? updated[0] : updated;
+      res.status(200).json({ success: true, approvedIntern: approvedRow || null });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/dates", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!/^[0-9a-f-]{36}$/i.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      const startInput = req.body?.start_date ?? req.body?.startDate ?? null;
+      const endInput = req.body?.end_date ?? req.body?.endDate ?? null;
+      const validatedDates = validateInternDateRange({
+        startDate: startInput,
+        endDate: endInput,
+        required: true,
+      });
+
+      const approvedIntern = await loadApprovedInternByProfileId(profileId);
+      if (!approvedIntern) throw httpError(404, "Approved intern not found", true);
+
+      const now = new Date().toISOString();
+      const approvedRow = await restUpdate({
+        table: "approved_interns",
+        patch: {
+          start_date: validatedDates.startDate,
+          end_date: validatedDates.endDate,
+          updated_at: now,
+        },
+        matchQuery: { id: `eq.${approvedIntern.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const profileRows = await restSelect({
+        table: "profiles",
+        select: "id,status,profile_data",
+        filters: { id: `eq.${profileId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const profile = profileRows?.[0] || null;
+      if (!profile) throw httpError(404, "Intern profile not found", true);
+
+      const nextProfileData = mergeInternProfileData(profile.profile_data, {
+        startDate: validatedDates.startDate,
+        endDate: validatedDates.endDate,
+      });
+
+      await restUpdate({
+        table: "profiles",
+        patch: { profile_data: nextProfileData, updated_at: now },
+        matchQuery: { id: `eq.${profileId}` },
+        accessToken: null,
+        useServiceRole: true,
+      }).catch(() => {});
+
+      const today = new Date().toISOString().slice(0, 10);
+      if (String(profile.status || "").toLowerCase() === "inactive" && validatedDates.endDate >= today) {
+        await restUpdate({
+          table: "profiles",
+          patch: { status: "active", updated_at: now },
+          matchQuery: { id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch(() => {});
+      }
+
+      const lifecycleStatus = computeLifecycleStatus(
+        { start_date: validatedDates.startDate, end_date: validatedDates.endDate },
+        nextProfileData
+      );
+
+      const io = req.app.get("io");
+      if (io) {
+        io.emit("itp:changed", { type: "intern_dates_updated", profileId });
+      }
+
+      res.status(200).json({
+        success: true,
+        start_date: validatedDates.startDate,
+        end_date: validatedDates.endDate,
+        lifecycleStatus,
+        approvedIntern: Array.isArray(approvedRow) ? approvedRow[0] : approvedRow,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/activate", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!/^[0-9a-f-]{36}$/i.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      await restUpdate({
+        table: "profiles",
+        patch: { status: "active", updated_at: new Date().toISOString() },
+        matchQuery: { id: `eq.${profileId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/deactivate", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!/^[0-9a-f-]{36}$/i.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      await restUpdate({
+        table: "profiles",
+        patch: { status: "inactive", updated_at: new Date().toISOString() },
+        matchQuery: { id: `eq.${profileId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/end-early", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!/^[0-9a-f-]{36}$/i.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      const rawEndDate = req.body?.end_date ? String(req.body.end_date).trim() : "";
+      if (rawEndDate && !isValidIsoDate(rawEndDate)) {
+        throw httpError(400, "end_date must be in YYYY-MM-DD format", true);
+      }
+      const endDate = rawEndDate || new Date().toISOString().slice(0, 10);
+
+      const approvedIntern = await loadApprovedInternByProfileId(profileId);
+      if (!approvedIntern) throw httpError(404, "Approved intern not found", true);
+
+      const updated = await restUpdate({
+        table: "approved_interns",
+        patch: { end_date: endDate, updated_at: new Date().toISOString() },
+        matchQuery: { id: `eq.${approvedIntern.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const approvedRow = Array.isArray(updated) ? updated[0] : updated;
+      res.status(200).json({ success: true, approvedIntern: approvedRow || null });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/override-status", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!/^[0-9a-f-]{36}$/i.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      const nextStatus = String(req.body?.status || "").trim().toLowerCase();
+      const reason = String(req.body?.reason || "").trim();
+      if (!["active", "inactive"].includes(nextStatus)) throw httpError(400, "status must be active or inactive", true);
+      if (!reason) throw httpError(400, "reason is required", true);
+
+      const profileRows = await restSelect({
+        table: "profiles",
+        select: "id,role,full_name,email",
+        filters: { id: `eq.${profileId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const profile = profileRows?.[0] || null;
+      if (!profile || toRole(profile.role) !== "intern") throw httpError(404, "Intern not found", true);
+
+      const approvedIntern = await loadApprovedInternByProfileId(profileId);
+      if (!approvedIntern) throw httpError(404, "Approved intern not found", true);
+
+      const now = new Date().toISOString();
+      await restUpdate({
+        table: "profiles",
+        patch: { status: nextStatus, updated_at: now },
+        matchQuery: { id: `eq.${profileId}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const updated = await restUpdate({
+        table: "approved_interns",
+        patch: { override_reason: reason, override_at: now, updated_at: now },
+        matchQuery: { id: `eq.${approvedIntern.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const approvedRow = Array.isArray(updated) ? updated[0] : updated;
+      const io = req.app.get("io");
+      if (io) {
+        const name = profile.full_name || profile.email || "Intern";
+        const payload = {
+          type: nextStatus === "active" ? "intern_override_active" : "intern_override_inactive",
+          profileId,
+          name,
+          reason,
+        };
+        io.to("role:admin").emit("itp:changed", payload);
+        io.to("role:hr").emit("itp:changed", payload);
+        io.to("role:pm").emit("itp:changed", payload);
+      }
+
+      res.status(200).json({ success: true, approvedIntern: approvedRow || null });
     } catch (err) {
       next(err);
     }

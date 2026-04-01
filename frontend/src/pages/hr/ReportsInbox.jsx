@@ -4,6 +4,14 @@ import { hrApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 import { COLORS, glassCardStyle } from "./HRConstants";
 
+const formatLateSubmission = (iso) => {
+  const d = new Date(iso || "");
+  if (Number.isNaN(d.getTime())) return "";
+  const datePart = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${datePart} at ${timePart}`;
+};
+
 export default function ReportsInbox() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +110,11 @@ export default function ReportsInbox() {
                 ? `Weekly Report • Week ${r.weekNumber || "?"}`
                 : `Monthly Report • ${r.month || "Month"}`;
             const submitted = r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "";
+            const lateLabel = r.isLate && r.submittedAt
+              ? `Late Submission — Submitted on ${formatLateSubmission(r.submittedAt)}`
+              : r.isLate
+                ? "Late Submission"
+                : "";
             return (
               <button
                 key={r.id}
@@ -140,6 +153,11 @@ export default function ReportsInbox() {
                       <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
                         {r.dateRange || ""} {submitted ? `• ${submitted}` : ""}
                       </div>
+                      {lateLabel && (
+                        <div style={{ color: COLORS.warning, fontSize: 12, marginTop: 6, fontWeight: 700 }}>
+                          {lateLabel}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div
@@ -218,6 +236,13 @@ export default function ReportsInbox() {
                 </div>
                 {selected.dateRange && (
                   <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{selected.dateRange}</div>
+                )}
+                {selected.isLate && (
+                  <div style={{ color: COLORS.warning, fontSize: 12, marginTop: 6, fontWeight: 700 }}>
+                    {selected.submittedAt
+                      ? `Late Submission — Submitted on ${formatLateSubmission(selected.submittedAt)}`
+                      : "Late Submission"}
+                  </div>
                 )}
               </div>
               <button

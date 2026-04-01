@@ -9,12 +9,68 @@ const COLORS = {
   racingRed: "#d90429",
 };
 
+function getProfilePictureUrl(user) {
+  const profileData = user?.profileData || user?.profile_data || {};
+  return (
+    profileData.profilePictureUrl ||
+    profileData.profile_picture_url ||
+    user?.profilePictureUrl ||
+    user?.profile_picture_url ||
+    ""
+  );
+}
+
+function getInitials(value, fallback = "?") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const parts = raw.split(" ").filter(Boolean);
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+function Avatar({ user, name, size = 40, fontSize = 14, background, color, style }) {
+  const [errored, setErrored] = useState(false);
+  const url = getProfilePictureUrl(user);
+  const initials = getInitials(name || user?.fullName || user?.email, "?");
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: background || `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 800,
+        fontSize,
+        color: color || "white",
+        overflow: "hidden",
+        ...style,
+      }}
+    >
+      {url && !errored ? (
+        <img
+          src={url}
+          alt="Profile"
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        initials
+      )}
+    </div>
+  );
+}
+
 export default function ChatSystem({ userRole, currentUser }) {
   const [activeChatType, setActiveChatType] = useState(null); // 'pm' | 'hr'
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [recipient, setRecipient] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [userDirectory, setUserDirectory] = useState([]);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -79,16 +135,31 @@ export default function ChatSystem({ userRole, currentUser }) {
     }
   }
 
+  function loadUsersDirectory() {
+    try {
+      const users = JSON.parse(localStorage.getItem("users") || "[]");
+      setUserDirectory(users);
+    } catch (error) {
+      console.error("Error loading users:", error);
+      setUserDirectory([]);
+    }
+  }
+
   useEffect(() => {
     if (activeChatType) {
       const timeout = window.setTimeout(() => {
         loadMessages();
         loadRecipient();
+        loadUsersDirectory();
       }, 0);
       return () => window.clearTimeout(timeout);
     }
     return undefined;
   }, [activeChatType, currentUser]);
+
+  useEffect(() => {
+    loadUsersDirectory();
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -145,6 +216,7 @@ export default function ChatSystem({ userRole, currentUser }) {
         handleSendMessage={handleSendMessage}
         recipient={recipient}
         currentUser={currentUser}
+        userDirectory={userDirectory}
         onBack={() => setActiveChatType(null)}
         chatType={activeChatType}
         isMobile={isMobile}
@@ -176,6 +248,7 @@ export default function ChatSystem({ userRole, currentUser }) {
         handleSendMessage={handleSendMessage}
         recipient={recipient}
         currentUser={currentUser}
+        userDirectory={userDirectory}
         onBack={() => {
           setActiveChatType(null);
           setRecipient(null);
@@ -209,6 +282,7 @@ export default function ChatSystem({ userRole, currentUser }) {
         handleSendMessage={handleSendMessage}
         recipient={recipient}
         currentUser={currentUser}
+        userDirectory={userDirectory}
         onBack={() => {
           setActiveChatType(null);
           setRecipient(null);
@@ -410,21 +484,7 @@ function InternCard({ intern, onClick }) {
         e.currentTarget.style.background = "rgba(255,255,255,0.04)";
       }}
     >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: "50%",
-          background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 800,
-          fontSize: 18,
-        }}
-      >
-        {intern.fullName?.charAt(0) || "I"}
-      </div>
+      <Avatar user={intern} name={intern.fullName} size={48} fontSize={18} />
       <div>
         <div style={{ fontWeight: 700, fontSize: 15 }}>{intern.fullName}</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>{intern.email}</div>
@@ -441,11 +501,19 @@ function ChatWindow({
   handleSendMessage,
   recipient,
   currentUser,
+  userDirectory,
   onBack,
   chatType,
   isMobile,
   messagesEndRef,
 }) {
+  const resolveUserByEmail = (email) => {
+    if (!email) return null;
+    if (currentUser?.email === email) return currentUser;
+    if (recipient?.email === email) return recipient;
+    return (userDirectory || []).find((user) => user.email === email) || null;
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: isMobile ? "70vh" : "600px" }}>
       {/* Chat Header */}
@@ -476,21 +544,14 @@ function ChatWindow({
           ← Back
         </button>
 
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: chatType === "pm" ? "#a78bfa" : COLORS.peachGlow,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            color: COLORS.inkBlack,
-          }}
-        >
-          {recipient?.fullName?.charAt(0) || "?"}
-        </div>
+        <Avatar
+          user={recipient}
+          name={recipient?.fullName}
+          size={40}
+          fontSize={16}
+          background={chatType === "pm" ? "#a78bfa" : COLORS.peachGlow}
+          color={COLORS.inkBlack}
+        />
 
         <div>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{recipient?.fullName || "Unknown"}</div>
@@ -522,6 +583,7 @@ function ChatWindow({
             <MessageBubble
               key={msg.id}
               message={msg}
+              senderUser={resolveUserByEmail(msg.sender)}
               isOwn={msg.sender === currentUser?.email}
               isMobile={isMobile}
             />
@@ -586,7 +648,7 @@ function ChatWindow({
   );
 }
 
-function MessageBubble({ message, isOwn, isMobile }) {
+function MessageBubble({ message, senderUser, isOwn, isMobile }) {
   return (
     <div
       style={{
@@ -597,22 +659,13 @@ function MessageBubble({ message, isOwn, isMobile }) {
       }}
     >
       {!isOwn && (
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.deepOcean}, ${COLORS.jungleTeal})`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 14,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          {message.senderName?.charAt(0) || "?"}
-        </div>
+        <Avatar
+          user={senderUser}
+          name={message.senderName}
+          size={32}
+          fontSize={12}
+          style={{ flexShrink: 0 }}
+        />
       )}
 
       <div
@@ -647,23 +700,15 @@ function MessageBubble({ message, isOwn, isMobile }) {
       </div>
 
       {isOwn && (
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${COLORS.peachGlow}, white)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 14,
-            fontWeight: 700,
-            color: COLORS.inkBlack,
-            flexShrink: 0,
-          }}
-        >
-          {message.senderName?.charAt(0) || "?"}
-        </div>
+        <Avatar
+          user={senderUser}
+          name={message.senderName}
+          size={32}
+          fontSize={12}
+          background={`linear-gradient(135deg, ${COLORS.peachGlow}, white)`}
+          color={COLORS.inkBlack}
+          style={{ flexShrink: 0 }}
+        />
       )}
     </div>
   );

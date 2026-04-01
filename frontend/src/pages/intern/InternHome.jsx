@@ -78,6 +78,7 @@ const GlobalStyles = () => (
 export default function InternDashboard() {
   const [activePage, setActivePage] = useState("overview");
   const [currentIntern, setCurrentIntern] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [assignedPM, setAssignedPM] = useState(null);
   const [assignedHR, setAssignedHR] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -93,6 +94,7 @@ export default function InternDashboard() {
     pendingReports: 0,
   });
   const [dismissedReportReminder, setDismissedReportReminder] = useState(false);
+  const profilePictureUrl = currentIntern?.profile?.profilePictureUrl || currentIntern?.profile?.profile_picture_url || null;
   const formatTimeAgo = React.useCallback((iso) => {
     const t = new Date(iso || "").getTime();
     if (!Number.isFinite(t)) return "";
@@ -174,6 +176,7 @@ export default function InternDashboard() {
   };
 
   const loadCurrentIntern = async () => {
+    setLoadError("");
     try {
       const res = await internApi.me();
       const profile = res?.profile;
@@ -236,38 +239,10 @@ export default function InternDashboard() {
         window.location.href = "/";
         return;
       }
-
-      try {
-        const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
-        if (user.role === "intern") {
-          const displayName = user.fullName || user.email || "Intern";
-          const avatar = String(displayName)
-            .split(" ")
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((w) => w[0])
-            .join("")
-            .toUpperCase();
-          setCurrentIntern({
-            id: user.id || null,
-            internId: user.internId || null,
-            fullName: displayName,
-            email: user.email || "",
-            phone: user.phone || "",
-            dob: user.dob || "",
-            role: "intern",
-            pmCode: user.pmCode || null,
-            degree: user.degree || "",
-            avatar: avatar || "IN",
-            profile: user.profileData || user.profile || {},
-            profileCompleted: !!user.profileCompleted,
-          });
-        } else {
-          window.location.href = "/";
-        }
-      } catch {
-        window.location.href = "/";
-      }
+      setCurrentIntern(null);
+      setAssignedPM(null);
+      setAssignedHR(null);
+      setLoadError(err?.message || "Unable to load your profile. Please try again.");
     }
   };
 
@@ -356,8 +331,12 @@ export default function InternDashboard() {
     const socket = getRealtimeSocket();
     const onNotification = (payload) => {
       const row = payload?.notification;
-      if (!row?.id) return;
+      if (!row?.id) {
+        loadNotifications();
+        return;
+      }
       addNotification(mapApiNotification(row));
+      loadNotifications();
     };
     socket.on("itp:notification", onNotification);
     return () => socket.off("itp:notification", onNotification);
@@ -376,6 +355,51 @@ export default function InternDashboard() {
     notificationsApi.markAllRead().catch(() => {});
     setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
   };
+
+  if (loadError && !currentIntern) {
+    return (
+      <>
+        <GlobalStyles />
+        <div style={{
+          minHeight: "100vh",
+          background: GRADIENTS.primary,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          fontFamily: "'Inter', system-ui, sans-serif"
+        }}>
+          <div style={{
+            maxWidth: 520,
+            width: "100%",
+            background: COLORS.surfaceGlass,
+            border: `1px solid ${COLORS.borderGlass}`,
+            borderRadius: 16,
+            padding: 24,
+            color: COLORS.textPrimary,
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Profile Unavailable</div>
+            <div style={{ color: COLORS.textSecondary, marginBottom: 16 }}>{loadError}</div>
+            <button
+              onClick={loadCurrentIntern}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 10,
+                border: "none",
+                background: GRADIENTS.accent,
+                color: "white",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -458,17 +482,18 @@ export default function InternDashboard() {
                     overflow: "hidden",
                     position: "relative",
                   }}>
-                  <span style={{ position: "relative", zIndex: 1 }}>{currentIntern?.avatar || "IN"}</span>
-                  {currentIntern?.profile?.profilePictureUrl ? (
+                  {profilePictureUrl ? (
                     <img
-                      src={currentIntern.profile.profilePictureUrl}
+                      src={profilePictureUrl}
                       alt="Profile"
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
                     />
-                  ) : null}
+                  ) : (
+                    <span style={{ position: "relative", zIndex: 1 }}>{currentIntern?.avatar || "IN"}</span>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
@@ -758,17 +783,18 @@ export default function InternDashboard() {
                   style={{ border: "none", background: "transparent", padding: 0, margin: 0, width: "100%", height: "100%", cursor: "pointer", color: "inherit" }}
                   aria-label="Open profile"
                 >
-                  <span style={{ position: "relative", zIndex: 1 }}>{currentIntern?.avatar || "IN"}</span>
-                  {currentIntern?.profile?.profilePictureUrl ? (
+                  {profilePictureUrl ? (
                     <img
-                      src={currentIntern.profile.profilePictureUrl}
+                      src={profilePictureUrl}
                       alt="Profile"
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
                     />
-                  ) : null}
+                  ) : (
+                    <span style={{ position: "relative", zIndex: 1 }}>{currentIntern?.avatar || "IN"}</span>
+                  )}
                 </button>
               </div>
             </div>
@@ -874,9 +900,13 @@ export default function InternDashboard() {
                 {activePage === "profile" && (
                   <ProfilePage intern={currentIntern} isMobile={isMobile} onProfileUpdated={loadCurrentIntern} />
                 )}
-                {activePage === "project-submission" && (
-                  <ProjectSubmissionPage isMobile={isMobile} />
-                )}
+                  {activePage === "project-submission" && (
+                    <ProjectSubmissionPage
+                      isMobile={isMobile}
+                      currentIntern={currentIntern}
+                      profilePictureUrl={profilePictureUrl}
+                    />
+                  )}
               </div>
             </div>
           )}
@@ -1188,7 +1218,7 @@ function AnnouncementCard({ announcement, index }) {
   );  
 }
 
-function ProjectSubmissionPage({ isMobile }) {
+function ProjectSubmissionPage({ isMobile, currentIntern, profilePictureUrl }) {
   const [projectTitle, setProjectTitle] = useState("");
   const [description, setDescription] = useState("");
   const [githubLink, setGithubLink] = useState("");
@@ -1398,7 +1428,18 @@ function ProjectSubmissionPage({ isMobile }) {
           <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>Loading...</div>
         ) : mySubmissions.length === 0 ? (
           <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>No submissions yet.</div>
-        ) : mySubmissions.map(sub => (
+        ) : mySubmissions.map(sub => {
+            const internName = currentIntern?.fullName || "Me";
+            const internEmail = currentIntern?.email || "";
+            const internId = currentIntern?.internId || "No ID";
+            const internDept = currentIntern?.profile?.department || currentIntern?.profile?.degree || currentIntern?.degree || "Unassigned";
+            const internInitials = currentIntern?.avatar || "IN";
+            const effectiveProfilePictureUrl =
+              profilePictureUrl ||
+              currentIntern?.profile?.profilePictureUrl ||
+              currentIntern?.profile?.profile_picture_url ||
+              null;
+            return (
           <div key={sub.id} style={{
             background: "rgba(255,255,255,0.05)",
             border: `1px solid ${sub.status === "approved" ? "rgba(16,185,129,0.4)" 
@@ -1411,6 +1452,40 @@ function ProjectSubmissionPage({ isMobile }) {
             flexDirection: "column",
             gap: 8,
           }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {effectiveProfilePictureUrl ? (
+                  <img
+                    src={effectiveProfilePictureUrl}
+                    alt="Intern"
+                    style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
+              ) : (
+                <div style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  background: "rgba(20,184,166,0.2)",
+                  color: "#14b8a6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}>
+                  {internInitials}
+                </div>
+              )}
+              <div style={{ color: "#14b8a6", fontSize: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <span>{internName}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span>{internEmail}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span>{internId}</span>
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                <span>{internDept}</span>
+              </div>
+            </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ color: "white", fontWeight: 700, fontSize: 15 }}>{sub.title}</div>
               <span style={{
@@ -1432,7 +1507,9 @@ function ProjectSubmissionPage({ isMobile }) {
               </span>
             </div>
 
-            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>{sub.description}</div>
+            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, whiteSpace: "pre-wrap" }}>
+              {sub.description}
+            </div>
 
             {sub.status === "approved" && (
               <div style={{
@@ -1477,7 +1554,8 @@ function ProjectSubmissionPage({ isMobile }) {
               {sub.reviewed_at ? ` ? Reviewed: ${new Date(sub.reviewed_at).toLocaleString()}` : ""}
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
     </div>
   );

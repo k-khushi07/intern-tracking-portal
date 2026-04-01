@@ -36,6 +36,7 @@ export default function InternProfileSetup() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [storedFiles, setStoredFiles] = useState({ profilePicture: null, resume: null });
+  const [approvedIntern, setApprovedIntern] = useState(null);
 
   const [profile, setProfile] = useState({
     // Personal Details
@@ -52,6 +53,7 @@ export default function InternProfileSetup() {
     collegeName: "",
     department: "",
     semester: "",
+    mentor: "",
     guideName: "",
     guideEmail: "",
     guidePhone: "",
@@ -69,6 +71,7 @@ export default function InternProfileSetup() {
     resume: null,
   });
   const [fileUploads, setFileUploads] = useState({ profilePicture: null, resume: null });
+  const todayIso = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -76,6 +79,18 @@ export default function InternProfileSetup() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    const start = profile.startDate ? new Date(`${profile.startDate}T00:00:00`) : null;
+    const end = profile.endDate ? new Date(`${profile.endDate}T00:00:00`) : null;
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      setProfile((prev) => (prev.internshipDuration ? { ...prev, internshipDuration: "" } : prev));
+      return;
+    }
+    const months = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30));
+    const label = `${months} months`;
+    setProfile((prev) => (String(prev.internshipDuration) === String(label) ? prev : { ...prev, internshipDuration: label }));
+  }, [profile.startDate, profile.endDate]);
 
   async function loadCurrentUser() {
     try {
@@ -87,11 +102,20 @@ export default function InternProfileSetup() {
 
       const profileData =
         me.profile && typeof me.profile.profile_data === "object" ? me.profile.profile_data : {};
+      const approved = me.profile?.approved_intern || me.profile?.approvedIntern || null;
+      setApprovedIntern(approved || null);
+      const approvedFields = {
+        startDate: approved?.start_date || profileData.startDate || "",
+        endDate: approved?.end_date || profileData.endDate || "",
+        department: approved?.department || profileData.department || "",
+        mentor: approved?.mentor || profileData.mentor || "",
+      };
       const existingFiles = buildStoredFilesFromProfile(profileData);
       setStoredFiles(existingFiles);
       setProfile((prev) => ({
         ...prev,
         ...(profileData || {}),
+        ...approvedFields,
         profilePicture: prev.profilePicture || existingFiles.profilePicture?.url || profileData.profilePictureUrl || null,
         resume: prev.resume || existingFiles.resume?.url || profileData.resumeUrl || null,
       }));
@@ -104,6 +128,7 @@ export default function InternProfileSetup() {
         internId: me.profile.intern_id || null,
         profileCompleted: !!me.profile.profile_completed,
         profileData,
+        approvedIntern: approved || null,
       };
       localStorage.setItem("currentUser", JSON.stringify(u));
       setCurrentUser(u);
@@ -116,11 +141,20 @@ export default function InternProfileSetup() {
       const user = JSON.parse(localStorage.getItem("currentUser") || "{}");
       if (user.role === "intern") {
         const cachedProfileData = user.profileData || {};
+        const cachedApproved = user.approvedIntern || null;
+        setApprovedIntern(cachedApproved || null);
+        const approvedFields = {
+          startDate: cachedApproved?.start_date || cachedProfileData.startDate || "",
+          endDate: cachedApproved?.end_date || cachedProfileData.endDate || "",
+          department: cachedApproved?.department || cachedProfileData.department || "",
+          mentor: cachedApproved?.mentor || cachedProfileData.mentor || "",
+        };
         const cachedFiles = buildStoredFilesFromProfile(cachedProfileData);
         setStoredFiles(cachedFiles);
         setProfile((prev) => ({
           ...prev,
           ...(cachedProfileData || {}),
+          ...approvedFields,
           profilePicture: prev.profilePicture || cachedFiles.profilePicture?.url || cachedProfileData.profilePictureUrl || null,
           resume: prev.resume || cachedFiles.resume?.url || cachedProfileData.resumeUrl || null,
         }));
@@ -283,6 +317,7 @@ export default function InternProfileSetup() {
             profileCompleted: true,
             status: "active",
             profileCompletedAt: new Date().toISOString(),
+            approvedIntern: approvedIntern || u.approvedIntern || null,
           };
         }
         return u;
@@ -297,6 +332,7 @@ export default function InternProfileSetup() {
         profileCompleted: true,
         status: "active",
         profileData: updatedProfileData,
+        approvedIntern: approvedIntern || currentUser.approvedIntern || null,
       };
       localStorage.setItem("currentUser", JSON.stringify(updatedCurrentUser));
       console.log("Current user updated");
@@ -395,8 +431,17 @@ export default function InternProfileSetup() {
           }}
         >
           {step === 1 && <PersonalDetailsStep profile={profile} onChange={handleChange} isMobile={isMobile} />}
-          {step === 2 && <AcademicDetailsStep profile={profile} onChange={handleChange} isMobile={isMobile} />}
-          {step === 3 && <InternshipDetailsStep profile={profile} onChange={handleChange} isMobile={isMobile} />}
+          {step === 2 && <AcademicDetailsStep profile={profile} onChange={handleChange} isMobile={isMobile} approvedIntern={approvedIntern} />}
+          {step === 3 && (
+            <InternshipDetailsStep
+              profile={profile}
+              onChange={handleChange}
+              isMobile={isMobile}
+              approvedIntern={approvedIntern}
+              profileCompleted={!!currentUser?.profileCompleted}
+              todayIso={todayIso}
+            />
+          )}
           {step === 4 && (
             <DocumentsStep
               profile={profile}
@@ -576,7 +621,7 @@ function PersonalDetailsStep({ profile, onChange, isMobile }) {
   );
 }
 
-function AcademicDetailsStep({ profile, onChange, isMobile }) {
+function AcademicDetailsStep({ profile, onChange, isMobile, approvedIntern }) {
   return (
     <div>
       <h2 style={{ fontSize: isMobile ? 20 : 24, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
@@ -596,6 +641,7 @@ function AcademicDetailsStep({ profile, onChange, isMobile }) {
           value={profile.department}
           onChange={(v) => onChange("department", v)}
           placeholder="e.g., Computer Science"
+          disabled={!!approvedIntern?.department}
         />
         <InputField
           label="Current Semester"
@@ -635,7 +681,8 @@ function AcademicDetailsStep({ profile, onChange, isMobile }) {
   );
 }
 
-function InternshipDetailsStep({ profile, onChange, isMobile }) {
+function InternshipDetailsStep({ profile, onChange, isMobile, approvedIntern, profileCompleted, todayIso }) {
+  const isLocked = !!profileCompleted;
   return (
     <div>
       <h2 style={{ fontSize: isMobile ? 20 : 24, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
@@ -649,18 +696,30 @@ function InternshipDetailsStep({ profile, onChange, isMobile }) {
           onChange={(v) => onChange("internshipDuration", v)}
           placeholder="e.g., 3 months"
           type="text"
+          disabled
         />
         <InputField
           label="Start Date"
           value={profile.startDate}
           onChange={(v) => onChange("startDate", v)}
           type="date"
+          min={todayIso}
+          disabled={isLocked || !!approvedIntern?.start_date}
         />
         <InputField
           label="End Date"
           value={profile.endDate}
           onChange={(v) => onChange("endDate", v)}
           type="date"
+          min={profile.startDate || ""}
+          disabled={isLocked || !!approvedIntern?.end_date}
+        />
+        <InputField
+          label="Mentor"
+          value={profile.mentor}
+          onChange={(v) => onChange("mentor", v)}
+          placeholder="Assigned mentor"
+          disabled={!!approvedIntern?.mentor}
         />
         <SelectField
           label="Work Mode"
@@ -670,6 +729,12 @@ function InternshipDetailsStep({ profile, onChange, isMobile }) {
           icon={<MapPin size={16} />}
         />
       </div>
+
+      {isLocked && (
+        <div style={{ marginTop: 12, fontSize: 12, color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>
+          These dates can only be changed by Admin
+        </div>
+      )}
 
       <div style={{ marginTop: 20 }}>
         <InputField
@@ -743,7 +808,7 @@ function DocumentsStep({ profile, onFileChange, isMobile, storedFiles }) {
   );
 }
 
-function InputField({ label, value, onChange, placeholder, type = "text", fullWidth = false }) {
+function InputField({ label, value, onChange, placeholder, type = "text", fullWidth = false, disabled = false, min }) {
   const fieldId = `field-${label.toLowerCase().replace(/\s+/g, '-')}`;
   return (
     <div style={{ gridColumn: fullWidth ? "1 / -1" : "auto" }}>
@@ -757,20 +822,22 @@ function InputField({ label, value, onChange, placeholder, type = "text", fullWi
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        min={min}
         style={inputStyle}
+        disabled={disabled}
       />
     </div>
   );
 }
 
-function SelectField({ label, value, onChange, options, icon }) {
+function SelectField({ label, value, onChange, options, icon, disabled = false }) {
   const fieldId = `select-${label.toLowerCase().replace(/\s+/g, '-')}`;
   return (
     <div>
       <label htmlFor={fieldId} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>
         {icon} {label}
       </label>
-      <select id={fieldId} name={fieldId} value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
+      <select id={fieldId} name={fieldId} value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle} disabled={disabled}>
         <option value="">Select...</option>
         {options.map((opt) => (
           <option key={opt} value={opt}>

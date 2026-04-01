@@ -50,6 +50,10 @@ function createNotificationsRouter() {
       const profileId = req.auth?.profile?.id;
       if (!profileId) throw httpError(401, "Not authenticated", true);
       const row = await markRead({ profileId, notificationId: req.params.id });
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user:${profileId}`).emit("itp:changed", { entity: "notifications", action: "read", id: req.params.id });
+      }
       res.status(200).json({ success: true, notification: toClientNotification(row) });
     } catch (err) {
       if (isMissingTableError(err, "notifications")) {
@@ -65,6 +69,10 @@ function createNotificationsRouter() {
       const profileId = req.auth?.profile?.id;
       if (!profileId) throw httpError(401, "Not authenticated", true);
       await markAllRead({ profileId });
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user:${profileId}`).emit("itp:changed", { entity: "notifications", action: "read_all" });
+      }
       res.status(200).json({ success: true });
     } catch (err) {
       if (isMissingTableError(err, "notifications")) {

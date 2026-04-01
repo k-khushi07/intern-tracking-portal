@@ -11,15 +11,81 @@ const COLORS = {
   accent: "#679289",
   success: "#4ade80",
   warning: "#f59e0b",
+  pending: "#fb923c",
+  grace: "#facc15",
+  manualActive: "#38bdf8",
+  manualInactive: "#94a3b8",
   danger: "#ef4444",
 };
 
-function statusColor(status) {
-  const s = String(status || "").toLowerCase();
-  if (s === "active") return COLORS.success;
-  if (s === "completed") return COLORS.accent;
-  if (s === "inactive") return COLORS.warning;
-  return COLORS.danger;
+const toDateOnly = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const d = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+};
+
+const formatDateLabel = (value) => {
+  const d = toDateOnly(value);
+  if (!d) return "";
+  return d.toLocaleDateString();
+};
+
+function getLifecycleMeta(intern) {
+  const approved = intern?.approved_intern || intern?.approvedIntern || {};
+  const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+  const overrideReason =
+    intern?.override_reason ||
+    intern?.overrideReason ||
+    approved?.override_reason ||
+    approved?.overrideReason ||
+    null;
+  const profileStatus = String(intern?.status || intern?.profile_status || intern?.profileStatus || "").toLowerCase();
+  const startDate =
+    intern?.start_date ||
+    intern?.startDate ||
+    approved?.start_date ||
+    approved?.startDate ||
+    profileData?.startDate ||
+    profileData?.start_date ||
+    "";
+  const endDate =
+    intern?.end_date ||
+    intern?.endDate ||
+    approved?.end_date ||
+    approved?.endDate ||
+    profileData?.endDate ||
+    profileData?.end_date ||
+    "";
+
+  if (overrideReason && profileStatus === "active") {
+    return { label: "Manually Activated by Admin", color: COLORS.manualActive, outlined: true };
+  }
+  if (overrideReason && profileStatus === "inactive") {
+    return { label: "Manually Deactivated by Admin", color: COLORS.manualInactive, outlined: false };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = toDateOnly(startDate);
+  const end = toDateOnly(endDate);
+
+  if (start && today < start) {
+    return { label: `Pending — starts ${formatDateLabel(startDate)}`, color: COLORS.pending, outlined: false };
+  }
+
+  if (end && today > end) {
+    const graceEnd = new Date(end);
+    graceEnd.setDate(graceEnd.getDate() + 7);
+    if (today <= graceEnd) {
+      const daysRemaining = Math.max(0, Math.ceil((graceEnd - today) / (1000 * 60 * 60 * 24)));
+      return { label: `Grace Period — ${daysRemaining} days left`, color: COLORS.grace, outlined: false };
+    }
+    return { label: "Inactive", color: COLORS.danger, outlined: false };
+  }
+
+  return { label: "Active", color: COLORS.success, outlined: false };
 }
 
 function resolveDepartment(intern) {
@@ -197,6 +263,14 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}>
             {filteredInterns.map((intern) => {
               const name = intern.full_name || intern.fullName || intern.name || intern.email || "Intern";
+              const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+              const profilePictureUrl = String(
+                intern?.profilePictureUrl ||
+                intern?.profile_picture_url ||
+                profileData?.profilePictureUrl ||
+                profileData?.profile_picture_url ||
+                ""
+              ).trim() || null;
               const avatar = name
                 .split(" ")
                 .filter(Boolean)
@@ -204,8 +278,8 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
                 .map((value) => value[0])
                 .join("")
                 .toUpperCase();
-              const status = intern.status || "active";
-              const color = statusColor(status);
+              const lifecycle = getLifecycleMeta(intern);
+              const color = lifecycle.color;
               const reportsPending = Number(intern.pendingReports) || 0;
               const hours = Number(intern.totalHours) || 0;
               const tasks = Number(intern.tasksCompleted) || 0;
@@ -216,11 +290,19 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
                   {/* Header Row */}
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <div style={{ position: "relative" }}>
-                      <div style={{ width: 52, height: 52, borderRadius: "50%", background: `linear-gradient(135deg, ${COLORS.accent}, #1d7874)`, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 18, color: "white", boxShadow: "0 4px 10px rgba(0,0,0,0.3)" }}>
-                        {avatar || "IN"}
+                      <div style={{ width: 52, height: 52, borderRadius: "50%", background: `linear-gradient(135deg, ${COLORS.accent}, #1d7874)`, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 18, color: "white", boxShadow: "0 4px 10px rgba(0,0,0,0.3)", overflow: "hidden", position: "relative" }}>
+                        {profilePictureUrl ? (
+                          <img
+                            src={profilePictureUrl}
+                            alt={`${name} profile`}
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          avatar || "IN"
+                        )}
                       </div>
                       {/* Status Indicator Dot */}
-                      <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderRadius: "50%", background: color, border: `2px solid ${COLORS.panel}` }} title={status} />
+                      <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderRadius: "50%", background: color, border: `2px solid ${COLORS.panel}` }} title={lifecycle.label} />
                     </div>
 
                     <div style={{ minWidth: 0, flex: 1 }}>
@@ -228,8 +310,18 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
                       <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 2 }}>{intern.email}</div>
                     </div>
 
-                    <div style={{ padding: "4px 10px", borderRadius: 8, background: `${color}15`, border: `1px solid ${color}40`, color, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      {status}
+                    <div
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 8,
+                        background: lifecycle.outlined ? "transparent" : `${color}15`,
+                        border: `1px solid ${color}40`,
+                        color,
+                        fontSize: 11,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {lifecycle.label}
                     </div>
                   </div>
 

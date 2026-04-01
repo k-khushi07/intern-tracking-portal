@@ -1,7 +1,9 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
+const { uploadProfileFile } = require("../services/supabaseStorage");
 const { createAuthMiddleware } = require("../middleware/auth");
+const { computeLifecycleStatus } = require("../services/internLifecycle");
 const { createNotifications, toClientNotification, isMissingTableError } = require("../services/notifications");
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,13 +21,13 @@ function sumNumeric(list, field) {
 
 async function loadPmReports(pmId) {
   const withRecipientRoles =
-    "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id)";
+    "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id)";
   const withRecipientRolesNoScore =
-    "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)";
+    "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)";
   const noRecipientRoles =
-    "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id)";
+    "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id)";
   const noRecipientRolesNoScore =
-    "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)";
+    "id,intern_profile_id,pm_profile_id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id)";
 
   const attempts = [
     { select: withRecipientRoles, filters: { pm_profile_id: `eq.${pmId}`, recipient_roles: "cs.{pm}", order: "submitted_at.desc" } },
@@ -47,7 +49,8 @@ async function loadPmReports(pmId) {
       });
     } catch (err) {
       const msg = String(err?.message || "").toLowerCase();
-      const isSchemaError = msg.includes("recipient_roles") || msg.includes("review_score") || msg.includes("reviewed_by");
+      const isSchemaError =
+        msg.includes("recipient_roles") || msg.includes("review_score") || msg.includes("reviewed_by") || msg.includes("is_late");
       if (!isSchemaError) throw err;
     }
   }
@@ -82,6 +85,7 @@ function mapReportRow(r) {
     summary: r.summary || "",
     status: r.status,
     submittedAt: r.submitted_at,
+    isLate: !!r.is_late,
     reviewedAt: r.reviewed_at,
     reviewReason: r.review_reason || null,
     reviewScore: r.review_score ?? null,
@@ -160,6 +164,18 @@ function createPmRouter() {
       const internList = interns || [];
       const internIds = internList.map((i) => i.id).filter(Boolean);
 
+      let approvedInterns = [];
+      if (internIds.length) {
+        approvedInterns = await restSelect({
+          table: "approved_interns",
+          select: "profile_id,start_date,end_date,department,mentor,stipend,status,override_reason,override_at",
+          filters: { profile_id: `in.(${internIds.join(",")})` },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch(() => []);
+      }
+      const approvedByProfileId = new Map((approvedInterns || []).map((row) => [row.profile_id, row]));
+
       let logs = [];
       if (internIds.length) {
         logs = await restSelect({
@@ -207,8 +223,22 @@ function createPmRouter() {
         const logStats = logByIntern.get(intern.id) || { totalHours: 0, tasksCompleted: 0, lastLogDate: null };
         const reportStats = reportByIntern.get(intern.id) || { total: 0, pending: 0, approved: 0, rejected: 0, lastSubmittedAt: null };
         const progressScore = Math.min(100, Math.round(reportStats.approved * 20 + logStats.tasksCompleted * 1.5));
+        const approvedIntern = approvedByProfileId.get(intern.id) || null;
+        const profileData = intern.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : {};
+        const lifecycleStatus = computeLifecycleStatus(approvedIntern, profileData);
         return {
           ...intern,
+          approved_intern: approvedIntern,
+          start_date: approvedIntern?.start_date || null,
+          end_date: approvedIntern?.end_date || null,
+          department: approvedIntern?.department || null,
+          mentor: approvedIntern?.mentor || null,
+          stipend: approvedIntern?.stipend ?? null,
+          approved_intern_status: approvedIntern?.status || null,
+          override_reason: approvedIntern?.override_reason || null,
+          override_at: approvedIntern?.override_at || null,
+          lifecycle_status: lifecycleStatus,
+          status: lifecycleStatus,
           totalHours: Number(logStats.totalHours.toFixed(2)),
           tasksCompleted: logStats.tasksCompleted,
           reportsTotal: reportStats.total,
@@ -241,7 +271,25 @@ function createPmRouter() {
         useServiceRole: true,
       });
       if (!rows?.[0]) throw httpError(404, "Intern not found", true);
-      res.status(200).json({ success: true, intern: rows[0] });
+      const intern = rows[0];
+      const approvedRows = await restSelect({
+        table: "approved_interns",
+        select: "id,intern_id,application_id,profile_id,start_date,end_date,department,mentor,stipend,status,approved_by,approved_at,updated_at,override_reason,override_at",
+        filters: { profile_id: `eq.${req.params.id}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      }).catch(() => []);
+      const approvedIntern = approvedRows?.[0] || null;
+      if (approvedIntern) {
+        intern.approved_intern = approvedIntern;
+        intern.start_date = approvedIntern.start_date || null;
+        intern.end_date = approvedIntern.end_date || null;
+        intern.department = approvedIntern.department || null;
+        intern.mentor = approvedIntern.mentor || null;
+        intern.stipend = approvedIntern.stipend ?? null;
+        intern.approved_intern_status = approvedIntern.status || null;
+      }
+      res.status(200).json({ success: true, intern });
     } catch (err) {
       next(err);
     }
@@ -257,8 +305,85 @@ function createPmRouter() {
         fullName: profile.full_name,
         pmCode: profile.pm_code || null,
         status: profile.status,
+        profileData: profile.profile_data || {},
       },
     });
+  });
+
+  router.patch("/me", async (req, res, next) => {
+    try {
+      const pmId = req.auth.profile.id;
+      const { profilePicture } = req.body || {};
+      if (!profilePicture) throw httpError(400, "profilePicture is required", true);
+
+      const url = await uploadProfileFile({
+        profileId: pmId,
+        field: "profile-picture",
+        filePayload: profilePicture,
+      });
+      if (!url) throw httpError(500, "Failed to upload profile picture", true);
+
+      let existingProfileData = {};
+      try {
+        const rows = await restSelect({
+          table: "profiles",
+          select: "profile_data",
+          filters: { id: `eq.${pmId}`, limit: 1 },
+          accessToken: null,
+          useServiceRole: true,
+        });
+        const raw = rows?.[0]?.profile_data;
+        if (raw && typeof raw === "object") existingProfileData = raw;
+      } catch {
+        existingProfileData = {};
+      }
+
+      const patch = {
+        profile_data: {
+          ...existingProfileData,
+          profilePictureUrl: url,
+          profilePictureMeta: {
+            filename: profilePicture.name || null,
+            type: profilePicture.type || null,
+            uploadedAt: new Date().toISOString(),
+          },
+        },
+        updated_at: new Date().toISOString(),
+      };
+
+      let updated;
+      try {
+        updated = await restUpdate({
+          table: "profiles",
+          patch,
+          matchQuery: { id: `eq.${pmId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (String(err.message || "").includes("profile_data")) {
+          const { profile_data, ...fallbackPatch } = patch;
+          updated = await restUpdate({
+            table: "profiles",
+            patch: fallbackPatch,
+            matchQuery: { id: `eq.${pmId}` },
+            accessToken: null,
+            useServiceRole: true,
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      const io = req.app.get("io");
+      if (io) {
+        io.emit("itp:changed", { type: "profile_updated", profileId: pmId });
+      }
+
+      res.status(200).json({ success: true, profile: updated?.[0] || updated });
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.post("/announcements", async (req, res, next) => {
@@ -589,6 +714,7 @@ function createPmRouter() {
       if (io) {
         io.to(`user:${pmId}`).emit("itp:changed", { entity: "reports", action: "update" });
         if (internId) io.to(`user:${internId}`).emit("itp:changed", { entity: "reports", action: "update" });
+        io.to("role:admin").emit("itp:changed", { entity: "reports", action: "update" });
       }
 
       if (io && internId) {
@@ -632,13 +758,28 @@ function createPmRouter() {
 
       const interns = await restSelect({
         table: "profiles",
-        select: "id,status,full_name,email,intern_id",
+        select: "id,status,full_name,email,intern_id,profile_data",
         filters: { role: "eq.intern", pm_id: `eq.${pmId}` },
         accessToken: null,
         useServiceRole: true,
       });
       const internIds = (interns || []).map((i) => i.id);
-      const activeInterns = (interns || []).filter((i) => (i.status || "").toLowerCase() === "active").length;
+      const approvedRows = internIds.length
+        ? await restSelect({
+            table: "approved_interns",
+            select: "profile_id,start_date,end_date,status",
+            filters: { profile_id: `in.(${internIds.join(",")})` },
+            accessToken: null,
+            useServiceRole: true,
+          }).catch(() => [])
+        : [];
+      const approvedByProfile = new Map((approvedRows || []).map((row) => [row.profile_id, row]));
+      const activeInterns = (interns || []).filter((i) => {
+        const approved = approvedByProfile.get(i.id) || null;
+        const profileData = i.profile_data && typeof i.profile_data === "object" ? i.profile_data : {};
+        const lifecycleStatus = computeLifecycleStatus(approved, profileData);
+        return lifecycleStatus === "active";
+      }).length;
 
       let totalHours = 0;
       let totalTasks = 0;
@@ -739,7 +880,7 @@ function createPmRouter() {
       const rows = await restSelect({
         table: "project_submissions",
         select:
-          "id,title,description,github_link,demo_link,status,submitted_at,intern_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
+          "id,title,description,github_link,demo_link,status,submitted_at,intern_profile_id,intern:intern_profile_id(id,full_name,email,intern_id,profile_data)",
         filters: { pm_profile_id: `eq.${pmId}`, order: "submitted_at.desc" },
         accessToken: null,
         useServiceRole: true,

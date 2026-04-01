@@ -1,5 +1,5 @@
 // PMHome.jsx - pm dashboard
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Menu, Bell, LogOut, Sparkles, X, Users, Home, MessageCircle, Send } from "lucide-react";
 import MessagesPage from './MessagesPage';
 import OverviewPage from "./OverviewPage";
@@ -118,7 +118,25 @@ function ProjectSubmissionsSection({ isMobile }) {
         </span>
       </div>
 
-      {submissions.map((s) => (
+      {submissions.map((s) => {
+        const intern = s.intern || {};
+        const internProfile = intern.profile_data || intern.profileData || {};
+        const internName = intern.full_name || intern.fullName || intern.name || "Unknown";
+        const internEmail = intern.email || "?";
+        const internId = intern.intern_id || intern.internId || "No ID";
+        const internDept = internProfile.department || intern.department || "Unassigned";
+        const internPic =
+          internProfile.profilePictureUrl ||
+          internProfile.profile_picture_url ||
+          "";
+        const internInitials = String(internName)
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase();
+        return (
         <div key={s.id} style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.12)",
@@ -137,12 +155,41 @@ function ProjectSubmissionsSection({ isMobile }) {
               <div style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>
                 {s.title || "Untitled Project"}
               </div>
-              <div style={{ color: "#14b8a6", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <span>Intern: {s.intern?.full_name || "Unknown"}</span>
-                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
-                <span>{s.intern?.email || "?"}</span>
-                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
-                <span>ID: {s.intern?.intern_id || "?"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                {internPic ? (
+                  <img
+                    src={internPic}
+                    alt="Intern"
+                    style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(20,184,166,0.2)",
+                    color: "#14b8a6",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
+                    fontSize: 12,
+                  }}>
+                    {internInitials || "IN"}
+                  </div>
+                )}
+                <div style={{ color: "#14b8a6", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <span>{internName}</span>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                  <span>{internEmail}</span>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                  <span>{internId}</span>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                  <span>{internDept}</span>
+                </div>
               </div>
             </div>
             <span style={{
@@ -177,6 +224,7 @@ function ProjectSubmissionsSection({ isMobile }) {
               padding: "14px 16px",
               borderRadius: 10,
               border: "1px solid rgba(255,255,255,0.06)",
+              whiteSpace: "pre-wrap",
             }}>
               {s.description || "No description provided."}
             </div>
@@ -265,7 +313,8 @@ function ProjectSubmissionsSection({ isMobile }) {
             </div>
           )}
         </div>
-      ))}
+      );
+      })}
     </div>
   );
 }
@@ -287,6 +336,7 @@ const PMHome = () => {
   const [sharedAnnouncements, setSharedAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const pmAvatarInputRef = useRef(null);
   
   // Responsive Handler
   useEffect(() => {
@@ -360,6 +410,7 @@ const PMHome = () => {
           .map((w) => w[0])
           .join("")
           .toUpperCase();
+        const profileData = pm.profileData || pm.profile_data || {};
 
         const nextPmInfo = {
           id: pm.id,
@@ -370,6 +421,10 @@ const PMHome = () => {
           pmCode: pm.pmCode || null,
           email: pm.email,
           status: pm.status,
+          profilePictureUrl:
+            profileData.profilePictureUrl ||
+            profileData.profile_picture_url ||
+            null,
         };
 
         if (!cancelled) {
@@ -694,13 +749,44 @@ const PMHome = () => {
               border: `1px solid ${COLORS.borderGlass}`,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 18, fontWeight: 700, color: "white",
-                }}>
-                  {pmInfo?.avatar || "PM"}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => pmAvatarInputRef.current?.click()}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setShowAccountModal(true);
+                  }}
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: "50%",
+                    background: GRADIENTS.accent,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "white",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    overflow: "hidden",
+                  }}
+                  aria-label="Update profile picture"
+                >
+                  {pmInfo?.profilePictureUrl ? (
+                    <img
+                      src={pmInfo.profilePictureUrl}
+                      alt="Profile"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    pmInfo?.avatar || "PM"
+                  )}
+                </button>
                 <div>
                   <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
                     {pmInfo?.name || "Project Manager"}
@@ -939,15 +1025,30 @@ const PMHome = () => {
               <div style={{
                 width: 40, height: 40, borderRadius: "50%", background: GRADIENTS.accent,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 700, color: "white", cursor: "pointer",
+                fontWeight: 700, color: "white", cursor: "pointer", overflow: "hidden",
               }}>
                 <button
                   type="button"
-                  onClick={() => setShowAccountModal(true)}
+                  onClick={() => pmAvatarInputRef.current?.click()}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setShowAccountModal(true);
+                  }}
                   style={{ border: "none", background: "transparent", padding: 0, margin: 0, width: "100%", height: "100%", cursor: "pointer", color: "inherit" }}
-                  aria-label="Open profile"
+                  aria-label="Update profile picture"
                 >
-                  {pmInfo?.avatar || "PM"}
+                  {pmInfo?.profilePictureUrl ? (
+                    <img
+                      src={pmInfo.profilePictureUrl}
+                      alt="Profile"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    pmInfo?.avatar || "PM"
+                  )}
                 </button>
               </div>
             </div>
@@ -1004,6 +1105,43 @@ const PMHome = () => {
         )}
 
         <AccountModal open={showAccountModal} onClose={() => setShowAccountModal(false)} />
+        <input
+          ref={pmAvatarInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+              const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error("Failed to read file"));
+                reader.readAsDataURL(file);
+              });
+              const res = await pmApi.updateMe({
+                profilePicture: {
+                  name: file.name,
+                  type: file.type,
+                  dataUrl,
+                },
+              });
+              const nextProfileData = res?.profile?.profile_data || {};
+              const nextUrl =
+                nextProfileData.profilePictureUrl ||
+                nextProfileData.profile_picture_url ||
+                null;
+              if (nextUrl) {
+                setPmInfo((prev) => prev ? { ...prev, profilePictureUrl: nextUrl } : prev);
+              }
+            } catch (err) {
+              setLoadError(err?.message || "Failed to upload profile picture");
+            } finally {
+              event.target.value = "";
+            }
+          }}
+        />
       </div>
     </>
   );

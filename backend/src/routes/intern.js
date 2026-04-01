@@ -32,6 +32,40 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const IST_OFFSET_MINUTES = 330;
+const ALLOW_DAILY_LOG_BACKFILL = String(process.env.ALLOW_DAILY_LOG_BACKFILL || "").toLowerCase() === "true";
+const MAX_DAILY_LOG_BACKFILL_DAYS = Number(process.env.MAX_DAILY_LOG_BACKFILL_DAYS || 180);
+const DAILY_LOG_BACKFILL_EMAILS = String(process.env.DAILY_LOG_BACKFILL_EMAILS || "")
+  .split(",")
+  .map((e) => String(e || "").trim().toLowerCase())
+  .filter(Boolean);
+
+function addDaysToIsoDate(isoDate, days) {
+  if (!isIsoDateString(isoDate)) return null;
+  const base = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) return null;
+  base.setUTCDate(base.getUTCDate() + Number(days || 0));
+  return base.toISOString().slice(0, 10);
+}
+
+function istDateTimeToUtcMs(isoDate, hour = 0, minute = 0, second = 0) {
+  if (!isIsoDateString(isoDate)) return null;
+  const [yyyy, mm, dd] = String(isoDate).split("-").map((p) => Number(p));
+  if (!yyyy || !mm || !dd) return null;
+  const utcMs = Date.UTC(yyyy, mm - 1, dd, hour, minute, second);
+  return utcMs - IST_OFFSET_MINUTES * 60 * 1000;
+}
+
+function isWeeklyReportLate({ periodStart, submittedAt }) {
+  if (!isIsoDateString(periodStart) || !submittedAt) return false;
+  const friday = addDaysToIsoDate(periodStart, 4);
+  if (!friday) return false;
+  const dueUtcMs = istDateTimeToUtcMs(friday, 23, 59, 59);
+  const submittedUtcMs = new Date(submittedAt).getTime();
+  if (!Number.isFinite(dueUtcMs) || !Number.isFinite(submittedUtcMs)) return false;
+  return submittedUtcMs > dueUtcMs;
+}
+
 const INTERN_DOCUMENTS_SELECT = "id,intern_profile_id,document_type,title,filename,mime_type,file_path,file_url,metadata,created_at,updated_at";
 
 function toClientInternDocument(row) {
@@ -178,6 +212,30 @@ function createInternRouter() {
       const profile = rows?.[0];
       if (!profile) throw httpError(404, "Intern profile not found", true);
 
+      let approvedIntern = null;
+      try {
+        const approvedRows = await restSelect({
+          table: "approved_interns",
+          select: "id,intern_id,application_id,profile_id,start_date,end_date,department,mentor,stipend,status,approved_by,approved_at,updated_at,override_reason,override_at",
+          filters: { profile_id: `eq.${internId}`, limit: 1 },
+          accessToken: null,
+          useServiceRole: true,
+        });
+        approvedIntern = approvedRows?.[0] || null;
+      } catch {
+        approvedIntern = null;
+      }
+
+      if (approvedIntern) {
+        profile.start_date = approvedIntern.start_date || null;
+        profile.end_date = approvedIntern.end_date || null;
+        profile.department = approvedIntern.department || null;
+        profile.mentor = approvedIntern.mentor || null;
+        profile.stipend = approvedIntern.stipend ?? null;
+        profile.approved_intern_status = approvedIntern.status || null;
+        profile.approved_intern = approvedIntern;
+      }
+
       res.status(200).json({ success: true, profile });
     } catch (err) {
       next(err);
@@ -253,7 +311,23 @@ function createInternRouter() {
         }
       }
 
-      if (hasProfileDataPatch) patch.profile_data = cleanedProfileData;
+      if (hasProfileDataPatch) {
+        let existingProfileData = {};
+        try {
+          const existingRows = await restSelect({
+            table: "profiles",
+            select: "profile_data",
+            filters: { id: `eq.${internId}`, limit: 1 },
+            accessToken: null,
+            useServiceRole: true,
+          });
+          const raw = existingRows?.[0]?.profile_data;
+          if (raw && typeof raw === "object") existingProfileData = raw;
+        } catch {
+          existingProfileData = {};
+        }
+        patch.profile_data = { ...existingProfileData, ...cleanedProfileData };
+      }
       if (profileCompleted !== undefined) patch.profile_completed = !!profileCompleted;
 
       let updated;
@@ -287,6 +361,12 @@ function createInternRouter() {
         if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "profiles", action: "update", internId });
         io.to("role:hr").emit("itp:changed", { entity: "profiles", action: "update", internId });
       }
+      if (io) {
+        io.emit("itp:changed", { type: "profile_updated", profileId: internId });
+        io.to("role:hr").emit("itp:changed", { type: "profile_updated", profileId: internId });
+        io.to("role:pm").emit("itp:changed", { type: "profile_updated", profileId: internId });
+        io.to("role:admin").emit("itp:changed", { type: "profile_updated", profileId: internId });
+      }
 
       // Notify PM + HR when intern completes profile.
       if (io && profileCompleted === true && prevCompleted === false) {
@@ -313,7 +393,36 @@ function createInternRouter() {
         }
       }
 
-      res.status(200).json({ success: true, profile: updated?.[0] || updated });
+      const updatedProfile = updated?.[0] || updated;
+
+      if (profileData !== undefined && patch.profile_data) {
+        const startDate = patch.profile_data.startDate || patch.profile_data.start_date || null;
+        const endDate = patch.profile_data.endDate || patch.profile_data.end_date || null;
+        if (startDate && endDate && isIsoDateString(startDate) && isIsoDateString(endDate)) {
+          const approvedRows = await restSelect({
+            table: "approved_interns",
+            select: "id,profile_id",
+            filters: { profile_id: `eq.${internId}`, limit: 1 },
+            accessToken: null,
+            useServiceRole: true,
+          }).catch(() => []);
+          if (approvedRows?.[0]?.id) {
+            await restUpdate({
+              table: "approved_interns",
+              patch: {
+                start_date: startDate,
+                end_date: endDate,
+                updated_at: new Date().toISOString(),
+              },
+              matchQuery: { id: `eq.${approvedRows[0].id}` },
+              accessToken: null,
+              useServiceRole: true,
+            }).catch(() => {});
+          }
+        }
+      }
+
+      res.status(200).json({ success: true, profile: updatedProfile });
     } catch (err) {
       next(err);
     }
@@ -324,8 +433,8 @@ function createInternRouter() {
       const internId = req.auth.profile.id;
       const rows = await restSelect({
         table: "daily_logs",
-        select: "id,log_date,hours_worked,tasks,learnings,blockers,tasks_completed,status,reviewed_at,review_reason,created_at,updated_at",
-        filters: { intern_profile_id: `eq.${internId}`, order: "log_date.desc" },
+        select: "id,log_date,hours_worked,tasks,learnings,blockers,location,tasks_completed,status,reviewed_at,review_reason,created_at,updated_at",
+        filters: { intern_profile_id: `eq.${internId}`, order: "log_date.asc" },
         accessToken: null,
         useServiceRole: true,
       });
@@ -338,7 +447,7 @@ function createInternRouter() {
   router.post("/daily-logs", async (req, res, next) => {
     try {
       const internId = req.auth.profile.id;
-      const { date, logDate, hoursWorked, tasks, learnings, blockers } = req.body || {};
+      const { date, logDate, hoursWorked, tasks, learnings, blockers, location } = req.body || {};
       const actualDate = logDate || date;
       if (!actualDate) throw httpError(400, "logDate is required", true);
 
@@ -351,9 +460,25 @@ function createInternRouter() {
       const logMs = dateIsoToUtcMs(normalizedDate);
       if (todayMs == null || logMs == null) throw httpError(400, "Invalid logDate", true);
       const diffDays = Math.floor((todayMs - logMs) / 86400000);
+      const requesterEmail = String(req.auth?.profile?.email || "").toLowerCase();
       if (diffDays > 7) {
-        const oldest = utcMsToIsoDate(todayMs - 7 * 86400000) || today;
-        throw httpError(403, `Daily logs are editable for 7 days only. Oldest allowed date is ${oldest}.`, true);
+        const isImport = String(req.body?.source || "").toLowerCase() === "import";
+        if (!ALLOW_DAILY_LOG_BACKFILL || !isImport) {
+          const oldest = utcMsToIsoDate(todayMs - 7 * 86400000) || today;
+          throw httpError(403, `Daily logs are editable for 7 days only. Oldest allowed date is ${oldest}.`, true);
+        }
+        if (DAILY_LOG_BACKFILL_EMAILS.length) {
+          if (!DAILY_LOG_BACKFILL_EMAILS.includes(requesterEmail)) {
+            throw httpError(403, "Daily log backfill is not allowed for this account", true);
+          }
+        }
+        if (!Number.isFinite(MAX_DAILY_LOG_BACKFILL_DAYS) || MAX_DAILY_LOG_BACKFILL_DAYS <= 0) {
+          throw httpError(403, "Daily log backfill is disabled", true);
+        }
+        if (diffDays > MAX_DAILY_LOG_BACKFILL_DAYS) {
+          const oldest = utcMsToIsoDate(todayMs - MAX_DAILY_LOG_BACKFILL_DAYS * 86400000) || today;
+          throw httpError(403, `Daily log backfill is limited to ${MAX_DAILY_LOG_BACKFILL_DAYS} days. Oldest allowed date is ${oldest}.`, true);
+        }
       }
       if (!tasks || !learnings) throw httpError(400, "tasks and learnings are required", true);
 
@@ -363,6 +488,7 @@ function createInternRouter() {
         tasks: String(tasks || ""),
         learnings: String(learnings || ""),
         blockers: String(blockers || ""),
+        location: String(location || ""),
         tasks_completed: 1,
         status: "submitted",
         updated_at: new Date().toISOString(),
@@ -437,6 +563,8 @@ function createInternRouter() {
       if (io) {
         io.to(`user:${internId}`).emit("itp:changed", { entity: "daily_logs", action: "upsert" });
         if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "daily_logs", action: "upsert" });
+        io.to("role:hr").emit("itp:changed", { entity: "daily_logs", action: "upsert" });
+        io.to("role:admin").emit("itp:changed", { entity: "daily_logs", action: "upsert" });
       }
 
       if (io) {
@@ -469,6 +597,50 @@ function createInternRouter() {
     }
   });
 
+  router.delete("/daily-logs", async (req, res, next) => {
+    try {
+      const internId = req.auth.profile.id;
+      const startDate = String(req.query?.start || req.body?.start || "").trim();
+      const endDate = String(req.query?.end || req.body?.end || "").trim();
+      const isImport = String(req.query?.source || req.body?.source || "").toLowerCase() === "import";
+
+      if (!startDate || !endDate) throw httpError(400, "start and end dates are required", true);
+      if (!isIsoDateString(startDate) || !isIsoDateString(endDate)) {
+        throw httpError(400, "start and end must be in YYYY-MM-DD format", true);
+      }
+      if (endDate < startDate) throw httpError(400, "end must be on or after start", true);
+
+      const allowed =
+        (ALLOW_DAILY_LOG_BACKFILL && isImport);
+      if (!allowed) {
+        throw httpError(403, "Daily log delete is restricted to import backfill only", true);
+      }
+
+      await restDelete({
+        table: "daily_logs",
+        matchQuery: {
+          intern_profile_id: `eq.${internId}`,
+          and: `(log_date.gte.${startDate},log_date.lte.${endDate})`,
+        },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const io = req.app.get("io");
+      const pmId = req.auth.profile.pm_id;
+      if (io) {
+        io.to(`user:${internId}`).emit("itp:changed", { entity: "daily_logs", action: "delete" });
+        if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "daily_logs", action: "delete" });
+        io.to("role:hr").emit("itp:changed", { entity: "daily_logs", action: "delete" });
+        io.to("role:admin").emit("itp:changed", { entity: "daily_logs", action: "delete" });
+      }
+
+      res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get("/reports", async (req, res, next) => {
     try {
       const internId = req.auth.profile.id;
@@ -477,14 +649,14 @@ function createInternRouter() {
         rows = await restSelect({
           table: "reports",
           select:
-            "id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,created_at,updated_at,reviewer:reviewed_by(id,email,full_name,role)",
+            "id,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_by,reviewed_at,review_reason,review_score,created_at,updated_at,reviewer:reviewed_by(id,email,full_name,role)",
           filters: { intern_profile_id: `eq.${internId}`, order: "submitted_at.desc" },
           accessToken: null,
           useServiceRole: true,
         });
       } catch (err) {
         const msg = String(err?.message || "").toLowerCase();
-        if (!msg.includes("review_score") && !msg.includes("reviewer") && !msg.includes("reviewed_by")) throw err;
+        if (!msg.includes("review_score") && !msg.includes("reviewer") && !msg.includes("reviewed_by") && !msg.includes("is_late")) throw err;
         rows = await restSelect({
           table: "reports",
           select:
@@ -568,6 +740,9 @@ function createInternRouter() {
       if (!roles.length) throw httpError(400, "recipientRoles must include pm and/or hr", true);
       if (roles.includes("pm") && !pmId) throw httpError(400, "PM is not assigned yet", true);
 
+      const submittedAt = new Date().toISOString();
+      const isLate = reportType === "weekly" ? isWeeklyReportLate({ periodStart, submittedAt }) : false;
+
       const row = {
         intern_profile_id: internId,
         pm_profile_id: pmId || null,
@@ -582,9 +757,10 @@ function createInternRouter() {
         summary: String(summary || ""),
         data: data || {},
         status: "pending",
-        submitted_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        submitted_at: submittedAt,
+        is_late: isLate,
+        created_at: submittedAt,
+        updated_at: submittedAt,
       };
 
       let inserted;
@@ -597,10 +773,26 @@ function createInternRouter() {
         });
       } catch (err) {
         const parsedTotal = row.total_hours;
-        if (!Number.isInteger(parsedTotal) && /integer/i.test(String(err.message || ""))) {
+        const message = String(err.message || "");
+        const missingLate = /is_late/i.test(message);
+        const needsInteger = !Number.isInteger(parsedTotal) && /integer/i.test(message);
+        const baseRow = missingLate ? (() => {
+          const clone = { ...row };
+          delete clone.is_late;
+          return clone;
+        })() : row;
+
+        if (needsInteger) {
           inserted = await restInsert({
             table: "reports",
-            rows: { ...row, total_hours: Math.round(parsedTotal) },
+            rows: { ...baseRow, total_hours: Math.round(parsedTotal) },
+            accessToken: null,
+            useServiceRole: true,
+          });
+        } else if (missingLate) {
+          inserted = await restInsert({
+            table: "reports",
+            rows: baseRow,
             accessToken: null,
             useServiceRole: true,
           });
@@ -614,6 +806,7 @@ function createInternRouter() {
         io.to(`user:${internId}`).emit("itp:changed", { entity: "reports", action: "insert" });
         if (pmId && roles.includes("pm")) io.to(`user:${pmId}`).emit("itp:changed", { entity: "reports", action: "insert" });
         if (roles.includes("hr")) io.to("role:hr").emit("itp:changed", { entity: "reports", action: "insert" });
+        io.to("role:admin").emit("itp:changed", { entity: "reports", action: "insert" });
       }
 
       if (io) {
@@ -868,7 +1061,26 @@ function createInternRouter() {
       const tnaSheetUrl = links?.tna_sheet_url || "";
       if (!String(tnaSheetUrl || "").trim()) throw httpError(400, "No TNA Sheet URL saved yet.", true);
 
-      const { items } = await syncTnaFromPublicGoogle({ tnaSheetUrl });
+      let items = [];
+      try {
+        const res = await syncTnaFromPublicGoogle({ tnaSheetUrl });
+        items = res?.items || [];
+      } catch (err) {
+        const status = err?.status || err?.cause?.status;
+        const message = String(err?.message || "");
+        const looksPrivate =
+          status === 401 ||
+          status === 403 ||
+          message.toLowerCase().includes("cannot fetch the google sheet") ||
+          message.toLowerCase().includes("not public") ||
+          message.toLowerCase().includes("sign in");
+
+        if (!looksPrivate || !isGoogleSyncEnabled()) throw err;
+
+        const { syncTnaFromGoogle } = loadGoogleSync();
+        const res = await syncTnaFromGoogle({ tnaSheetUrl });
+        items = res?.items || [];
+      }
 
       await restDelete({
         table: "tna_items",

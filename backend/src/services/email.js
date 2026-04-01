@@ -11,6 +11,9 @@ function normalizeBase64Content(dataUrlOrBase64) {
 function createEmailService() {
   const rawEmailUser = process.env.EMAIL_USER;
   const rawEmailPass = process.env.EMAIL_PASS;
+  const softFailEmail =
+    String(process.env.EMAIL_SOFT_FAIL || "").toLowerCase() === "true" ||
+    String(process.env.NODE_ENV || "").toLowerCase() !== "production";
 
   const EMAIL_USER = String(rawEmailUser || "").trim();
   const EMAIL_PASS = String(rawEmailPass || "")
@@ -32,6 +35,10 @@ function createEmailService() {
     );
 
     async function sendEmail() {
+      if (softFailEmail) {
+        console.warn("[email] Email disabled; skipping sendEmail.");
+        return { skipped: true };
+      }
       throw httpError(
         500,
         "Email service not configured on server. Set EMAIL_USER and EMAIL_PASS in backend/.env (Gmail App Password).",
@@ -84,6 +91,10 @@ function createEmailService() {
 
   async function sendEmail({ to, cc, bcc, subject, html, attachments }) {
     if (verifyError) {
+      if (softFailEmail) {
+        console.warn("[email] Email verification failed; skipping sendEmail.");
+        return { skipped: true };
+      }
       throw httpError(502, `Email send failed: ${toProviderHelpMessage(verifyError)}`, true);
     }
 

@@ -31,6 +31,7 @@ const InternApplicationForm = () => {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [resumeFile, setResumeFile] = useState(null);
+  const [resumeFileDataUrl, setResumeFileDataUrl] = useState('');
   const isValidIsoDate = (value) => {
     const raw = String(value || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
@@ -109,16 +110,18 @@ const InternApplicationForm = () => {
       reader.readAsDataURL(file);
     });
 
-  const handleResumeFileChange = (e) => {
+  const handleResumeFileChange = async (e) => {
     const file = e.target.files?.[0] || null;
     if (!file) {
       setResumeFile(null);
+      setResumeFileDataUrl('');
       return;
     }
 
     if (!isValidResumeFile(file)) {
       setError('Resume must be a PDF, DOC, or DOCX file.');
       setResumeFile(null);
+      setResumeFileDataUrl('');
       e.target.value = '';
       return;
     }
@@ -126,12 +129,20 @@ const InternApplicationForm = () => {
     if (file.size > MAX_RESUME_FILE_SIZE_BYTES) {
       setError('Resume file is too large. Please upload a file up to 5 MB.');
       setResumeFile(null);
+      setResumeFileDataUrl('');
       e.target.value = '';
       return;
     }
 
     setError('');
     setResumeFile(file);
+    try {
+      const dataUrl = await toDataUrl(file);
+      setResumeFileDataUrl(String(dataUrl || ''));
+    } catch (err) {
+      console.error('Failed to read resume file:', err);
+      setResumeFileDataUrl('');
+    }
   };
 
   const validateStep = (currentStep) => {
@@ -654,6 +665,44 @@ const InternApplicationForm = () => {
       yPos += 26;
     }
 
+    if (resumeFile && !formData.resumeLink) {
+      checkNewPage();
+
+      doc.setFillColor(255, 245, 245);
+      doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 22, 2, 2, 'F');
+
+      doc.setDrawColor(...colors.red);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 22, 2, 2, 'S');
+
+      doc.setTextColor(...colors.red);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RESUME FILE *', margin + 6, yPos + 7);
+
+      doc.setTextColor(...colors.darkText);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      const resumeMeta = `${resumeFile.name} (${(resumeFile.size / (1024 * 1024)).toFixed(2)} MB)`;
+      const wrappedResumeMeta = doc.splitTextToSize(resumeMeta, pageWidth - 2 * margin - 12);
+      doc.text(wrappedResumeMeta, margin + 6, yPos + 14);
+
+      if (!formData.resumeLink && resumeFileDataUrl) {
+        doc.setTextColor(...colors.gradientEnd);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        const linkLabel = 'Open uploaded resume';
+        const linkY = yPos + 20;
+        doc.textWithLink(linkLabel, margin + 6, linkY, { url: resumeFileDataUrl });
+        const linkWidth = doc.getTextWidth(linkLabel);
+        doc.setDrawColor(...colors.gradientEnd);
+        doc.setLineWidth(0.4);
+        doc.line(margin + 6, linkY + 0.5, margin + 6 + linkWidth, linkY + 0.5);
+      }
+
+      yPos += 30;
+    }
+
     // Footer
     const totalPages = doc.internal.getNumberOfPages();
     
@@ -692,8 +741,51 @@ const InternApplicationForm = () => {
       );
     }
 
-    const pdfBase64 = doc.output('dataurlstring');
-    return pdfBase64;
+    return doc;
+  };
+
+  const arrayBufferToDataUrl = (buffer, mimeType = 'application/pdf') => {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    return `data:${mimeType};base64,${base64}`;
+  };
+
+  const isPdfFile = (file) => {
+    if (!file) return false;
+    const name = String(file.name || '').toLowerCase();
+    return file.type === 'application/pdf' || name.endsWith('.pdf');
+  };
+
+  const buildApplicationPdfBase64 = async () => {
+    const doc = generateApplicationPDF();
+    const appPdfBytes = doc.output('arraybuffer');
+
+    if (resumeFile && isPdfFile(resumeFile)) {
+      try {
+        const resumeBytes = await resumeFile.arrayBuffer();
+        const { PDFDocument } = await import('pdf-lib');
+        const mergedPdf = await PDFDocument.create();
+        const appPdf = await PDFDocument.load(appPdfBytes);
+        const appPages = await mergedPdf.copyPages(appPdf, appPdf.getPageIndices());
+        appPages.forEach((p) => mergedPdf.addPage(p));
+
+        const resumePdf = await PDFDocument.load(resumeBytes);
+        const resumePages = await mergedPdf.copyPages(resumePdf, resumePdf.getPageIndices());
+        resumePages.forEach((p) => mergedPdf.addPage(p));
+
+        const mergedBytes = await mergedPdf.save();
+        return arrayBufferToDataUrl(mergedBytes, 'application/pdf');
+      } catch (err) {
+        console.error('Failed to merge resume PDF:', err);
+      }
+    }
+
+    return arrayBufferToDataUrl(appPdfBytes, 'application/pdf');
   };
 
   const handleSubmit = async (e) => {
@@ -705,7 +797,7 @@ const InternApplicationForm = () => {
     setError('');
 
     try {
-      const pdfBase64 = generateApplicationPDF();
+      const pdfBase64 = await buildApplicationPdfBase64();
       const resumeLinkValue = String(formData.resumeLink || '').trim();
       let resolvedResumeLink = resumeLinkValue;
       const preferredDomain = String(formData.internshipDomain || '').trim();

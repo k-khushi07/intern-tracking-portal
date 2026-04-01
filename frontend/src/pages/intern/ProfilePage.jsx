@@ -4,7 +4,7 @@ import {
   User, Mail, Phone, MapPin, GraduationCap, Briefcase,
   Calendar, Heart, Shield, Edit3, Save, X, Check,
   Camera, ChevronRight, AlertCircle, Building, Clock,
-  BookOpen, Users, FileText, Sparkles
+  BookOpen, Users, FileText, Sparkles, Upload
 } from "lucide-react";
 import { internApi } from "../../lib/apiClient";
 
@@ -32,42 +32,6 @@ const inputStyle = {
   boxSizing: "border-box",
   fontFamily: "'DM Sans', sans-serif",
   transition: "border-color 0.2s, box-shadow 0.2s",
-};
-
-// ==================== SAMPLE DATA ====================
-const sampleIntern = {
-  id: 1,
-  fullName: "Shivam Kumar",
-  email: "shivam.kumar@company.com",
-  phone: "+91 98765 43210",
-  degree: "B.Tech Computer Science",
-  dob: "2001-05-15",
-  pmCode: "PM-2024-001",
-  profile: {
-    bloodGroup: "O+",
-    address: "123 Tech Park, Sector 62",
-    city: "Noida",
-    state: "Uttar Pradesh",
-    pincode: "201301",
-    emergencyContactName: "Rajesh Kumar",
-    emergencyRelation: "Father",
-    emergencyContactPhone: "+91 98765 12345",
-    collegeName: "Delhi Technological University",
-    department: "Computer Science & Engineering",
-    semester: "6th Semester",
-    guideName: "Dr. Priya Sharma",
-    guideEmail: "priya.sharma@dtu.ac.in",
-    guidePhone: "+91 98765 67890",
-    internshipDuration: "6 Months",
-    startDate: "2024-01-15",
-    endDate: "2024-07-15",
-    workMode: "Hybrid",
-    expectedOutcome: "Full Stack Development Project",
-    skills: ["React", "Node.js", "MongoDB", "TypeScript"],
-    linkedIn: "linkedin.com/in/shivamkumar",
-    github: "github.com/shivamkumar",
-    bio: "Passionate about building scalable web applications and learning new technologies.",
-  }
 };
 
 // ==================== UI COMPONENTS ====================
@@ -343,44 +307,102 @@ const Toast = ({ message, type, onClose }) => {
 
 // ==================== MAIN COMPONENT ====================
 function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUpdated }) {
-  const [intern, setIntern] = useState(propIntern || sampleIntern);
+  const [intern, setIntern] = useState(propIntern || null);
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData] = useState({});
   const [toast, setToast] = useState(null);
   const [newSkill, setNewSkill] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   React.useEffect(() => {
     if (propIntern) setIntern(propIntern);
   }, [propIntern]);
 
-  const profile = intern?.profile || {};
-  const profilePictureUrl = profile?.profilePictureUrl || profile?.profile_picture_url || null;
-  const resumeUrl = profile?.resumeUrl || profile?.resume_url || null;
+  if (!intern) {
+    return (
+      <div style={{ color: "rgba(255,255,255,0.7)", padding: 24 }}>
+        Loading profile...
+      </div>
+    );
+  }
 
-  // Calculate internship progress
-  const calculateProgress = () => {
-    if (!profile.startDate || !profile.endDate) return 0;
-    const start = new Date(profile.startDate);
-    const end = new Date(profile.endDate);
-    const now = new Date();
-    const total = end - start;
-    const elapsed = now - start;
-    return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+  const profileData = intern?.profile_data || intern?.profileData || {};
+  const nestedProfileData = intern?.profile?.profile_data || {};
+  const legacyProfile = intern?.profile || {};
+  const profile = Object.keys(profileData).length ? profileData : legacyProfile;
+  const profilePictureUrl =
+    profileData.profilePictureUrl ||
+    profileData.profilePicturUrl ||
+    profileData.profile_picture_url ||
+    nestedProfileData.profilePictureUrl ||
+    legacyProfile.profilePictureUrl ||
+    legacyProfile.profile_picture_url ||
+    intern?.profilePictureUrl ||
+    intern?.profile_picture_url ||
+    null;
+  const resumeUrl =
+    profileData.resumeUrl ||
+    profileData.resume_url ||
+    nestedProfileData.resumeUrl ||
+    legacyProfile.resumeUrl ||
+    legacyProfile.resume_url ||
+    intern?.resumeUrl ||
+    intern?.resume_url ||
+    null;
+
+  const pickValue = (...values) => {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return "";
   };
 
-  const progress = calculateProgress();
-
-  // Calculate days remaining
-  const getDaysRemaining = () => {
-    if (!profile.endDate) return null;
-    const end = new Date(profile.endDate);
-    const now = new Date();
-    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-    return diff > 0 ? diff : 0;
+  const parseDateOnly = (value) => {
+    if (!value) return null;
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return null;
+    dt.setHours(0, 0, 0, 0);
+    return dt;
   };
 
-  const daysRemaining = getDaysRemaining();
+  const buildAddressLine = ({ address, city, state, pincode }) => {
+    const parts = [];
+    if (address) parts.push(String(address).trim());
+    if (city) parts.push(String(city).trim());
+    if (state) parts.push(String(state).trim());
+    const base = parts.filter(Boolean).join(", ");
+    const pin = String(pincode || "").trim();
+    if (pin) return base ? `${base} - ${pin}` : pin;
+    return base;
+  };
+
+  const buildLifecycleBadge = ({ start, end, startLabel, profileStatus, overrideReason }) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (overrideReason && profileStatus === "active") {
+      return { label: "Manually Activated by Admin", color: "#60a5fa", outlined: true };
+    }
+    if (overrideReason && profileStatus === "inactive") {
+      return { label: "Manually Deactivated by Admin", color: "#9ca3af", outlined: false };
+    }
+    if (start && today < start) {
+      return { label: `Pending — starts ${startLabel || ""}`.trim(), color: "#f97316", outlined: false };
+    }
+    if (end) {
+      const graceEnd = new Date(end);
+      graceEnd.setDate(graceEnd.getDate() + 7);
+      if (today <= end) {
+        return { label: "Active", color: "#22c55e", outlined: false };
+      }
+      if (today <= graceEnd) {
+        const daysLeft = Math.max(0, Math.ceil((graceEnd - today) / 86400000));
+        return { label: `Grace Period — ${daysLeft} days left`, color: "#facc15", outlined: false };
+      }
+      return { label: "Inactive", color: "#ef4444", outlined: false };
+    }
+    return { label: "Active", color: "#22c55e", outlined: false };
+  };
 
   // Start editing a section
   const startEditing = useCallback((section) => {
@@ -403,7 +425,8 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
     setToast(null);
 
     try {
-      const nextProfileData = { ...(editData?.profile || {}) };
+      const baseProfileData = Object.keys(profileData || {}).length ? profileData : profile;
+      const nextProfileData = { ...baseProfileData, ...(editData?.profile || {}) };
 
       if (editData?.fullName !== undefined) nextProfileData.fullName = editData.fullName;
       if (editData?.email !== undefined) nextProfileData.email = editData.email;
@@ -440,7 +463,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
     } finally {
       setIsSaving(false);
     }
-  }, [editData, editingSection, intern, isSaving, onProfileUpdated]);
+  }, [editData, editingSection, intern, isSaving, onProfileUpdated, profileData, profile]);
 
   // Update edit data
   const updateField = useCallback((field, value) => {
@@ -453,6 +476,96 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
       profile: { ...prev.profile, [field]: value }
     }));
   }, []);
+
+  const handleProfilePhotoUpload = useCallback(async (file) => {
+    if (!file) return;
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+
+      const baseProfileData = Object.keys(profileData || {}).length ? profileData : profile;
+      const nextProfileData = { ...baseProfileData };
+      delete nextProfileData.profilePicture;
+      delete nextProfileData.resume;
+
+      const res = await internApi.updateMe({
+        profileData: nextProfileData,
+        fileUploads: {
+          profilePicture: {
+            name: file.name,
+            type: file.type,
+            dataUrl,
+          },
+        },
+      });
+
+      const updated = res?.profile;
+      const updatedProfileData =
+        updated && typeof updated.profile_data === "object" ? updated.profile_data : nextProfileData;
+
+      setIntern((prev) => ({
+        ...prev,
+        profile_data: updatedProfileData,
+        profileData: updatedProfileData,
+        profile: updatedProfileData,
+      }));
+
+      setToast({ message: "Profile picture updated.", type: "success" });
+      onProfileUpdated?.();
+    } catch (err) {
+      console.error("Failed to upload profile picture:", err);
+      setToast({ message: err?.message || "Failed to upload profile picture.", type: "error" });
+    }
+  }, [profileData, onProfileUpdated, profile]);
+
+  const handleResumeUpload = useCallback(async (file) => {
+    if (!file) return;
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+
+      const baseProfileData = Object.keys(profileData || {}).length ? profileData : profile;
+      const nextProfileData = { ...baseProfileData };
+      delete nextProfileData.profilePicture;
+      delete nextProfileData.resume;
+
+      const res = await internApi.updateMe({
+        profileData: nextProfileData,
+        fileUploads: {
+          resume: {
+            name: file.name,
+            type: file.type,
+            dataUrl,
+          },
+        },
+      });
+
+      const updated = res?.profile;
+      const updatedProfileData =
+        updated && typeof updated.profile_data === "object" ? updated.profile_data : nextProfileData;
+
+      setIntern((prev) => ({
+        ...prev,
+        profile_data: updatedProfileData,
+        profileData: updatedProfileData,
+        profile: updatedProfileData,
+      }));
+
+      setToast({ message: "Resume updated.", type: "success" });
+      onProfileUpdated?.();
+    } catch (err) {
+      console.error("Failed to upload resume:", err);
+      setToast({ message: err?.message || "Failed to upload resume.", type: "error" });
+    }
+  }, [profileData, onProfileUpdated, profile]);
 
   // Add skill
   const addSkill = useCallback(() => {
@@ -482,6 +595,226 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
   const isEditing = (section) => editingSection === section;
   const currentData = editingSection ? editData : intern;
   const currentProfile = editingSection ? editData.profile : profile;
+  const currentProfileData = currentData?.profile_data || currentData?.profileData || currentProfile || {};
+  const currentNestedProfileData = currentData?.profile?.profile_data || {};
+  const currentLegacyProfile = currentData?.profile || {};
+
+  const fullName = pickValue(
+    currentProfileData.fullName,
+    currentProfileData.full_name,
+    currentNestedProfileData.fullName,
+    currentLegacyProfile.fullName,
+    currentData?.fullName,
+    currentData?.full_name,
+    currentData?.name
+  );
+  const email = pickValue(
+    currentProfileData.email,
+    currentNestedProfileData.email,
+    currentLegacyProfile.email,
+    currentData?.email
+  );
+  const phone = pickValue(
+    currentProfileData.phone,
+    currentProfileData.phoneNumber,
+    currentProfileData.mobile,
+    currentProfileData.contactPhone,
+    currentProfileData.contact_number,
+    currentNestedProfileData.phone,
+    currentLegacyProfile.phone,
+    currentData?.phone
+  );
+  const dob = pickValue(
+    currentProfileData.dateOfBirth,
+    currentProfileData.dob,
+    currentProfileData.birthDate,
+    currentProfileData.birth_date,
+    currentNestedProfileData.dateOfBirth,
+    currentLegacyProfile.dob,
+    currentData?.dob
+  );
+  const degree = pickValue(
+    currentProfileData.degree,
+    currentProfileData.qualification,
+    currentNestedProfileData.degree,
+    currentLegacyProfile.degree,
+    currentData?.degree
+  );
+  const pmCode = pickValue(
+    currentProfileData.pmCode,
+    currentProfileData.pm_code,
+    currentNestedProfileData.pmCode,
+    currentLegacyProfile.pmCode,
+    currentData?.pmCode,
+    currentData?.pm_code
+  );
+  const bloodGroup = pickValue(
+    currentProfileData.bloodGroup,
+    currentNestedProfileData.bloodGroup,
+    currentLegacyProfile.bloodGroup
+  );
+  const gender = pickValue(
+    currentProfileData.gender,
+    currentProfileData.sex,
+    currentNestedProfileData.gender,
+    currentLegacyProfile.gender
+  );
+  const bio = pickValue(
+    currentProfileData.bio,
+    currentNestedProfileData.bio,
+    currentLegacyProfile.bio
+  );
+  const skills = pickValue(
+    currentProfileData.skills,
+    currentNestedProfileData.skills,
+    currentLegacyProfile.skills
+  );
+  const skillsList = Array.isArray(skills) ? skills : [];
+  const linkedIn = pickValue(
+    currentProfileData.linkedIn,
+    currentProfileData.linkedin,
+    currentNestedProfileData.linkedIn,
+    currentLegacyProfile.linkedIn
+  );
+  const github = pickValue(
+    currentProfileData.github,
+    currentNestedProfileData.github,
+    currentLegacyProfile.github
+  );
+  const address = pickValue(
+    currentProfileData.address,
+    currentNestedProfileData.address,
+    currentLegacyProfile.address
+  );
+  const city = pickValue(
+    currentProfileData.city,
+    currentNestedProfileData.city,
+    currentLegacyProfile.city
+  );
+  const state = pickValue(
+    currentProfileData.state,
+    currentNestedProfileData.state,
+    currentLegacyProfile.state
+  );
+  const pincode = pickValue(
+    currentProfileData.pincode,
+    currentProfileData.zip,
+    currentProfileData.postalCode,
+    currentNestedProfileData.pincode,
+    currentLegacyProfile.pincode
+  );
+  const fullAddress = buildAddressLine({ address, city, state, pincode });
+  const emergencyContactName = pickValue(
+    currentProfileData.emergencyContactName,
+    currentNestedProfileData.emergencyContactName,
+    currentLegacyProfile.emergencyContactName
+  );
+  const emergencyRelation = pickValue(
+    currentProfileData.emergencyRelation,
+    currentNestedProfileData.emergencyRelation,
+    currentLegacyProfile.emergencyRelation
+  );
+  const emergencyContactPhone = pickValue(
+    currentProfileData.emergencyContactPhone,
+    currentNestedProfileData.emergencyContactPhone,
+    currentLegacyProfile.emergencyContactPhone
+  );
+  const collegeName = pickValue(
+    currentProfileData.collegeName,
+    currentProfileData.college,
+    currentProfileData.university,
+    currentNestedProfileData.collegeName,
+    currentLegacyProfile.collegeName
+  );
+  const department = pickValue(
+    currentProfileData.department,
+    currentProfileData.domain,
+    currentProfileData.team,
+    currentNestedProfileData.department,
+    currentLegacyProfile.department
+  );
+  const semester = pickValue(
+    currentProfileData.semester,
+    currentNestedProfileData.semester,
+    currentLegacyProfile.semester
+  );
+  const guideName = pickValue(
+    currentProfileData.guideName,
+    currentNestedProfileData.guideName,
+    currentLegacyProfile.guideName
+  );
+  const guideEmail = pickValue(
+    currentProfileData.guideEmail,
+    currentNestedProfileData.guideEmail,
+    currentLegacyProfile.guideEmail
+  );
+  const internshipDuration = pickValue(
+    currentProfileData.internshipDuration,
+    currentNestedProfileData.internshipDuration,
+    currentLegacyProfile.internshipDuration
+  );
+  const startDate = pickValue(
+    currentProfileData.startDate,
+    currentProfileData.start_date,
+    currentProfileData.internshipStartDate,
+    currentNestedProfileData.startDate,
+    currentLegacyProfile.startDate
+  );
+  const endDate = pickValue(
+    currentProfileData.endDate,
+    currentProfileData.end_date,
+    currentProfileData.internshipEndDate,
+    currentNestedProfileData.endDate,
+    currentLegacyProfile.endDate
+  );
+  const overrideReason = pickValue(
+    intern?.approved_intern?.override_reason,
+    intern?.approved_intern?.overrideReason,
+    intern?.approvedIntern?.override_reason,
+    intern?.approvedIntern?.overrideReason
+  );
+  const normalizedProfileStatus = String(intern?.status || currentData?.status || "").trim().toLowerCase();
+  const lifecycleBadge = buildLifecycleBadge({
+    start: parseDateOnly(startDate),
+    end: parseDateOnly(endDate),
+    startLabel: startDate,
+    profileStatus: normalizedProfileStatus,
+    overrideReason,
+  });
+  const workMode = pickValue(
+    currentProfileData.workMode,
+    currentNestedProfileData.workMode,
+    currentLegacyProfile.workMode
+  );
+  const expectedOutcome = pickValue(
+    currentProfileData.expectedOutcome,
+    currentNestedProfileData.expectedOutcome,
+    currentLegacyProfile.expectedOutcome
+  );
+
+  // Calculate internship progress
+  const calculateProgress = () => {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const now = new Date();
+    const total = end - start;
+    const elapsed = now - start;
+    return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+  };
+
+  const progress = calculateProgress();
+
+  // Calculate days remaining
+  const getDaysRemaining = () => {
+    if (!endDate) return null;
+    const end = new Date(endDate);
+    const now = new Date();
+    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
+
+  const daysRemaining = getDaysRemaining();
 
   return (
     <div style={{ 
@@ -595,9 +928,6 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                 overflow: "hidden",
                 position: "relative",
               }}>
-                <span style={{ position: "relative", zIndex: 1 }}>
-                  {intern?.fullName?.split(" ").map(n => n[0]).join("") || "IN"}
-                </span>
                 {profilePictureUrl ? (
                   <img
                     src={profilePictureUrl}
@@ -607,9 +937,15 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                       e.currentTarget.style.display = "none";
                     }}
                   />
-                ) : null}
+                ) : (
+                  <span style={{ position: "relative", zIndex: 1 }}>
+                    {fullName?.split(" ").map(n => n[0]).join("") || "IN"}
+                  </span>
+                )}
               </div>
               <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
                 style={{
                   position: "absolute",
                   bottom: -4,
@@ -628,19 +964,49 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               >
                 <Camera size={14} />
               </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleProfilePhotoUpload(file);
+                  e.target.value = "";
+                }}
+              />
             </div>
 
             {/* Basic Info */}
             <div style={{ flex: 1, minWidth: 250 }}>
-              <h1 style={{ 
-                color: "white", 
-                margin: 0, 
-                fontSize: isMobile ? 26 : 32, 
-                fontFamily: "'Outfit', sans-serif", 
-                fontWeight: 700 
-              }}>
-                {intern?.fullName}
-              </h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <h1 style={{ 
+                  color: "white", 
+                  margin: 0, 
+                  fontSize: isMobile ? 26 : 32, 
+                  fontFamily: "'Outfit', sans-serif", 
+                  fontWeight: 700 
+                }}>
+                  {intern?.fullName}
+                </h1>
+                {lifecycleBadge?.label ? (
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      border: `1px solid ${lifecycleBadge.color}`,
+                      color: lifecycleBadge.color,
+                      background: lifecycleBadge.outlined ? "transparent" : `${lifecycleBadge.color}22`,
+                      letterSpacing: "0.2px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {lifecycleBadge.label}
+                  </span>
+                ) : null}
+              </div>
               <p style={{ 
                 color: COLORS.peachGlow, 
                 margin: "6px 0 0", 
@@ -711,7 +1077,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                   gap: 6
                 }}>
                   <Clock size={14} />
-                  {currentProfile.workMode || "Not set"}
+                  {workMode || "Not set"}
                 </div>
                 <div style={{
                   padding: "8px 14px",
@@ -725,7 +1091,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                   gap: 6
                 }}>
                   <Calendar size={14} />
-                  {currentProfile.internshipDuration || "Not set"}
+                  {internshipDuration || "Not set"}
                 </div>
               </div>
 
@@ -755,12 +1121,35 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                     Resume not uploaded yet.
                   </div>
                 )}
+                <label
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.28)",
+                    background: "rgba(0,0,0,0.18)",
+                    color: "white",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  <Upload size={16} /> Upload Resume
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    style={{ display: "none" }}
+                    onChange={(e) => handleResumeUpload(e.target.files?.[0])}
+                  />
+                </label>
               </div>
             </div>
           </div>
 
           {/* Progress Bar */}
-          {profile.startDate && profile.endDate && (
+          {startDate && endDate && (
             <div style={{ marginTop: 24, position: "relative", zIndex: 1 }}>
               <div style={{ 
                 display: "flex", 
@@ -794,7 +1183,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                   display: "flex",
                   justifyContent: "space-between"
                 }}>
-                  <span>Started: {new Date(profile.startDate).toLocaleDateString()}</span>
+                  <span>Started: {new Date(startDate).toLocaleDateString()}</span>
                   <span style={{ color: daysRemaining < 30 ? COLORS.warning : "rgba(255,255,255,0.6)" }}>
                     {daysRemaining} days remaining
                   </span>
@@ -814,13 +1203,13 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
           <StatCard 
             icon={<Calendar size={20} />} 
             label="Days Active" 
-            value={profile.startDate ? Math.floor((new Date() - new Date(profile.startDate)) / (1000 * 60 * 60 * 24)) : 0} 
+            value={startDate ? Math.floor((new Date() - new Date(startDate)) / (1000 * 60 * 60 * 24)) : 0} 
             color={COLORS.jungleTeal} 
           />
           <StatCard 
             icon={<BookOpen size={20} />} 
             label="Skills" 
-            value={currentProfile.skills?.length || 0} 
+            value={skillsList.length} 
             color={COLORS.peachGlow} 
           />
           <StatCard 
@@ -857,14 +1246,14 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
             }}>
               <InfoItem 
                 label="Full Name" 
-                value={currentData?.fullName}
+                value={fullName}
                 editable={isEditing("personal")}
                 editValue={editData?.fullName}
                 onChange={(v) => updateField("fullName", v)}
               />
               <InfoItem 
                 label="Date of Birth" 
-                value={currentData?.dob ? new Date(currentData.dob).toLocaleDateString() : null}
+                value={dob ? new Date(dob).toLocaleDateString() : null}
                 editable={isEditing("personal")}
                 editValue={editData?.dob}
                 onChange={(v) => updateField("dob", v)}
@@ -872,7 +1261,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Blood Group" 
-                value={currentProfile?.bloodGroup}
+                value={bloodGroup}
                 editable={isEditing("personal")}
                 editValue={editData?.profile?.bloodGroup}
                 onChange={(v) => updateProfileField("bloodGroup", v)}
@@ -880,8 +1269,17 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                 options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]}
               />
               <InfoItem 
+                label="Gender" 
+                value={gender}
+                editable={isEditing("personal")}
+                editValue={editData?.profile?.gender}
+                onChange={(v) => updateProfileField("gender", v)}
+                type="select"
+                options={["Female", "Male", "Other", "Prefer not to say"]}
+              />
+              <InfoItem 
                 label="Email" 
-                value={currentData?.email}
+                value={email}
                 editable={isEditing("personal")}
                 editValue={editData?.email}
                 onChange={(v) => updateField("email", v)}
@@ -889,7 +1287,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Phone" 
-                value={currentData?.phone}
+                value={phone}
                 editable={isEditing("personal")}
                 editValue={editData?.phone}
                 onChange={(v) => updateField("phone", v)}
@@ -897,7 +1295,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="PM Code" 
-                value={currentData?.pmCode}
+                value={pmCode}
                 editable={false}
               />
             </div>
@@ -916,7 +1314,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
             <div style={{ marginBottom: 20 }}>
               <InfoItem 
                 label="Bio" 
-                value={currentProfile?.bio}
+                value={bio}
                 editable={isEditing("skills")}
                 editValue={editData?.profile?.bio}
                 onChange={(v) => updateProfileField("bio", v)}
@@ -935,7 +1333,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                 Skills
               </label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {(isEditing("skills") ? editData?.profile?.skills : currentProfile?.skills)?.map(skill => (
+                {(isEditing("skills") ? editData?.profile?.skills : skillsList)?.map(skill => (
                   <SkillTag 
                     key={skill} 
                     skill={skill} 
@@ -985,14 +1383,14 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
             }}>
               <InfoItem 
                 label="LinkedIn" 
-                value={currentProfile?.linkedIn}
+                value={linkedIn}
                 editable={isEditing("skills")}
                 editValue={editData?.profile?.linkedIn}
                 onChange={(v) => updateProfileField("linkedIn", v)}
               />
               <InfoItem 
                 label="GitHub" 
-                value={currentProfile?.github}
+                value={github}
                 editable={isEditing("skills")}
                 editValue={editData?.profile?.github}
                 onChange={(v) => updateProfileField("github", v)}
@@ -1010,42 +1408,50 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
             onSave={saveChanges}
             onCancel={cancelEditing}
           >
-            <div style={{ 
-              display: "grid", 
-              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", 
-              gap: 20 
-            }}>
-              <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+            {isEditing("address") ? (
+              <div style={{ 
+                display: "grid", 
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", 
+                gap: 20 
+              }}>
+                <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+                  <InfoItem 
+                    label="Street Address" 
+                    value={address}
+                    editable
+                    editValue={editData?.profile?.address}
+                    onChange={(v) => updateProfileField("address", v)}
+                  />
+                </div>
                 <InfoItem 
-                  label="Street Address" 
-                  value={currentProfile?.address}
-                  editable={isEditing("address")}
-                  editValue={editData?.profile?.address}
-                  onChange={(v) => updateProfileField("address", v)}
+                  label="City" 
+                  value={city}
+                  editable
+                  editValue={editData?.profile?.city}
+                  onChange={(v) => updateProfileField("city", v)}
+                />
+                <InfoItem 
+                  label="State" 
+                  value={state}
+                  editable
+                  editValue={editData?.profile?.state}
+                  onChange={(v) => updateProfileField("state", v)}
+                />
+                <InfoItem 
+                  label="Pincode" 
+                  value={pincode}
+                  editable
+                  editValue={editData?.profile?.pincode}
+                  onChange={(v) => updateProfileField("pincode", v)}
                 />
               </div>
-              <InfoItem 
-                label="City" 
-                value={currentProfile?.city}
-                editable={isEditing("address")}
-                editValue={editData?.profile?.city}
-                onChange={(v) => updateProfileField("city", v)}
+            ) : (
+              <InfoItem
+                label="Address"
+                value={fullAddress}
+                editable={false}
               />
-              <InfoItem 
-                label="State" 
-                value={currentProfile?.state}
-                editable={isEditing("address")}
-                editValue={editData?.profile?.state}
-                onChange={(v) => updateProfileField("state", v)}
-              />
-              <InfoItem 
-                label="Pincode" 
-                value={currentProfile?.pincode}
-                editable={isEditing("address")}
-                editValue={editData?.profile?.pincode}
-                onChange={(v) => updateProfileField("pincode", v)}
-              />
-            </div>
+            )}
           </ProfileSection>
 
           {/* Emergency Contact */}
@@ -1065,14 +1471,14 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
             }}>
               <InfoItem 
                 label="Contact Name" 
-                value={currentProfile?.emergencyContactName}
+                value={emergencyContactName}
                 editable={isEditing("emergency")}
                 editValue={editData?.profile?.emergencyContactName}
                 onChange={(v) => updateProfileField("emergencyContactName", v)}
               />
               <InfoItem 
                 label="Relation" 
-                value={currentProfile?.emergencyRelation}
+                value={emergencyRelation}
                 editable={isEditing("emergency")}
                 editValue={editData?.profile?.emergencyRelation}
                 onChange={(v) => updateProfileField("emergencyRelation", v)}
@@ -1081,7 +1487,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Phone" 
-                value={currentProfile?.emergencyContactPhone}
+                value={emergencyContactPhone}
                 editable={isEditing("emergency")}
                 editValue={editData?.profile?.emergencyContactPhone}
                 onChange={(v) => updateProfileField("emergencyContactPhone", v)}
@@ -1108,7 +1514,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
                 <InfoItem 
                   label="College / University" 
-                  value={currentProfile?.collegeName}
+                  value={collegeName}
                   editable={isEditing("academic")}
                   editValue={editData?.profile?.collegeName}
                   onChange={(v) => updateProfileField("collegeName", v)}
@@ -1116,28 +1522,35 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               </div>
               <InfoItem 
                 label="Department" 
-                value={currentProfile?.department}
+                value={department}
                 editable={isEditing("academic")}
                 editValue={editData?.profile?.department}
                 onChange={(v) => updateProfileField("department", v)}
               />
               <InfoItem 
+                label="Degree" 
+                value={degree}
+                editable={isEditing("academic")}
+                editValue={editData?.profile?.degree}
+                onChange={(v) => updateProfileField("degree", v)}
+              />
+              <InfoItem 
                 label="Semester" 
-                value={currentProfile?.semester}
+                value={semester}
                 editable={isEditing("academic")}
                 editValue={editData?.profile?.semester}
                 onChange={(v) => updateProfileField("semester", v)}
               />
               <InfoItem 
                 label="Faculty Guide" 
-                value={currentProfile?.guideName}
+                value={guideName}
                 editable={isEditing("academic")}
                 editValue={editData?.profile?.guideName}
                 onChange={(v) => updateProfileField("guideName", v)}
               />
               <InfoItem 
                 label="Guide Email" 
-                value={currentProfile?.guideEmail}
+                value={guideEmail}
                 editable={isEditing("academic")}
                 editValue={editData?.profile?.guideEmail}
                 onChange={(v) => updateProfileField("guideEmail", v)}
@@ -1163,7 +1576,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
             }}>
               <InfoItem 
                 label="Duration" 
-                value={currentProfile?.internshipDuration}
+                value={internshipDuration}
                 editable={isEditing("internship")}
                 editValue={editData?.profile?.internshipDuration}
                 onChange={(v) => updateProfileField("internshipDuration", v)}
@@ -1172,7 +1585,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Start Date" 
-                value={currentProfile?.startDate ? new Date(currentProfile.startDate).toLocaleDateString() : null}
+                value={startDate ? new Date(startDate).toLocaleDateString() : null}
                 editable={isEditing("internship")}
                 editValue={editData?.profile?.startDate}
                 onChange={(v) => updateProfileField("startDate", v)}
@@ -1180,7 +1593,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="End Date" 
-                value={currentProfile?.endDate ? new Date(currentProfile.endDate).toLocaleDateString() : null}
+                value={endDate ? new Date(endDate).toLocaleDateString() : null}
                 editable={isEditing("internship")}
                 editValue={editData?.profile?.endDate}
                 onChange={(v) => updateProfileField("endDate", v)}
@@ -1188,7 +1601,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Work Mode" 
-                value={currentProfile?.workMode}
+                value={workMode}
                 editable={isEditing("internship")}
                 editValue={editData?.profile?.workMode}
                 onChange={(v) => updateProfileField("workMode", v)}
@@ -1198,7 +1611,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               <div style={{ gridColumn: isMobile ? "1" : "span 2" }}>
                 <InfoItem 
                   label="Expected Outcome" 
-                  value={currentProfile?.expectedOutcome}
+                  value={expectedOutcome}
                   editable={isEditing("internship")}
                   editValue={editData?.profile?.expectedOutcome}
                   onChange={(v) => updateProfileField("expectedOutcome", v)}

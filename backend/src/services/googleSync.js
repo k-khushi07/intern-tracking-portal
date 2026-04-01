@@ -126,11 +126,14 @@ function parseTnaSheet(values) {
   if (headerMap.reason === undefined) headerMap.reason = headerMap.blocker ?? headerMap.blockers;
   if (headerMap.status === undefined) headerMap.status = headerMap.state;
 
-  const required = ["week", "task", "planneddate", "planofaction", "executeddate", "status", "reason", "deliverable"];
+  const required = ["week", "task", "planneddate", "executeddate", "status", "deliverable"];
+  const optional = ["planofaction", "reason"];
   const missing = required.filter((k) => headerMap[k] === undefined);
   if (missing.length) {
     const err = new Error(
       `TNA sheet template mismatch. Missing columns: ${missing
+        .map((k) => k.replace(/([a-z])([a-z]+)/, "$1$2"))
+        .join(", ")}. Required: Week, Task, Planned Date, Executed Date, Status, Deliverable. Optional: ${optional
         .map((k) => k.replace(/([a-z])([a-z]+)/, "$1$2"))
         .join(", ")}`
     );

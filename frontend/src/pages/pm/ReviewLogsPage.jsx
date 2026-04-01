@@ -131,6 +131,11 @@ export default function ReviewLogsPage({ interns = [], weeklyReports = [], month
           const status = String(report.status || "").toLowerCase();
           const readonly = status !== "pending";
           const label = report.reportType === "weekly" ? `Week ${report.weekNumber || "-"}` : report.month || "Monthly";
+          const lateLabel = report.isLate && report.submittedAt
+            ? `Late Submission — Submitted on ${formatLateSubmission(report.submittedAt)}`
+            : report.isLate
+              ? "Late Submission"
+              : "";
           return (
             <div key={report.id} style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -142,6 +147,12 @@ export default function ReviewLogsPage({ interns = [], weeklyReports = [], month
                 </div>
                 <StatusBadge status={status} />
               </div>
+
+              {lateLabel && (
+                <div style={{ marginTop: 8, color: COLORS.warning, fontSize: 12, fontWeight: 700 }}>
+                  {lateLabel}
+                </div>
+              )}
 
               <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
                 <Mini label="Hours" value={report.totalHours || 0} />
@@ -246,6 +257,14 @@ function btn(type) {
     alignItems: "center",
     gap: 6,
   };
+}
+
+function formatLateSubmission(iso) {
+  const d = new Date(iso || "");
+  if (Number.isNaN(d.getTime())) return "";
+  const datePart = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${datePart} at ${timePart}`;
 }
 
 const inputStyle = {

@@ -2493,7 +2493,7 @@ InternHub`;
 }
 
 // ==================== PM SECTION ====================
-export function PMSection({ pms, users, onViewInterns, onChat }) {
+export function PMSection({ pms, users, interns, onViewInterns, onChat }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentTab, setDepartmentTab] = useState("All");
 
@@ -2519,9 +2519,14 @@ export function PMSection({ pms, users, onViewInterns, onChat }) {
 
   const getInternCount = (pmCode) => {
     const pmKey = String(pmCode || "");
-    const interns = (users || []).filter((u) => u.role === "intern" && String(u.pmCode || u.pm_code || "") === pmKey);
-    if (departmentTab === "All") return interns.length;
-    return interns.filter((intern) => normalizeDepartment(getInternDepartment(intern)) === departmentTab).length;
+    const usingUsers = !(Array.isArray(interns) && interns.length);
+    const source = usingUsers ? (users || []) : interns;
+    const pool = source.filter((u) => {
+      if (usingUsers && String(u.role || "").toLowerCase() !== "intern") return false;
+      return String(u.pmCode || u.pm_code || "") === pmKey;
+    });
+    if (departmentTab === "All") return pool.length;
+    return pool.filter((intern) => normalizeDepartment(getInternDepartment(intern)) === departmentTab).length;
   };
 
   const filteredPMs = pms.filter((pm) => {
@@ -2993,6 +2998,7 @@ function ProjectSubmissionsSection({ isMobile }) {
   const [submissions, setSubmissions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [avatarFailures, setAvatarFailures] = React.useState({});
 
   React.useEffect(() => {
     const load = async () => {
@@ -3051,7 +3057,28 @@ function ProjectSubmissionsSection({ isMobile }) {
         </span>
       </div>
 
-      {submissions.map((s) => (
+      {submissions.map((s) => {
+        const intern = s.intern || {};
+        const internProfile = intern.profile_data || intern.profileData || {};
+        const internName = intern.full_name || intern.fullName || intern.name || "Unknown Intern";
+        const internEmail = intern.email || "?";
+        const internId = intern.intern_id || "No ID";
+        const internDept = internProfile.department || intern.department || "Unassigned";
+        const internPic =
+          internProfile.profilePictureUrl ||
+          internProfile.profile_picture_url ||
+          intern.profilePictureUrl ||
+          intern.profile_picture_url ||
+          "";
+        const showAvatar = !!internPic && !avatarFailures[s.id];
+        const internInitials = String(internName)
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase();
+        return (
         <div key={s.id} style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.12)",
@@ -3070,12 +3097,42 @@ function ProjectSubmissionsSection({ isMobile }) {
               <div style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 6 }}>
                 {s.title || "Untitled Project"}
               </div>
-              <div style={{ color: "#14b8a6", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <span> {s.intern?.full_name || "Unknown Intern"}</span>
-                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
-                <span> {s.intern?.email || "?"}</span>
-                <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
-                <span> {s.intern?.intern_id || "No ID"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                {showAvatar ? (
+                  <img
+                    src={internPic}
+                    alt="Intern"
+                    style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      setAvatarFailures((prev) => ({ ...prev, [s.id]: true }));
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(20,184,166,0.2)",
+                    color: "#14b8a6",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
+                    fontSize: 12,
+                  }}>
+                    {internInitials || "IN"}
+                  </div>
+                )}
+                <div style={{ color: "#14b8a6", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <span>{internName}</span>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                  <span>{internEmail}</span>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                  <span>{internId}</span>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>|</span>
+                  <span>{internDept}</span>
+                </div>
               </div>
             </div>
             <span style={{
@@ -3110,6 +3167,7 @@ function ProjectSubmissionsSection({ isMobile }) {
               padding: "14px 16px",
               borderRadius: 10,
               border: "1px solid rgba(255,255,255,0.06)",
+              whiteSpace: "pre-wrap",
             }}>
               {s.description || "No description provided."}
             </div>
@@ -3216,7 +3274,8 @@ function ProjectSubmissionsSection({ isMobile }) {
             </div>
           )}
         </div>
-      ))}
+      );
+      })}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 ﻿// HRHome.jsx - FIXED with PM Dashboard colors
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Menu, Bell, LogOut, Sparkles, X, Send, FileText } from "lucide-react";
 import { COLORS, GRADIENTS, keyframes, navItems, INTERN_STATUS } from "./HRConstants";
 import {
@@ -39,6 +39,7 @@ export default function HRHome() {
   const [currentHR, setCurrentHR] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [users, setUsers] = useState([]);
+  const [activeInterns, setActiveInterns] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [apiStats, setApiStats] = useState(null);
   const [analytics, setAnalytics] = useState(null);
@@ -48,6 +49,7 @@ export default function HRHome() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [uiNotice, setUiNotice] = useState({ open: false, message: "", tone: "info" });
+  const hrAvatarInputRef = useRef(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -237,8 +239,10 @@ export default function HRHome() {
     const socket = getRealtimeSocket();
     const onChanged = () => {
       loadUsers();
+      loadActiveInterns();
       loadAnnouncements();
       loadDashboardMetrics();
+      loadNotifications();
     };
 
     const onNotification = (payload) => {
@@ -249,6 +253,7 @@ export default function HRHome() {
         const next = [mapped, ...(prev || []).filter((p) => String(p.id) !== String(mapped.id))];
         return next.slice(0, 60);
       });
+      loadNotifications();
     };
 
     socket.on("itp:changed", onChanged);
@@ -303,7 +308,16 @@ export default function HRHome() {
       const me = await authApi.me();
       const role = String(me?.profile?.role || "").trim().toLowerCase();
       if (role === "hr") {
-        const hr = { role, fullName: me.profile.full_name, email: me.profile.email };
+        const profileData = me.profile.profile_data || {};
+        const hr = {
+          role,
+          fullName: me.profile.full_name,
+          email: me.profile.email,
+          profilePictureUrl:
+            profileData.profilePictureUrl ||
+            profileData.profile_picture_url ||
+            null,
+        };
         localStorage.setItem("currentUser", JSON.stringify(hr));
         setCurrentHR(hr);
         return;
@@ -394,6 +408,16 @@ export default function HRHome() {
     }
   };
 
+  const loadActiveInterns = async () => {
+    try {
+      const res = await hrApi.activeInterns();
+      setActiveInterns(res?.interns || []);
+    } catch (err) {
+      console.error("Error loading active interns (API):", err);
+      setActiveInterns([]);
+    }
+  };
+
   const loadAnnouncements = async () => {
     try {
       const res = await announcementsApi.list();
@@ -442,6 +466,7 @@ export default function HRHome() {
     const initializeData = async () => {
       await loadCurrentHR();
       await loadUsers();
+      await loadActiveInterns();
       await loadAnnouncements();
       await loadDashboardMetrics();
       loadNotifications();
@@ -839,13 +864,44 @@ export default function HRHome() {
               border: `1px solid ${COLORS.borderGlass}`,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 18, fontWeight: 700, color: "white",
-                }}>
-                  {currentHR?.fullName?.charAt(0) || "H"}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => hrAvatarInputRef.current?.click()}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setShowAccountModal(true);
+                  }}
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: "50%",
+                    background: GRADIENTS.accent,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "white",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    overflow: "hidden",
+                  }}
+                  aria-label="Update profile picture"
+                >
+                  {currentHR?.profilePictureUrl ? (
+                    <img
+                      src={currentHR.profilePictureUrl}
+                      alt="Profile"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    currentHR?.fullName?.charAt(0) || "H"
+                  )}
+                </button>
                 <div>
                   <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: 14 }}>
                     {currentHR?.fullName || "HR Manager"}
@@ -1108,8 +1164,13 @@ export default function HRHome() {
             </div>
 
             {/* User Avatar */}
-            <div
-              onClick={() => setShowAccountModal(true)}
+            <button
+              type="button"
+              onClick={() => hrAvatarInputRef.current?.click()}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setShowAccountModal(true);
+              }}
               style={{
                 width: 40,
                 height: 40,
@@ -1121,10 +1182,25 @@ export default function HRHome() {
                 fontWeight: 700,
                 color: "white",
                 cursor: "pointer",
+                border: "none",
+                padding: 0,
+                overflow: "hidden",
               }}
+              aria-label="Update profile picture"
             >
-              {currentHR?.fullName?.charAt(0) || "H"}
-            </div>
+              {currentHR?.profilePictureUrl ? (
+                <img
+                  src={currentHR.profilePictureUrl}
+                  alt="Profile"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                currentHR?.fullName?.charAt(0) || "H"
+              )}
+            </button>
           </div>
         </header>
 
@@ -1188,6 +1264,7 @@ export default function HRHome() {
               <PMSection
                 pms={allPMs}
                 users={users}
+                interns={activeInterns}
                 onViewInterns={handleViewPMInterns}
                 onChat={handlePMChat}
               />
@@ -1255,6 +1332,43 @@ export default function HRHome() {
       )}
 
       <AccountModal open={showAccountModal} onClose={() => setShowAccountModal(false)} />
+      <input
+        ref={hrAvatarInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          try {
+            const dataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror = () => reject(new Error("Failed to read file"));
+              reader.readAsDataURL(file);
+            });
+            const res = await hrApi.updateMe({
+              profilePicture: {
+                name: file.name,
+                type: file.type,
+                dataUrl,
+              },
+            });
+            const nextProfileData = res?.profile?.profile_data || {};
+            const nextUrl =
+              nextProfileData.profilePictureUrl ||
+              nextProfileData.profile_picture_url ||
+              null;
+            if (nextUrl) {
+              setCurrentHR((prev) => prev ? { ...prev, profilePictureUrl: nextUrl } : prev);
+            }
+          } catch (err) {
+            showNotice(err?.message || "Failed to upload profile picture", "error");
+          } finally {
+            event.target.value = "";
+          }
+        }}
+      />
 
       {uiNotice.open && (
         <div

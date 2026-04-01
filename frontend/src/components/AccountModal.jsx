@@ -233,7 +233,6 @@ export default function AccountModal({ open, onClose }) {
                     boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
                   }}
                 >
-                  <span style={{ position: "relative", zIndex: 1 }}>{(fullName || email || "U").charAt(0).toUpperCase()}</span>
                   {profilePictureUrl ? (
                     <img
                       src={profilePictureUrl}
@@ -243,7 +242,9 @@ export default function AccountModal({ open, onClose }) {
                         e.currentTarget.style.display = "none";
                       }}
                     />
-                  ) : null}
+                  ) : (
+                    <span style={{ position: "relative", zIndex: 1 }}>{(fullName || email || "U").charAt(0).toUpperCase()}</span>
+                  )}
                 </div>
 
                 <div style={{ flex: 1, minWidth: 220 }}>

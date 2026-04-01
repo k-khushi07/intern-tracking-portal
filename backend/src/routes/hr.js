@@ -2,6 +2,8 @@
 const express = require("express");
 const { httpError } = require("../errors");
 const { adminCreateUser, restSelect, restUpdate, restInsert, restDelete } = require("../services/supabaseRest");
+const { uploadProfileFile } = require("../services/supabaseStorage");
+const { computeLifecycleStatus } = require("../services/internLifecycle");
 const { createAuthMiddleware } = require("../middleware/auth");
 const { generateNextInternId, peekNextInternId } = require("../services/internId");
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,10 +26,26 @@ async function assertInternExists(internId) {
   return intern;
 }
 
+async function loadApprovedInternByProfileId(profileId) {
+  const rows = await restSelect({
+    table: "approved_interns",
+    select: "id,intern_id,application_id,profile_id,start_date,end_date,department,mentor,stipend,status,approved_by,approved_at,updated_at,override_reason,override_at",
+    filters: { profile_id: `eq.${profileId}`, limit: 1 },
+    accessToken: null,
+    useServiceRole: true,
+  });
+  return rows?.[0] || null;
+}
+
 function normalizeApplicationStatus(value) {
   const status = String(value || "").trim().toLowerCase();
   if (["pending", "under_review", "approved", "rejected"].includes(status)) return status;
   return null;
+}
+
+function safeNumeric(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function isValidIsoDate(value) {
@@ -372,6 +390,82 @@ function createHrRouter({ emailService }) {
   const DOCUMENT_KEY_CERTIFICATE_TEMPLATE = "certificate_template";
   const INTERN_DOCUMENTS_SELECT = "id,intern_profile_id,document_type,title,filename,mime_type,file_path,file_url,metadata,created_at,updated_at";
   const INTERN_DOCUMENT_TYPES = new Set(["offer_letter", "certificate", "submission", "other"]);
+
+  router.patch("/me", async (req, res, next) => {
+    try {
+      const hrId = req.auth.profile.id;
+      const { profilePicture } = req.body || {};
+      if (!profilePicture) throw httpError(400, "profilePicture is required", true);
+
+      const url = await uploadProfileFile({
+        profileId: hrId,
+        field: "profile-picture",
+        filePayload: profilePicture,
+      });
+      if (!url) throw httpError(500, "Failed to upload profile picture", true);
+
+      let existingProfileData = {};
+      try {
+        const rows = await restSelect({
+          table: "profiles",
+          select: "profile_data",
+          filters: { id: `eq.${hrId}`, limit: 1 },
+          accessToken: null,
+          useServiceRole: true,
+        });
+        const raw = rows?.[0]?.profile_data;
+        if (raw && typeof raw === "object") existingProfileData = raw;
+      } catch {
+        existingProfileData = {};
+      }
+
+      const patch = {
+        profile_data: {
+          ...existingProfileData,
+          profilePictureUrl: url,
+          profilePictureMeta: {
+            filename: profilePicture.name || null,
+            type: profilePicture.type || null,
+            uploadedAt: new Date().toISOString(),
+          },
+        },
+        updated_at: new Date().toISOString(),
+      };
+
+      let updated;
+      try {
+        updated = await restUpdate({
+          table: "profiles",
+          patch,
+          matchQuery: { id: `eq.${hrId}` },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch (err) {
+        if (String(err.message || "").includes("profile_data")) {
+          const { profile_data, ...fallbackPatch } = patch;
+          updated = await restUpdate({
+            table: "profiles",
+            patch: fallbackPatch,
+            matchQuery: { id: `eq.${hrId}` },
+            accessToken: null,
+            useServiceRole: true,
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      const io = req.app.get("io");
+      if (io) {
+        io.emit("itp:changed", { type: "profile_updated", profileId: hrId });
+      }
+
+      res.status(200).json({ success: true, profile: updated?.[0] || updated });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   function normalizeInternDocumentRow(row) {
     if (!row) return null;
@@ -896,18 +990,54 @@ function createHrRouter({ emailService }) {
     if (currentStatus === "approved") throw httpError(400, "Application already approved", true);
     if (currentStatus === "rejected") throw httpError(400, "Rejected application cannot be approved", true);
 
-    const generatedPassword = password || generatePassword();
+    let generatedPassword = null;
     const createdAt = new Date().toISOString();
 
-    const created = await adminCreateUser({
-      email: app.email,
-      password: generatedPassword,
-      userMetadata: { full_name: app.applicant_name || "" },
-    });
-    const createdId = created?.id || created?.user?.id;
-    if (!createdId) throw httpError(502, "Unexpected Supabase response (missing user id)", true);
+    let createdId = null;
+    let generatedInternId = null;
 
-    const generatedInternId = await generateNextInternId({ prefix: "EDCS" });
+    const existingProfileRows = await restSelect({
+      table: "profiles",
+      select: "id,role,intern_id,status",
+      filters: { email: `eq.${app.email}`, limit: 1 },
+      accessToken: null,
+      useServiceRole: true,
+    }).catch(() => []);
+    const existingProfile = existingProfileRows?.[0] || null;
+
+    if (existingProfile) {
+      if (String(existingProfile.role || "").toLowerCase() !== "intern") {
+        throw httpError(409, "A non-intern account already exists with this email", true);
+      }
+      createdId = existingProfile.id;
+      generatedInternId = existingProfile.intern_id || (await generateNextInternId({ prefix: "EDCS" }));
+
+      if (!existingProfile.intern_id || String(existingProfile.status || "").toLowerCase() !== "active") {
+        await restUpdate({
+          table: "profiles",
+          patch: { intern_id: generatedInternId, status: "active", updated_at: createdAt },
+          matchQuery: { id: `eq.${createdId}` },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch(() => {});
+      }
+    } else {
+      generatedPassword = password || generatePassword();
+      const created = await adminCreateUser({
+        email: app.email,
+        password: generatedPassword,
+        userMetadata: { full_name: app.applicant_name || "" },
+      }).catch((err) => {
+        const msg = String(err?.message || "").toLowerCase();
+        if (msg.includes("already been registered") || msg.includes("already registered")) {
+          err.status = 409;
+        }
+        throw err;
+      });
+      createdId = created?.id || created?.user?.id;
+      if (!createdId) throw httpError(502, "Unexpected Supabase response (missing user id)", true);
+      generatedInternId = await generateNextInternId({ prefix: "EDCS" });
+    }
 
     const seedProfileData = {};
     if (app.resume_url) {
@@ -920,27 +1050,8 @@ function createHrRouter({ emailService }) {
       };
     }
 
-    try {
-      await restInsert({
-        table: "profiles",
-        rows: {
-          id: createdId,
-          email: app.email,
-          full_name: app.applicant_name || "",
-          role: "intern",
-          status: "active",
-          intern_id: generatedInternId,
-          pm_id: null,
-          profile_completed: false,
-          profile_data: Object.keys(seedProfileData).length ? seedProfileData : {},
-          created_at: createdAt,
-          updated_at: createdAt,
-        },
-        accessToken: null,
-        useServiceRole: true,
-      });
-    } catch (err) {
-      if (String(err.message || "").includes("profile_data")) {
+    if (!existingProfile) {
+      try {
         await restInsert({
           table: "profiles",
           rows: {
@@ -948,19 +1059,48 @@ function createHrRouter({ emailService }) {
             email: app.email,
             full_name: app.applicant_name || "",
             role: "intern",
-            status: "active",
+            status: String(profile.status || "").toLowerCase() || "active",
             intern_id: generatedInternId,
             pm_id: null,
             profile_completed: false,
+            profile_data: Object.keys(seedProfileData).length ? seedProfileData : {},
             created_at: createdAt,
             updated_at: createdAt,
           },
           accessToken: null,
           useServiceRole: true,
         });
-      } else {
-        throw err;
+      } catch (err) {
+        if (String(err.message || "").includes("profile_data")) {
+          await restInsert({
+            table: "profiles",
+            rows: {
+              id: createdId,
+              email: app.email,
+              full_name: app.applicant_name || "",
+              role: "intern",
+              status: "active",
+              intern_id: generatedInternId,
+              pm_id: null,
+              profile_completed: false,
+              created_at: createdAt,
+              updated_at: createdAt,
+            },
+            accessToken: null,
+            useServiceRole: true,
+          });
+        } else {
+          throw err;
+        }
       }
+    } else if (Object.keys(seedProfileData).length) {
+      await restUpdate({
+        table: "profiles",
+        patch: { profile_data: seedProfileData, updated_at: createdAt },
+        matchQuery: { id: `eq.${createdId}` },
+        accessToken: null,
+        useServiceRole: true,
+      }).catch(() => {});
     }
 
     const approvedRow = await restInsert({
@@ -1007,7 +1147,7 @@ function createHrRouter({ emailService }) {
     });
 
     let emailSent = false;
-    if (emailService && app.email && sendEmail !== false) {
+    if (emailService && app.email && sendEmail !== false && generatedPassword) {
       try {
         const normalizedAttachmentContent = String(offerLetterAttachment?.content || "").trim();
         const normalizedAttachmentFilename = String(offerLetterAttachment?.filename || "").trim();
@@ -1852,7 +1992,7 @@ function createHrRouter({ emailService }) {
       const search = req.query.search ? String(req.query.search).trim() : "";
 
       const approvedFilters = { order: "approved_at.desc", limit: 5000 };
-      if (["active", "completed"].includes(status)) approvedFilters.status = `eq.${status}`;
+      if (["completed"].includes(status)) approvedFilters.status = `eq.${status}`;
       if (department) approvedFilters.department = `ilike.*${department}*`;
       if (mentor) approvedFilters.mentor = `ilike.*${mentor}*`;
       if (joinedFrom && joinedTo) {
@@ -1866,14 +2006,14 @@ function createHrRouter({ emailService }) {
       const [approvedRows, profileRows, appRows] = await Promise.all([
         restSelect({
           table: "approved_interns",
-          select: "id,intern_id,application_id,profile_id,start_date,end_date,department,mentor,stipend,status,approved_by,approved_at",
+          select: "id,intern_id,application_id,profile_id,start_date,end_date,department,mentor,stipend,status,approved_by,approved_at,override_reason,override_at",
           filters: approvedFilters,
           accessToken: null,
           useServiceRole: true,
         }),
         restSelect({
           table: "profiles",
-          select: "id,email,full_name,role,status,intern_id,pm_id,pm:pm_id(id,email,full_name,pm_code)",
+          select: "id,email,full_name,role,status,intern_id,pm_id,hr_id,profile_data,pm:pm_id(id,email,full_name,pm_code),hr:hr_id(id,email,full_name)",
           filters: { role: "eq.intern" },
           accessToken: null,
           useServiceRole: true,
@@ -1887,13 +2027,102 @@ function createHrRouter({ emailService }) {
         }),
       ]);
 
+      const approvedProfileIds = new Set((approvedRows || []).map((row) => row.profile_id).filter(Boolean));
+      const normalizedStatus = status === "all" ? "" : status;
+      const includeExtras = !normalizedStatus || ["active", "inactive", "completed"].includes(normalizedStatus);
+      const extraProfiles = includeExtras
+        ? (profileRows || []).filter((row) => {
+            if (!row?.id) return false;
+            if (approvedProfileIds.has(row.id)) return false;
+            const profileStatus = String(row.status || "").toLowerCase();
+            if (!normalizedStatus) return true;
+            if (normalizedStatus === "active") return profileStatus === "active";
+            if (normalizedStatus === "inactive") return profileStatus === "inactive";
+            if (normalizedStatus === "completed") return profileStatus === "completed";
+            return false;
+          })
+        : [];
+      const profileIds = [
+        ...approvedProfileIds,
+        ...extraProfiles.map((row) => row.id),
+      ];
+      const inFilter = profileIds.length ? `in.(${profileIds.join(",")})` : null;
+
+      let logs = [];
+      if (inFilter) {
+        logs = await restSelect({
+          table: "daily_logs",
+          select: "intern_profile_id,hours_worked,tasks_completed,status,log_date",
+          filters: { intern_profile_id: inFilter },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch((err) => {
+          if (String(err?.message || "").includes("daily_logs")) return [];
+          throw err;
+        });
+      }
+
+      let reports = [];
+      if (inFilter) {
+        reports = await restSelect({
+          table: "reports",
+          select: "intern_profile_id,status",
+          filters: { intern_profile_id: inFilter },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch((err) => {
+          if (String(err?.message || "").includes("reports")) return [];
+          throw err;
+        });
+      }
+
+      const logStatsByIntern = new Map();
+      (logs || []).forEach((log) => {
+        const key = log.intern_profile_id;
+        if (!key) return;
+        const entry = logStatsByIntern.get(key) || { totalHours: 0, tasksCompleted: 0, logsCount: 0, lastLogDate: null };
+        const status = String(log.status || "").toLowerCase();
+        if (status !== "rejected") {
+          entry.totalHours += safeNumeric(log.hours_worked);
+          entry.tasksCompleted += safeNumeric(log.tasks_completed);
+          entry.logsCount += 1;
+          if (log.log_date && (!entry.lastLogDate || log.log_date > entry.lastLogDate)) {
+            entry.lastLogDate = log.log_date;
+          }
+        }
+        logStatsByIntern.set(key, entry);
+      });
+
+      const reportStatsByIntern = new Map();
+      (reports || []).forEach((report) => {
+        const key = report.intern_profile_id;
+        if (!key) return;
+        const entry = reportStatsByIntern.get(key) || { total: 0, pending: 0, approved: 0, rejected: 0 };
+        const status = String(report.status || "").toLowerCase();
+        entry.total += 1;
+        if (status === "pending") entry.pending += 1;
+        if (status === "approved") entry.approved += 1;
+        if (status === "rejected") entry.rejected += 1;
+        reportStatsByIntern.set(key, entry);
+      });
+
       const profileById = new Map((profileRows || []).map((row) => [row.id, row]));
       const appById = new Map((appRows || []).map((row) => [row.id, row]));
 
       let interns = (approvedRows || []).map((row) => {
         const profile = profileById.get(row.profile_id) || {};
         const app = appById.get(row.application_id) || {};
+        const profileData = profile.profile_data && typeof profile.profile_data === "object" ? profile.profile_data : {};
+        const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
+        const logStats = logStatsByIntern.get(row.profile_id) || { totalHours: 0, tasksCompleted: 0, logsCount: 0, lastLogDate: null };
+        const reportStats = reportStatsByIntern.get(row.profile_id) || { total: 0, pending: 0, approved: 0, rejected: 0 };
+        const performanceScore = Math.min(
+          100,
+          Math.round((safeNumeric(logStats.tasksCompleted) * 1.8) + (safeNumeric(logStats.totalHours) * 0.35) + (safeNumeric(reportStats.total) * 12))
+        );
+        const lifecycleStatus = computeLifecycleStatus(row, profileData);
         return {
+          id: row.profile_id,
           approvedInternId: row.id,
           profileId: row.profile_id,
           applicationId: row.application_id,
@@ -1909,14 +2138,84 @@ function createHrRouter({ emailService }) {
           stipend: row.stipend || null,
           startDate: row.start_date,
           endDate: row.end_date,
-          status: row.status || "active",
+          lifecycle_status: lifecycleStatus,
+          status: lifecycleStatus,
           approvedAt: row.approved_at,
           pmId: profile.pm_id || null,
           pmCode: profile.pm?.pm_code || null,
           pmName: profile.pm?.full_name || profile.pm?.email || null,
+          hrId: profile.hr_id || null,
+          hrName: profile.hr?.full_name || profile.hr?.email || null,
           profileStatus: profile.status || "active",
+          profile_data: profileData,
+          profilePictureUrl,
+          overrideReason: row.override_reason || null,
+          overrideAt: row.override_at || null,
+          totalHours: logStats.totalHours || 0,
+          tasksCompleted: logStats.tasksCompleted || 0,
+          lastLogDate: logStats.lastLogDate || null,
+          pendingReports: reportStats.pending || 0,
+          reports: reportStats,
+          performance: performanceScore || 0,
         };
       });
+
+      if (extraProfiles.length) {
+        const extras = extraProfiles.map((profile) => {
+          const profileData = profile.profile_data && typeof profile.profile_data === "object" ? profile.profile_data : {};
+          const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
+          const lifecycleStatus = computeLifecycleStatus(null, profileData);
+          const logStats = logStatsByIntern.get(profile.id) || { totalHours: 0, tasksCompleted: 0, logsCount: 0, lastLogDate: null };
+          const reportStats = reportStatsByIntern.get(profile.id) || { total: 0, pending: 0, approved: 0, rejected: 0 };
+          const performanceScore = Math.min(
+            100,
+            Math.round((safeNumeric(logStats.tasksCompleted) * 1.8) + (safeNumeric(logStats.totalHours) * 0.35) + (safeNumeric(reportStats.total) * 12))
+          );
+          return {
+            id: profile.id,
+            approvedInternId: null,
+            profileId: profile.id,
+            applicationId: null,
+            internId: profile.intern_id || null,
+            fullName: profile.full_name || "",
+            email: profile.email || "",
+            college: "",
+            domain: "",
+            cgpa: null,
+            resumeUrl: "",
+            department: profileData.department || "",
+            mentor: profileData.mentorName || profileData.mentor || "",
+            stipend: profileData.stipend || null,
+            startDate: profileData.startDate || profileData.start_date || null,
+            endDate: profileData.endDate || profileData.end_date || null,
+            lifecycle_status: lifecycleStatus,
+            status: lifecycleStatus,
+            approvedAt: null,
+            pmId: profile.pm_id || null,
+            pmCode: profile.pm?.pm_code || null,
+            pmName: profile.pm?.full_name || profile.pm?.email || null,
+            hrId: profile.hr_id || null,
+            hrName: profile.hr?.full_name || profile.hr?.email || null,
+            profileStatus: profile.status || "active",
+            profile_data: profileData,
+            profilePictureUrl,
+            overrideReason: null,
+            overrideAt: null,
+            totalHours: logStats.totalHours || 0,
+            tasksCompleted: logStats.tasksCompleted || 0,
+            lastLogDate: logStats.lastLogDate || null,
+            pendingReports: reportStats.pending || 0,
+            reports: reportStats,
+            performance: performanceScore || 0,
+          };
+        });
+        interns = interns.concat(extras);
+      }
+
+      if (status && status !== "all") {
+        const desired = String(status || "").toLowerCase();
+        interns = interns.filter((row) => String(row.lifecycle_status || row.status || "").toLowerCase() === desired);
+      }
 
       if (search) {
         const pattern = search.toLowerCase();
@@ -1932,6 +2231,83 @@ function createHrRouter({ emailService }) {
       }
 
       res.status(200).json({ success: true, interns });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/extend", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!UUID_REGEX.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      const endDate = String(req.body?.end_date || "").trim();
+      if (!isValidIsoDate(endDate)) throw httpError(400, "end_date must be in YYYY-MM-DD format", true);
+
+      const approvedIntern = await loadApprovedInternByProfileId(profileId);
+      if (!approvedIntern) throw httpError(404, "Approved intern not found", true);
+
+      const now = new Date().toISOString();
+      const today = new Date().toISOString().slice(0, 10);
+      const updated = await restUpdate({
+        table: "approved_interns",
+        patch: { end_date: endDate, updated_at: now },
+        matchQuery: { id: `eq.${approvedIntern.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const profileRows = await restSelect({
+        table: "profiles",
+        select: "id,status",
+        filters: { id: `eq.${profileId}`, limit: 1 },
+        accessToken: null,
+        useServiceRole: true,
+      });
+      const profile = profileRows?.[0] || null;
+      if (profile && String(profile.status || "").toLowerCase() === "inactive" && endDate >= today) {
+        await restUpdate({
+          table: "profiles",
+          patch: { status: "active", updated_at: now },
+          matchQuery: { id: `eq.${profileId}` },
+          accessToken: null,
+          useServiceRole: true,
+        }).catch(() => {});
+      }
+
+      const approvedRow = Array.isArray(updated) ? updated[0] : updated;
+      res.status(200).json({ success: true, approvedIntern: approvedRow || null });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/interns/:profileId/end-early", async (req, res, next) => {
+    try {
+      const profileId = String(req.params.profileId || "").trim();
+      if (!profileId) throw httpError(400, "profileId is required", true);
+      if (!UUID_REGEX.test(profileId)) return res.status(400).json({ error: "Invalid ID format" });
+
+      const rawEndDate = req.body?.end_date ? String(req.body.end_date).trim() : "";
+      if (rawEndDate && !isValidIsoDate(rawEndDate)) {
+        throw httpError(400, "end_date must be in YYYY-MM-DD format", true);
+      }
+      const endDate = rawEndDate || new Date().toISOString().slice(0, 10);
+
+      const approvedIntern = await loadApprovedInternByProfileId(profileId);
+      if (!approvedIntern) throw httpError(404, "Approved intern not found", true);
+
+      const updated = await restUpdate({
+        table: "approved_interns",
+        patch: { end_date: endDate, updated_at: new Date().toISOString() },
+        matchQuery: { id: `eq.${approvedIntern.id}` },
+        accessToken: null,
+        useServiceRole: true,
+      });
+
+      const approvedRow = Array.isArray(updated) ? updated[0] : updated;
+      res.status(200).json({ success: true, approvedIntern: approvedRow || null });
     } catch (err) {
       next(err);
     }
@@ -2218,20 +2594,19 @@ function createHrRouter({ emailService }) {
         rows = await restSelect({
           table: "reports",
           select:
-            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id),pm:pm_profile_id(id,email,full_name,pm_code)",
-          filters: { recipient_roles: "cs.{hr}", order: "submitted_at.desc" },
+            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_by,reviewed_at,review_reason,review_score,intern:intern_profile_id(id,email,full_name,intern_id),pm:pm_profile_id(id,email,full_name,pm_code)",
+          filters: { order: "submitted_at.desc" },
           accessToken: null,
           useServiceRole: true,
         });
       } catch (err) {
         const msg = String(err?.message || "").toLowerCase();
-        if (msg.includes("recipient_roles")) throw err;
-        if (!msg.includes("review_score") && !msg.includes("reviewed_by")) throw err;
+        if (!msg.includes("review_score") && !msg.includes("reviewed_by") && !msg.includes("is_late")) throw err;
         rows = await restSelect({
           table: "reports",
           select:
             "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_at,review_reason,intern:intern_profile_id(id,email,full_name,intern_id),pm:pm_profile_id(id,email,full_name,pm_code)",
-          filters: { recipient_roles: "cs.{hr}", order: "submitted_at.desc" },
+          filters: { order: "submitted_at.desc" },
           accessToken: null,
           useServiceRole: true,
         });
@@ -2270,6 +2645,7 @@ function createHrRouter({ emailService }) {
           summary: r.summary || "",
           status: r.status,
           submittedAt: r.submitted_at,
+          isLate: !!r.is_late,
           reviewedAt: r.reviewed_at,
           reviewReason: r.review_reason || null,
           reviewScore: r.review_score ?? null,
@@ -2279,10 +2655,6 @@ function createHrRouter({ emailService }) {
 
       res.status(200).json({ success: true, reports: mapped });
     } catch (err) {
-      if (String(err.message || "").includes("recipient_roles")) {
-        res.status(200).json({ success: true, reports: [] });
-        return;
-      }
       next(err);
     }
   });
@@ -2360,6 +2732,7 @@ function createHrRouter({ emailService }) {
         io.to(`user:${reviewerId}`).emit("itp:changed", { entity: "reports", action: "update" });
         if (internId) io.to(`user:${internId}`).emit("itp:changed", { entity: "reports", action: "update" });
         if (pmId) io.to(`user:${pmId}`).emit("itp:changed", { entity: "reports", action: "update" });
+        io.to("role:admin").emit("itp:changed", { entity: "reports", action: "update" });
       }
 
       if (io && internId) {
@@ -2659,7 +3032,18 @@ function createHrRouter({ emailService }) {
         useServiceRole: true,
       });
       if (!rows?.[0]) throw httpError(404, "Intern not found", true);
-      res.status(200).json({ success: true, intern: rows[0] });
+      const intern = rows[0];
+      const approvedIntern = await loadApprovedInternByProfileId(req.params.id).catch(() => null);
+      if (approvedIntern) {
+        intern.approved_intern = approvedIntern;
+        intern.start_date = approvedIntern.start_date || null;
+        intern.end_date = approvedIntern.end_date || null;
+        intern.department = approvedIntern.department || null;
+        intern.mentor = approvedIntern.mentor || null;
+        intern.stipend = approvedIntern.stipend ?? null;
+        intern.approved_intern_status = approvedIntern.status || null;
+      }
+      res.status(200).json({ success: true, intern });
     } catch (err) {
       next(err);
     }
@@ -2807,7 +3191,7 @@ function createHrRouter({ emailService }) {
       const rows = await restSelect({
         table: "project_submissions",
         select:
-          "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at,intern_profile_id,pm_profile_id,intern:intern_profile_id(id,full_name,email,intern_id)",
+          "id,title,description,github_link,demo_link,status,review_comment,reviewed_at,submitted_at,intern_profile_id,pm_profile_id,intern:intern_profile_id(id,full_name,email,intern_id,profile_data)",
         filters: { order: "submitted_at.desc" },
         accessToken: null,
         useServiceRole: true,
@@ -2876,14 +3260,14 @@ function createHrRouter({ emailService }) {
         rows = await restSelect({
           table: "reports",
           select:
-            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,reviewed_by,reviewed_at,review_reason,review_score,created_at",
+            "id,intern_profile_id,pm_profile_id,recipient_roles,report_type,week_number,month,period_start,period_end,total_hours,days_worked,summary,data,status,submitted_at,is_late,reviewed_by,reviewed_at,review_reason,review_score,created_at",
           filters: { intern_profile_id: `eq.${req.params.id}`, order: "submitted_at.desc", limit: 20 },
           accessToken: null,
           useServiceRole: true,
         });
       } catch (err) {
         const msg = String(err?.message || "").toLowerCase();
-        if (!msg.includes("review_score") && !msg.includes("reviewed_by")) throw err;
+        if (!msg.includes("review_score") && !msg.includes("reviewed_by") && !msg.includes("is_late")) throw err;
         rows = await restSelect({
           table: "reports",
           select:

@@ -27,6 +27,51 @@ function initials(nameOrEmail) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+function getProfilePictureUrl(user) {
+  const profileData = user?.profileData || user?.profile_data || {};
+  return (
+    user?.profilePictureUrl ||
+    user?.profile_picture_url ||
+    profileData.profilePictureUrl ||
+    profileData.profile_picture_url ||
+    user?.avatarUrl ||
+    ""
+  );
+}
+
+function AvatarCircle({ url, label, size = 40, fontSize = 16, background, color, style }) {
+  const fallback = initials(label);
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: background || `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 800,
+        fontSize,
+        color: color || COLORS.peachGlow,
+        overflow: "hidden",
+        position: "relative",
+        ...style,
+      }}
+    >
+      <span>{fallback}</span>
+      {url ? (
+        <img
+          src={url}
+          alt="Profile"
+          style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }}
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function formatTime(iso) {
   try {
     return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
@@ -134,12 +179,14 @@ const MessagesPage = ({ selectedIntern }) => {
 
     const mapped = list.map((c) => {
       const title = c.title || c.name || "Conversation";
-      const peerId = c.peer?.id ? String(c.peer.id) : null;
+      const peer = c.peer || {};
+      const peerId = peer?.id ? String(peer.id) : null;
       return {
         id: c.id,
         type: c.type,
         name: title,
         avatar: initials(title),
+        avatarUrl: getProfilePictureUrl(peer),
         lastMessage: c.lastMessage?.body || "Start a conversation",
         lastMessageTime: c.lastMessage?.at ? formatListTime(c.lastMessage.at) : "",
         unreadCount: Number(c.unreadCount) || 0,
@@ -346,7 +393,12 @@ const MessagesPage = ({ selectedIntern }) => {
         await refreshConversations();
         const convId = created?.conversationId;
         const label = selectedIntern.fullName || selectedIntern.name || selectedIntern.email || "Conversation";
-        setActiveChat({ id: convId, name: label, avatar: initials(label) });
+        setActiveChat({
+          id: convId,
+          name: label,
+          avatar: initials(label),
+          avatarUrl: getProfilePictureUrl(selectedIntern),
+        });
       } catch (err) {
         if (!cancelled) setLoadError(err?.message || "Unable to open chat");
       }
@@ -518,12 +570,17 @@ const MessagesPage = ({ selectedIntern }) => {
   });
 
   const startDirectWith = useCallback(
-    async (profileId, label) => {
+    async (profileId, label, avatarUrl) => {
       try {
         const created = await messagesApi.createDirect(profileId);
         await refreshConversations();
         const convId = created?.conversationId;
-        setActiveChat({ id: convId, name: label || "Conversation", avatar: initials(label || "Conversation") });
+        setActiveChat({
+          id: convId,
+          name: label || "Conversation",
+          avatar: initials(label || "Conversation"),
+          avatarUrl: avatarUrl || "",
+        });
         setShowNewChat(false);
       } catch (err) {
         showNotice(err?.message || "Failed to start chat", "error");
@@ -635,23 +692,12 @@ const MessagesPage = ({ selectedIntern }) => {
             >
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div style={{ position: "relative" }}>
-                  <div
-                    style={{
-                      width: "48px",
-                      height: "48px",
-                      background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "700",
-                      fontSize: "16px",
-                      color: COLORS.peachGlow,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {intern.avatar}
-                  </div>
+                  <AvatarCircle
+                    url={intern.avatarUrl}
+                    label={intern.name || intern.email}
+                    size={48}
+                    fontSize={16}
+                  />
                   {/* Online Status Indicator */}
                   <div
                     style={{
@@ -754,22 +800,12 @@ const MessagesPage = ({ selectedIntern }) => {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div style={{ position: "relative" }}>
-                  <div
-                    style={{
-                      width: "44px",
-                      height: "44px",
-                      background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "700",
-                      fontSize: "16px",
-                      color: COLORS.peachGlow,
-                    }}
-                  >
-                    {activeChat.avatar}
-                  </div>
+                  <AvatarCircle
+                    url={activeChat.avatarUrl}
+                    label={activeChat.name}
+                    size={44}
+                    fontSize={16}
+                  />
                   {/* Online Status */}
                   <div
                     style={{
@@ -1230,7 +1266,7 @@ const MessagesPage = ({ selectedIntern }) => {
                   return (
                     <button
                       key={c.id}
-                      onClick={() => startDirectWith(c.id, label)}
+                        onClick={() => startDirectWith(c.id, label, getProfilePictureUrl(c))}
                       style={{
                         width: "100%",
                         textAlign: "left",
@@ -1247,10 +1283,13 @@ const MessagesPage = ({ selectedIntern }) => {
                         marginBottom: 8,
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: `linear-gradient(135deg, ${COLORS.jungleTeal}, ${COLORS.deepOcean})`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>
-                          {initials(label)}
-                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                          <AvatarCircle
+                            url={getProfilePictureUrl(c)}
+                            label={label}
+                            size={40}
+                            fontSize={14}
+                          />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                           <div style={{ fontSize: 12, color: "rgba(255, 229, 217, 0.65)" }}>

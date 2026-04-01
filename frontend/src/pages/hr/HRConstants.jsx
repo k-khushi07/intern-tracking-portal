@@ -88,7 +88,6 @@ export const navItems = (stats) => [
   { id: "dashboard", icon: Home, label: "HR Dashboard", badge: 0 },
   { id: "new", icon: FileText, label: "New Registrations", badge: stats?.newRegistrations || 0 },
   { id: "approval", icon: Clock, label: "Approval Center", badge: stats?.pending || 0 },
-  { id: "myInterns", icon: Users, label: "My Interns", badge: 0 },
   { id: "active", icon: UserCheck, label: "Active Interns", badge: 0 },
   { id: "projectManagers", icon: Briefcase, label: "Project Managers", badge: 0 },
 ];

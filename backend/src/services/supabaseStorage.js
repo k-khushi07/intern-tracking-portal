@@ -1,11 +1,16 @@
 const path = require("path");
 const { httpError } = require("../errors");
-const { getSupabaseConfig, requireEnv } = require("./supabaseConfig");
+const { getSupabaseConfig } = require("./supabaseConfig");
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS || 15000);
 
 function ensureBucket() {
-  return requireEnv("SUPABASE_STORAGE_BUCKET");
+  const envBucket = String(process.env.SUPABASE_STORAGE_BUCKET || "").trim();
+  if (!envBucket) {
+    console.warn('SUPABASE_STORAGE_BUCKET is not set. Falling back to "intern-documents".');
+    return "intern-documents";
+  }
+  return envBucket;
 }
 
 function encodePathSegments(objectPath) {
@@ -47,7 +52,14 @@ async function uploadStorageObject({ bucket, objectPath, buffer, contentType }) 
     });
 
     if (!res.ok) {
-      const message = `Supabase storage upload failed (${res.status})`;
+      const bodyText = await res.text().catch(() => "");
+      const lower = String(bodyText || "").toLowerCase();
+      const isMissingBucket =
+        res.status === 404 ||
+        lower.includes("bucket") && lower.includes("not found");
+      const message = isMissingBucket
+        ? `Supabase storage bucket "${bucket}" not found. Create it in Supabase Storage or set SUPABASE_STORAGE_BUCKET.`
+        : `Supabase storage upload failed (${res.status})`;
       throw httpError(res.status, message, true);
     }
   } finally {
@@ -78,14 +90,18 @@ async function uploadProfileFile({ profileId, field, filePayload }) {
   const suffix = ext || "";
   const objectPath = `profiles/${profileId}/${field}-${timestamp}-${normalizedBase}${suffix}`;
 
-  await uploadStorageObject({
-    bucket,
-    objectPath,
-    buffer,
-    contentType: filePayload.type || inferredType || "application/octet-stream",
-  });
-
-  return buildPublicUrl(bucket, objectPath);
+  try {
+    await uploadStorageObject({
+      bucket,
+      objectPath,
+      buffer,
+      contentType: filePayload.type || inferredType || "application/octet-stream",
+    });
+    return buildPublicUrl(bucket, objectPath);
+  } catch (err) {
+    console.error("Supabase storage upload failed:", err);
+    return null;
+  }
 }
 
 module.exports = {

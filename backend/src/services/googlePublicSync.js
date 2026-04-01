@@ -178,7 +178,8 @@ function parseTnaGrid(values) {
   const rows = Array.isArray(values) ? values : [];
   if (rows.length < 2) return [];
 
-  const canonical = ["week", "task", "planneddate", "planofaction", "executeddate", "status", "reason", "deliverable"];
+  const required = ["week", "task", "planneddate", "executeddate", "status", "deliverable"];
+  const optional = ["planofaction", "reason"];
   const canonicalLabels = {
     week: "Week",
     task: "Task",
@@ -237,7 +238,7 @@ function parseTnaGrid(values) {
       if (key) headerMap[key] = idx;
     });
     const resolved = applyAliases(headerMap);
-    const score = canonical.reduce((sum, k) => sum + (resolved[k] !== undefined ? 1 : 0), 0);
+    const score = [...required, ...optional].reduce((sum, k) => sum + (resolved[k] !== undefined ? 1 : 0), 0);
     const hasTask = resolved.task !== undefined;
     const hasStatus = resolved.status !== undefined;
     return { headerMap: resolved, score, hasTask, hasStatus, rawHeaders: Object.keys(headerMap) };
@@ -256,13 +257,14 @@ function parseTnaGrid(values) {
   const headerIndex = best.idx;
   const headerMap = best.headerMap || applyAliases({});
 
-  const missing = canonical.filter((k) => headerMap[k] === undefined);
+  const missing = required.filter((k) => headerMap[k] === undefined);
   if (missing.length) {
     const foundList = best.rawHeaders.length ? best.rawHeaders.join(", ") : "(none)";
     const missingLabels = missing.map((k) => canonicalLabels[k] || k).join(", ");
+    const optionalLabels = optional.map((k) => canonicalLabels[k] || k).join(", ");
     throw httpError(
       400,
-      `TNA sheet template mismatch. Missing columns: ${missingLabels}. Required: Week, Task, Planned Date, Plan of Action, Executed Date, Status, Reason, Deliverable. (Detected header row at CSV line ${headerIndex + 1}; found headers: ${foundList})`,
+      `TNA sheet template mismatch. Missing columns: ${missingLabels}. Required: Week, Task, Planned Date, Executed Date, Status, Deliverable. Optional: ${optionalLabels}. (Detected header row at CSV line ${headerIndex + 1}; found headers: ${foundList})`,
       true
     );
   }
@@ -392,17 +394,32 @@ function buildSheetCandidateUrls(sheetUrl) {
   const parsed = extractDocOrSheetId(sheetUrl, "sheet");
   if (!parsed) return null;
   const gid = extractSheetGid(sheetUrl);
+  const raw = String(sheetUrl || "");
+  const hasGid = /[?#&]gid=\d+/i.test(raw) || /#gid=\d+/i.test(raw);
   if (parsed.published) {
-    return [
-      `https://docs.google.com/spreadsheets/d/e/${parsed.id}/pub?output=csv&gid=${encodeURIComponent(gid)}`,
-      `https://docs.google.com/spreadsheets/d/e/${parsed.id}/pub?output=csv`,
-    ];
+    return hasGid
+      ? [
+        `https://docs.google.com/spreadsheets/d/e/${parsed.id}/pub?output=csv&gid=${encodeURIComponent(gid)}`,
+        `https://docs.google.com/spreadsheets/d/e/${parsed.id}/pub?output=csv`,
+      ]
+      : [
+        `https://docs.google.com/spreadsheets/d/e/${parsed.id}/pub?output=csv`,
+        `https://docs.google.com/spreadsheets/d/e/${parsed.id}/pub?output=csv&gid=${encodeURIComponent(gid)}`,
+      ];
   }
-  return [
-    `https://docs.google.com/spreadsheets/d/${parsed.id}/export?format=csv&gid=${encodeURIComponent(gid)}`,
-    `https://docs.google.com/spreadsheets/d/${parsed.id}/gviz/tq?tqx=out:csv&gid=${encodeURIComponent(gid)}`,
-    `https://docs.google.com/spreadsheets/d/${parsed.id}/pub?output=csv&gid=${encodeURIComponent(gid)}`,
-  ];
+  return hasGid
+    ? [
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/export?format=csv&gid=${encodeURIComponent(gid)}`,
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/gviz/tq?tqx=out:csv&gid=${encodeURIComponent(gid)}`,
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/export?format=csv`,
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/pub?output=csv&gid=${encodeURIComponent(gid)}`,
+    ]
+    : [
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/export?format=csv`,
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/export?format=csv&gid=${encodeURIComponent(gid)}`,
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/gviz/tq?tqx=out:csv&gid=${encodeURIComponent(gid)}`,
+      `https://docs.google.com/spreadsheets/d/${parsed.id}/pub?output=csv`,
+    ];
 }
 
 function buildDocCandidateUrls(docUrl) {

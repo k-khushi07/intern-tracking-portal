@@ -2,6 +2,13 @@ const express = require("express");
 const { httpError } = require("../errors");
 const { authPasswordGrant, authGetUser, restSelect } = require("../services/supabaseRest");
 const { setAuthCookies, clearAuthCookies } = require("../services/authCookies");
+let loadApprovedIntern;
+let syncInternLifecycle;
+try {
+  ({ loadApprovedIntern, syncInternLifecycle } = require("../services/internLifecycle"));
+} catch (err) {
+  console.error("internLifecycle module not available:", err);
+}
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
@@ -78,6 +85,39 @@ function createAuthRouter() {
       if (expectedRole && String(profile.role || "").trim().toLowerCase() !== String(expectedRole).trim().toLowerCase()) {
         throw httpError(403, `This account is not a ${expectedRole} account`, true);
       }
+      let lifecycleWarning = null;
+      if (String(profile.role || "").toLowerCase() === "intern") {
+        const approvedIntern = loadApprovedIntern ? await loadApprovedIntern(profile.id).catch(() => null) : null;
+
+        const lifecycle = syncInternLifecycle
+          ? await syncInternLifecycle({
+            profileId: profile.id,
+            profileEmail: profile.email,
+            profileName: profile.full_name || profile.fullName || null,
+            profileStatus: profile.status,
+            approvedIntern,
+            profileData: profile.profile_data || null,
+          }).catch(() => null)
+          : null;
+
+        if (lifecycle?.lifecycleStatus === "inactive") {
+          throw httpError(
+            403,
+            "Your internship period has ended. Please contact Admin to extend your access.",
+            true
+          );
+        }
+        if (lifecycle?.lifecycleStatus === "pending") {
+          throw httpError(
+            403,
+            "Your internship has not started yet. Please contact Admin for more information.",
+            true
+          );
+        }
+        if (lifecycle?.lifecycleStatus === "grace") {
+          lifecycleWarning = "Your internship ends soon. Please contact Admin if you need an extension.";
+        }
+      }
 
       setAuthCookies(
         res,
@@ -86,7 +126,12 @@ function createAuthRouter() {
       );
 
       if (clientIp) loginAttemptsByIp.delete(clientIp);
-      res.status(200).json({ success: true, user: { id: user.id, email: user.email }, profile });
+      res.status(200).json({
+        success: true,
+        user: { id: user.id, email: user.email },
+        profile,
+        ...(lifecycleWarning ? { warning: lifecycleWarning } : {}),
+      });
     } catch (err) {
       const clientIp = getClientIp(req);
       recordFailedAttempt(clientIp);

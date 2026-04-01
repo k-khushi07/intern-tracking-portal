@@ -77,6 +77,12 @@ export const hrApi = {
   users() {
     return apiFetch("/hr/users", { method: "GET" });
   },
+  updateMe({ profilePicture } = {}) {
+    return apiFetch("/hr/me", {
+      method: "PATCH",
+      body: JSON.stringify({ profilePicture }),
+    });
+  },
   getIntern(internId) {
     return apiFetch(`/hr/interns/${internId}`, { method: "GET" });
   },
@@ -121,6 +127,18 @@ export const hrApi = {
   },
   markInternCompleted(profileId) {
     return apiFetch(`/hr/active-interns/${profileId}/mark-completed`, { method: "POST" });
+  },
+  extendIntern(profileId, endDate) {
+    return apiFetch(`/hr/interns/${profileId}/extend`, {
+      method: "PATCH",
+      body: JSON.stringify({ end_date: endDate }),
+    });
+  },
+  endInternEarly(profileId, endDate) {
+    return apiFetch(`/hr/interns/${profileId}/end-early`, {
+      method: "PATCH",
+      body: JSON.stringify(endDate ? { end_date: endDate } : {}),
+    });
   },
   setActiveInternStatus(profileId, status) {
     return apiFetch(`/hr/active-interns/${profileId}/status`, {
@@ -315,6 +333,36 @@ export const adminApi = {
       body: JSON.stringify({ status }),
     });
   },
+  extendIntern(internId, endDate) {
+    return apiFetch(`/admin/interns/${internId}/extend`, {
+      method: "PATCH",
+      body: JSON.stringify({ end_date: endDate }),
+    });
+  },
+  endInternEarly(internId, endDate) {
+    return apiFetch(`/admin/interns/${internId}/end-early`, {
+      method: "PATCH",
+      body: JSON.stringify(endDate ? { end_date: endDate } : {}),
+    });
+  },
+  overrideInternStatus(internId, status, reason) {
+    return apiFetch(`/admin/interns/${internId}/override-status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, reason }),
+    });
+  },
+  updateInternDates(profileId, { start_date, end_date } = {}) {
+    return apiFetch(`/admin/interns/${profileId}/dates`, {
+      method: "PATCH",
+      body: JSON.stringify({ start_date, end_date }),
+    });
+  },
+  activateIntern(profileId) {
+    return apiFetch(`/admin/interns/${profileId}/activate`, { method: "PATCH" });
+  },
+  deactivateIntern(profileId) {
+    return apiFetch(`/admin/interns/${profileId}/deactivate`, { method: "PATCH" });
+  },
   getInternDailyLogs(internId) {
     return apiFetch(`/hr/interns/${internId}/daily-logs`, { method: "GET" });
   },
@@ -336,11 +384,44 @@ export const adminApi = {
     });
     return { ...(res || {}), submissions: filtered };
   },
+  getIntern(internId) {
+    return apiFetch(`/hr/interns/${internId}`, { method: "GET" });
+  },
+  internTna(internId) {
+    return apiFetch(`/hr/interns/${internId}/tna`, { method: "GET" });
+  },
+  internBlueprint(internId) {
+    return apiFetch(`/hr/interns/${internId}/blueprint`, { method: "GET" });
+  },
+  internReportLinks(internId) {
+    return apiFetch(`/hr/interns/${internId}/report-links`, { method: "GET" });
+  },
+  reviewReport(reportId, payload) {
+    return apiFetch(`/hr/reports/${reportId}/review`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+  getInternTna(internId) {
+    return apiFetch(`/hr/interns/${internId}/tna`, { method: "GET" });
+  },
+  getInternBlueprint(internId) {
+    return apiFetch(`/hr/interns/${internId}/blueprint`, { method: "GET" });
+  },
+  getInternReportLinks(internId) {
+    return apiFetch(`/hr/interns/${internId}/report-links`, { method: "GET" });
+  },
 };
 
 export const pmApi = {
   me() {
     return apiFetch("/pm/me", { method: "GET" });
+  },
+  updateMe({ profilePicture } = {}) {
+    return apiFetch("/pm/me", {
+      method: "PATCH",
+      body: JSON.stringify({ profilePicture }),
+    });
   },
   interns() {
     return apiFetch("/pm/interns", { method: "GET" });
@@ -423,11 +504,19 @@ export const internApi = {
   dailyLogs() {
     return apiFetch("/intern/daily-logs", { method: "GET" });
   },
-  createDailyLog({ logDate, date, hoursWorked, tasks, learnings, blockers }) {
+  createDailyLog({ logDate, date, hoursWorked, tasks, learnings, blockers, location, source }) {
     return apiFetch("/intern/daily-logs", {
       method: "POST",
-      body: JSON.stringify({ logDate, date, hoursWorked, tasks, learnings, blockers }),
+      body: JSON.stringify({ logDate, date, hoursWorked, tasks, learnings, blockers, location, source }),
     });
+  },
+  deleteDailyLogsRange({ start, end, source }) {
+    const params = new URLSearchParams();
+    if (start) params.set("start", String(start));
+    if (end) params.set("end", String(end));
+    if (source) params.set("source", String(source));
+    const query = params.toString();
+    return apiFetch(`/intern/daily-logs${query ? `?${query}` : ""}`, { method: "DELETE" });
   },
   reports() {
     return apiFetch("/intern/reports", { method: "GET" });

@@ -21,6 +21,7 @@ const { createAttendanceRouter } = require("./src/routes/attendance");
 const { createMessagesRouter } = require("./src/routes/messages");
 const { createNotificationsRouter } = require("./src/routes/notifications");
 const { createSocketAuthMiddleware } = require("./src/realtime/socketAuth");
+const { scheduleWeeklyReportReminders } = require("./src/services/weeklyReportReminders");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -230,5 +231,7 @@ httpServer.on("error", async (err) => {
 httpServer.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
 });
+
+scheduleWeeklyReportReminders({ io });
 
 module.exports = app;

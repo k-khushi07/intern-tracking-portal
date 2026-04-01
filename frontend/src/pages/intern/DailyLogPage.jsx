@@ -3,8 +3,8 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   BookOpen, X, Clock, CheckCircle, Star, AlertCircle,
   Calendar, ChevronDown, ChevronRight, FileText, Send,
-  TrendingUp, BarChart3, Mail, Loader, Filter, Download,
-  CalendarDays, FolderOpen, PieChart, Search, Lightbulb, Target, Edit3, Lock
+  TrendingUp, BarChart3, Mail, Loader, Filter, Download, Upload,
+  CalendarDays, FolderOpen, PieChart, Search, Lightbulb, Target, Edit3, Lock, MapPin
 } from "lucide-react";
 import { attendanceApi, internApi } from "../../lib/apiClient";
 
@@ -34,8 +34,46 @@ const inputStyle = {
 };
 
 // ==================== DATE HELPERS ====================
+const parseIsoDateToLocal = (value) => {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const yyyy = Number(match[1]);
+  const mm = Number(match[2]);
+  const dd = Number(match[3]);
+  if (!yyyy || !mm || !dd) return null;
+  return new Date(yyyy, mm - 1, dd);
+};
+
+const toLocalIso = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const monthIndexFromName = (raw) => {
+  const key = String(raw || "").trim().toLowerCase();
+  const months = {
+    jan: 0, january: 0,
+    feb: 1, february: 1,
+    mar: 2, march: 2,
+    apr: 3, april: 3,
+    may: 4,
+    jun: 5, june: 5,
+    jul: 6, july: 6,
+    aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8,
+    oct: 9, october: 9,
+    nov: 10, november: 10,
+    dec: 11, december: 11,
+  };
+  return months[key];
+};
+
 const getWeekNumber = (date) => {
-  const d = new Date(date);
+  const d = parseIsoDateToLocal(date) || new Date(date);
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() + 4 - (d.getDay() || 7));
   const yearStart = new Date(d.getFullYear(), 0, 1);
@@ -43,7 +81,7 @@ const getWeekNumber = (date) => {
 };
 
 const getWeekDateRange = (date) => {
-  const d = new Date(date);
+  const d = parseIsoDateToLocal(date) || new Date(date);
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d.setDate(diff));
@@ -57,7 +95,7 @@ const getWeekDateRange = (date) => {
 };
 
 const getMonthKey = (date) => {
-  const d = new Date(date);
+  const d = parseIsoDateToLocal(date) || new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
@@ -72,8 +110,32 @@ const toIsoDate = (value) => {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-    const parsed = new Date(trimmed);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    const cleaned = trimmed.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+    const ddMonMatch = cleaned.match(/^(\d{1,2})[\s\-\/]+([A-Za-z]{3,})[\s\-\/]+(\d{2,4})/);
+    if (ddMonMatch) {
+      const dd = String(ddMonMatch[1]).padStart(2, "0");
+      const mmIndex = monthIndexFromName(ddMonMatch[2]);
+      const rawYear = ddMonMatch[3];
+      const yyyyNum = rawYear.length === 2 ? (Number(rawYear) >= 70 ? 1900 + Number(rawYear) : 2000 + Number(rawYear)) : Number(rawYear);
+      const yyyy = String(yyyyNum);
+      if (Number.isInteger(mmIndex)) {
+        return `${yyyy}-${String(mmIndex + 1).padStart(2, "0")}-${dd}`;
+      }
+    }
+    const ymdMatch = cleaned.match(/^(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/);
+    if (ymdMatch) {
+      const yyyy = ymdMatch[1];
+      const mm = String(ymdMatch[2]).padStart(2, "0");
+      const dd = String(ymdMatch[3]).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    const parsed = new Date(cleaned);
+    if (!Number.isNaN(parsed.getTime())) {
+      const yyyy = parsed.getFullYear();
+      const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+      const dd = String(parsed.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
     return null;
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
@@ -157,23 +219,61 @@ const mapImportedRows = (rawRows) => {
         obj[h] = cells[idx];
       });
 
-      const logDate = toIsoDate(pick(obj, ["log_date", "date", "day"]));
-      const hoursWorkedRaw = pick(obj, ["hours_worked", "hours", "hoursworked"]);
-      const tasks = String(pick(obj, ["tasks", "task", "work_done", "workdone", "accomplishments"]) || "").trim();
-      const learnings = String(pick(obj, ["learnings", "learning", "what_i_learned", "whatilearned"]) || "").trim();
+      const logDate = toIsoDate(pick(obj, ["log_date", "date"]));
+      const hoursWorkedRaw = pick(obj, ["hrs", "hours", "hours_worked", "hoursworked"]);
+      const tasks = String(pick(obj, ["work_summary", "worksummary", "tasks", "task", "work_done", "workdone", "accomplishments"]) || "").trim();
+      const learnings = String(pick(obj, ["key_learnings", "keylearnings", "learnings", "learning", "what_i_learned", "whatilearned"]) || "").trim();
       const blockers = String(pick(obj, ["blockers", "blocker", "challenges"]) || "").trim();
+      const location = String(pick(obj, ["location", "work_location", "worklocation", "place"]) || "").trim();
+      const day = String(pick(obj, ["day", "weekday"]) || "").trim();
 
       const hoursWorked = Number.isFinite(Number(hoursWorkedRaw)) ? Number(hoursWorkedRaw) : 0;
       if (!logDate) return null;
       if (!tasks || !learnings) return null;
 
-      return { logDate, hoursWorked, tasks, learnings, blockers };
+      return { logDate, hoursWorked, tasks, learnings, blockers, location, day };
     })
     .filter(Boolean);
 
   const byDate = new Map();
   mapped.forEach((r) => byDate.set(r.logDate, r));
   return Array.from(byDate.values()).sort((a, b) => (a.logDate < b.logDate ? -1 : 1));
+};
+
+const DAILY_CSV_HEADERS = ["Date", "Day", "Location", "Work Summary", "Key Learnings", "Blockers", "Hrs"];
+
+const downloadCsvTemplate = (headers, filename) => {
+  const headerLine = headers.join(",");
+  const blob = new Blob([`${headerLine}\n`], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const parseCsvObjects = (text, headers) => {
+  const rows = parseCsv(text || "");
+  if (!rows.length) return [];
+  const headerRow = rows[0].map(normalizeHeader);
+  const required = headers.map(normalizeHeader);
+  const index = {};
+  headerRow.forEach((h, i) => { index[h] = i; });
+  const missing = required.filter((h) => index[h] === undefined);
+  if (missing.length) {
+    throw new Error(`Missing columns: ${missing.join(", ")}`);
+  }
+  return rows
+    .slice(1)
+    .filter((row) => row.some((cell) => String(cell || "").trim() !== ""))
+    .map((row) => {
+      const obj = {};
+      required.forEach((h) => { obj[h] = row[index[h]] || ""; });
+      return obj;
+    });
 };
 
 const extractTableFromHtml = (html) => {
@@ -246,7 +346,11 @@ const generateMonthlySummary = (month, monthKey) => {
   const weeksCount = month.weekCount;
   const avgHoursPerDay = totalDays > 0 ? (totalHours / totalDays).toFixed(1) : 0;
 
-  const sortedLogs = [...logs].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const sortedLogs = [...logs].sort((a, b) => {
+    const da = parseIsoDateToLocal(a.date) || new Date(a.date);
+    const db = parseIsoDateToLocal(b.date) || new Date(b.date);
+    return da - db;
+  });
   const firstHalf = sortedLogs.slice(0, Math.floor(sortedLogs.length / 2));
   const secondHalf = sortedLogs.slice(Math.floor(sortedLogs.length / 2));
   const firstHalfAvg = firstHalf.length > 0 
@@ -307,6 +411,70 @@ const generateMonthlySummary = (month, monthKey) => {
     recommendations,
     generatedAt: new Date().toISOString()
   };
+};
+
+const parseReportData = (row) => {
+  if (!row) return null;
+  const raw = row.data;
+  let data = null;
+  if (raw && typeof raw === "object") data = raw;
+  if (!data && typeof raw === "string") {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = null;
+    }
+  }
+  const reportType = String(row.report_type || row.reportType || data?.reportType || "").toLowerCase();
+  const periodStart = row.period_start || row.periodStart || data?.periodStart || null;
+  const weekNumber = row.week_number ?? row.weekNumber ?? data?.weekNumber ?? null;
+  const totalHours = row.total_hours ?? row.totalHours ?? data?.totalHours ?? 0;
+  const daysWorked = row.days_worked ?? row.daysWorked ?? data?.daysWorked ?? data?.totalDays ?? 0;
+  const monthLabel = row.month || row.monthLabel || data?.monthLabel || null;
+  return { data: data || {}, reportType, periodStart, weekNumber, totalHours, daysWorked, monthLabel };
+};
+
+const buildSummaryFromReport = (row) => {
+  const normalized = parseReportData(row);
+  if (!normalized) return null;
+
+  const { data, reportType, periodStart, weekNumber, totalHours, daysWorked, monthLabel } = normalized;
+  const periodStartDate = parseIsoDateToLocal(periodStart);
+
+  if (reportType === "weekly") {
+    const weekKeyFromPeriod = periodStartDate ? toLocalIso(periodStartDate) : "";
+    const weekKey = data.weekKey || weekKeyFromPeriod || null;
+    if (!weekKey) return null;
+    const range = periodStartDate ? getWeekDateRange(periodStartDate) : null;
+
+    return {
+      ...data,
+      weekKey,
+      weekNumber: weekNumber ?? data.weekNumber ?? null,
+      dateRange: data.dateRange || range?.label || "",
+      totalHours: data.totalHours ?? totalHours ?? 0,
+      daysWorked: data.daysWorked ?? daysWorked ?? 0,
+      generatedAt: data.generatedAt || row.submitted_at || row.created_at || new Date().toISOString(),
+    };
+  }
+
+  if (reportType === "monthly") {
+    const monthKeyFromPeriod = periodStartDate ? getMonthKey(periodStartDate) : "";
+    const monthKey = data.monthKey || monthKeyFromPeriod || null;
+    if (!monthKey) return null;
+    const derivedMonthLabel = monthKey ? formatMonth(monthKey) : "";
+
+    return {
+      ...data,
+      monthKey,
+      monthLabel: data.monthLabel || monthLabel || derivedMonthLabel,
+      totalHours: data.totalHours ?? totalHours ?? 0,
+      totalDays: data.totalDays ?? daysWorked ?? 0,
+      generatedAt: data.generatedAt || row.submitted_at || row.created_at || new Date().toISOString(),
+    };
+  }
+
+  return null;
 };
 
 // ==================== UI COMPONENTS ====================
@@ -388,7 +556,7 @@ const SearchFilterBar = ({ searchQuery, setSearchQuery, activeFilter, setActiveF
       />
       <input 
         type="text" 
-        placeholder="Search tasks, learnings, or blockers..." 
+        placeholder="Search tasks, learnings, blockers, or location..." 
         value={searchQuery} 
         onChange={(e) => setSearchQuery(e.target.value)} 
         style={{ ...inputStyle, paddingLeft: 44, background: "rgba(0,0,0,0.2)" }} 
@@ -454,6 +622,7 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile, initialData, mode = "creat
   const defaultDate = new Date().toISOString().split("T")[0];
   const [formData, setFormData] = useState({
     date: initialData?.date || defaultDate,
+    location: initialData?.location || "",
     tasks: initialData?.tasks || "",
     learnings: initialData?.learnings || "",
     blockers: initialData?.blockers || "",
@@ -463,12 +632,13 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile, initialData, mode = "creat
   useEffect(() => {
     setFormData({
       date: initialData?.date || defaultDate,
+      location: initialData?.location || "",
       tasks: initialData?.tasks || "",
       learnings: initialData?.learnings || "",
       blockers: initialData?.blockers || "",
       hoursWorked: initialData?.hoursWorked ?? "",
     });
-  }, [defaultDate, initialData?.blockers, initialData?.date, initialData?.hoursWorked, initialData?.learnings, initialData?.tasks]);
+  }, [defaultDate, initialData?.blockers, initialData?.date, initialData?.hoursWorked, initialData?.learnings, initialData?.location, initialData?.tasks]);
 
   const handleSubmit = (e) => { 
     e.preventDefault(); 
@@ -476,12 +646,19 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile, initialData, mode = "creat
     onSubmit(formData); 
     setFormData({ 
       date: defaultDate, 
+      location: "",
       tasks: "", 
       learnings: "", 
       blockers: "", 
       hoursWorked: "" 
     }); 
   };
+
+  const dayLabel = (() => {
+    const d = parseIsoDateToLocal(formData.date) || new Date(formData.date);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", { weekday: "long" });
+  })();
 
   return (
     <div 
@@ -529,6 +706,41 @@ const LogEntryForm = ({ onSubmit, onCancel, isMobile, initialData, mode = "creat
             style={inputStyle} 
             required
             disabled={mode === "edit"}
+          />
+        </div>
+        <div>
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
+          }}>
+            Day
+          </label>
+          <input
+            type="text"
+            value={dayLabel}
+            style={inputStyle}
+            disabled
+          />
+        </div>
+        <div>
+          <label style={{ 
+            display: "block", 
+            color: "rgba(255,255,255,0.9)", 
+            marginBottom: 8, 
+            fontWeight: 500, 
+            fontSize: 14 
+          }}>
+            Location
+          </label>
+          <input
+            type="text"
+            placeholder="Office / Remote / Client site"
+            value={formData.location}
+            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+            style={inputStyle}
           />
         </div>
         <div>
@@ -670,6 +882,7 @@ const LogSection = ({ title, content, icon, color }) => (
 const LogCard = ({ log, index, onEdit, canEdit = false, editHint = "" }) => {
   const dayName = new Date(log.date).toLocaleDateString("en-US", { weekday: "long" });
   const hasBlocker = log.blockers && log.blockers.toLowerCase() !== "none";
+  const hasLocation = String(log.location || "").trim() !== "";
 
   return (
     <div 
@@ -762,6 +975,7 @@ const LogCard = ({ log, index, onEdit, canEdit = false, editHint = "" }) => {
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {hasLocation && <LogSection title="Location" content={log.location} icon={<MapPin size={16} />} color={COLORS.peachGlow} />}
         <LogSection title="Tasks Completed" content={log.tasks} icon={<CheckCircle size={16} />} color={COLORS.jungleTeal} />
         <LogSection title="Learnings" content={log.learnings} icon={<Star size={16} />} color="#f59e0b" />
         {hasBlocker && <LogSection title="Blockers" content={log.blockers} icon={<AlertCircle size={16} />} color={COLORS.racingRed} />}
@@ -849,8 +1063,11 @@ const WeeklyView = ({ logsByWeek, sortedWeekKeys, expandedWeeks, toggleWeek, wee
                   alignItems: "center", 
                   justifyContent: "center" 
                 }}>
-                  <div style={{ fontSize: 10, color: COLORS.peachGlow, fontWeight: 600, textTransform: "uppercase" }}>Week</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "white", lineHeight: 1 }}>{week.weekNumber}</div>
+                <div style={{ fontSize: 10, color: COLORS.peachGlow, fontWeight: 600, textTransform: "uppercase" }}>Week</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "white", lineHeight: 1 }}>{idx + 1}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>
+                    Cal W{week.weekNumber}
+                  </div>
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, color: "white", fontSize: 16 }}>{week.dateRange.label}</div>
@@ -1629,6 +1846,9 @@ const ImportLogsModal = ({ onClose, onImported }) => {
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
   const [failures, setFailures] = useState([]);
+  const [deleteStart, setDeleteStart] = useState("");
+  const [deleteEnd, setDeleteEnd] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const parseFile = async (file) => {
     setError("");
@@ -1645,7 +1865,7 @@ const ImportLogsModal = ({ onClose, onImported }) => {
         const text = await file.text();
         const raw = parseCsv(text);
         const mapped = mapImportedRows(raw);
-        if (!mapped.length) throw new Error("No valid rows found. Expected columns like: date, hours, tasks, learnings, blockers.");
+        if (!mapped.length) throw new Error("No valid rows found. Expected columns like: Date, Day, Location, Work Summary, Key Learnings, Blockers, Hrs.");
         setRows(mapped);
         return;
       }
@@ -1660,7 +1880,7 @@ const ImportLogsModal = ({ onClose, onImported }) => {
 
         const json = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
         const mapped = mapImportedRows(json);
-        if (!mapped.length) throw new Error("No valid rows found in the first sheet. Make sure headers include date, tasks, learnings.");
+        if (!mapped.length) throw new Error("No valid rows found in the first sheet. Make sure headers include Date, Work Summary, Key Learnings, Hrs.");
         setRows(mapped);
         return;
       }
@@ -1671,7 +1891,7 @@ const ImportLogsModal = ({ onClose, onImported }) => {
         const htmlRes = await mammoth.convertToHtml({ arrayBuffer: buf });
         const tableRows = extractTableFromHtml(htmlRes?.value || "");
         if (!tableRows?.length) {
-          throw new Error("No table found in DOCX. Please use a table with headers like date, hours, tasks, learnings, blockers.");
+          throw new Error("No table found in DOCX. Please use a table with headers like Date, Day, Location, Work Summary, Key Learnings, Blockers, Hrs.");
         }
         const mapped = mapImportedRows(tableRows);
         if (!mapped.length) throw new Error("No valid rows found in the DOCX table.");
@@ -1696,7 +1916,16 @@ const ImportLogsModal = ({ onClose, onImported }) => {
     for (let i = 0; i < rows.length; i += 1) {
       const r = rows[i];
       try {
-        await internApi.createDailyLog(r);
+        await internApi.createDailyLog({
+          logDate: r.logDate,
+          date: r.logDate,
+          hoursWorked: r.hoursWorked,
+          tasks: r.tasks,
+          learnings: r.learnings,
+          blockers: r.blockers,
+          location: r.location,
+          source: "import",
+        });
       } catch (e) {
         if (e?.status === 401 || e?.status === 403) {
           const msg =
@@ -1751,7 +1980,7 @@ const ImportLogsModal = ({ onClose, onImported }) => {
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, color: "white" }}>Import Daily Logs</div>
             <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-              Upload Excel/CSV/DOCX with columns: date, hours, tasks, learnings, blockers. Imports upsert by date.
+              Upload Excel/CSV/DOCX with columns: Date, Day, Location, Work Summary, Key Learnings, Blockers, Hrs. Imports upsert by date.
             </div>
           </div>
           <button
@@ -1812,7 +2041,7 @@ const ImportLogsModal = ({ onClose, onImported }) => {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead style={{ position: "sticky", top: 0, background: "rgba(7, 30, 34, 0.95)" }}>
                     <tr>
-                      {["Date", "Hours", "Tasks", "Learnings", "Blockers"].map((h) => (
+                      {["Date", "Day", "Location", "Work Summary", "Key Learnings", "Blockers", "Hrs"].map((h) => (
                         <th
                           key={h}
                           style={{
@@ -1834,7 +2063,10 @@ const ImportLogsModal = ({ onClose, onImported }) => {
                           {r.logDate}
                         </td>
                         <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
-                          {r.hoursWorked}
+                          {r.day || new Date(r.logDate).toLocaleDateString("en-US", { weekday: "long" })}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {r.location || "—"}
                         </td>
                         <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
                           {String(r.tasks).slice(0, 40)}
@@ -1847,6 +2079,9 @@ const ImportLogsModal = ({ onClose, onImported }) => {
                         <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
                           {String(r.blockers || "").slice(0, 40)}
                           {String(r.blockers || "").length > 40 ? "…" : ""}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.75)" }}>
+                          {r.hoursWorked}
                         </td>
                       </tr>
                     ))}
@@ -1930,6 +2165,9 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   const [editingLog, setEditingLog] = useState(null);
+  const [dailyCsvImporting, setDailyCsvImporting] = useState(false);
+  const [dailyCsvProgress, setDailyCsvProgress] = useState({ done: 0, total: 0, failed: 0 });
+  const [dailyCsvSummary, setDailyCsvSummary] = useState("");
 
   const pmAssigned = !!assignedPM?.id;
 
@@ -1968,6 +2206,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
           tasks: l.tasks,
           learnings: l.learnings,
           blockers: l.blockers,
+          location: l.location || "",
           hoursWorked: Number(l.hours_worked) || 0,
           status: l.status,
         }));
@@ -1983,6 +2222,44 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadReports = async () => {
+      try {
+        const res = await internApi.reports();
+        const rows = res?.reports || [];
+        if (cancelled) return;
+
+        const weeklyMap = {};
+        const monthlyMap = {};
+        rows.forEach((row) => {
+          const summary = buildSummaryFromReport(row);
+          if (!summary) return;
+          const reportType = String(row.report_type || row.reportType || "").toLowerCase();
+          if (reportType === "weekly" && summary.weekKey) {
+            weeklyMap[summary.weekKey] = summary;
+          } else if (reportType === "monthly" && summary.monthKey) {
+            monthlyMap[summary.monthKey] = summary;
+          }
+        });
+
+        if (Object.keys(weeklyMap).length) {
+          setWeeklySummaries((prev) => ({ ...prev, ...weeklyMap }));
+        }
+        if (Object.keys(monthlyMap).length) {
+          setMonthlySummaries((prev) => ({ ...prev, ...monthlyMap }));
+        }
+      } catch (err) {
+        console.error("Failed to load reports:", err);
+      }
+    };
+
+    loadReports();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const reloadLogs = useCallback(async () => {
     try {
       const res = await internApi.dailyLogs();
@@ -1992,6 +2269,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         tasks: l.tasks,
         learnings: l.learnings,
         blockers: l.blockers,
+        location: l.location || "",
         hoursWorked: Number(l.hours_worked) || 0,
         status: l.status,
       }));
@@ -2007,7 +2285,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
     const grouped = {};
     dailyLogs.forEach(log => {
       const weekRange = getWeekDateRange(log.date);
-      const weekKey = weekRange.start.toISOString().split('T')[0];
+      const weekKey = toLocalIso(weekRange.start);
       if (!grouped[weekKey]) {
         grouped[weekKey] = { 
           weekNumber: getWeekNumber(log.date), 
@@ -2020,7 +2298,11 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
       grouped[weekKey].totalHours += log.hoursWorked || 0;
     });
     Object.values(grouped).forEach(week => {
-      week.logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+      week.logs.sort((a, b) => {
+        const da = parseIsoDateToLocal(a.date) || new Date(a.date);
+        const db = parseIsoDateToLocal(b.date) || new Date(b.date);
+        return da - db;
+      });
     });
     return grouped;
   }, [dailyLogs]);
@@ -2040,35 +2322,48 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
       }
       grouped[monthKey].logs.push(log);
       grouped[monthKey].totalHours += log.hoursWorked || 0;
-      grouped[monthKey].weeks.add(getWeekDateRange(log.date).start.toISOString().split('T')[0]);
+      grouped[monthKey].weeks.add(toLocalIso(getWeekDateRange(log.date).start));
     });
     Object.values(grouped).forEach(month => {
       month.weekCount = month.weeks.size;
       delete month.weeks;
-      month.logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+      month.logs.sort((a, b) => {
+        const da = parseIsoDateToLocal(a.date) || new Date(a.date);
+        const db = parseIsoDateToLocal(b.date) || new Date(b.date);
+        return da - db;
+      });
     });
     return grouped;
   }, [dailyLogs]);
 
   const sortedWeekKeys = useMemo(() => 
-    Object.keys(logsByWeek).sort((a, b) => new Date(b) - new Date(a)), 
+    Object.keys(logsByWeek).sort((a, b) => {
+      const da = parseIsoDateToLocal(a) || new Date(a);
+      const db = parseIsoDateToLocal(b) || new Date(b);
+      return da - db;
+    }), 
     [logsByWeek]
   );
 
   const sortedMonthKeys = useMemo(() => 
-    Object.keys(logsByMonth).sort((a, b) => b.localeCompare(a)), 
+    Object.keys(logsByMonth).sort((a, b) => a.localeCompare(b)), 
     [logsByMonth]
   );
 
   // Filter logs
   const filteredLogs = useMemo(() => {
-    let result = [...dailyLogs];
+    let result = [...dailyLogs].sort((a, b) => {
+      const da = parseIsoDateToLocal(a.date) || new Date(a.date);
+      const db = parseIsoDateToLocal(b.date) || new Date(b.date);
+      return da - db;
+    });
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(log => 
         log.tasks.toLowerCase().includes(q) || 
         log.learnings.toLowerCase().includes(q) || 
-        (log.blockers && log.blockers.toLowerCase().includes(q))
+        (log.blockers && log.blockers.toLowerCase().includes(q)) ||
+        (log.location && log.location.toLowerCase().includes(q))
       );
     }
     if (activeFilter === 'blockers') {
@@ -2107,6 +2402,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         tasks: formData.tasks,
         learnings: formData.learnings,
         blockers: formData.blockers,
+        location: formData.location,
       });
       const l = created?.log;
       if (l?.id) {
@@ -2116,6 +2412,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
           tasks: l.tasks,
           learnings: l.learnings,
           blockers: l.blockers,
+          location: l.location || "",
           hoursWorked: Number(l.hours_worked) || 0,
           status: l.status,
         };
@@ -2274,7 +2571,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
         daysWorked: reportType === "weekly" ? summary.daysWorked : summary.totalDays,
         summary: text,
         data: { ...summary, attendanceSummary, progressSummary },
-        recipientRoles: recipientRoles || ["pm"],
+        recipientRoles: recipientRoles || ["pm", "hr"],
       });
 
       setSendSuccess(true);
@@ -2289,6 +2586,69 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
       setIsSending(false);
     }
   }, [monthlySummaries, selectedMonthForSummary, selectedWeekForSummary, summaryType, weeklySummaries]);
+
+  const importDailyCsv = async (file) => {
+    if (!file) return;
+    setDailyCsvImporting(true);
+    setDailyCsvSummary("");
+    try {
+      const text = await file.text();
+      const rows = parseCsvObjects(text, DAILY_CSV_HEADERS);
+      let done = 0;
+      let failed = 0;
+      let success = 0;
+      setDailyCsvProgress({ done: 0, total: rows.length, failed: 0 });
+      for (const row of rows) {
+        const logDate = toIsoDate(row.date);
+        const location = row.location || "";
+        const tasks = row.work_summary || row.worksummary || row.tasks || "";
+        const learnings = row.key_learnings || row.keylearnings || row.learnings || "";
+        try {
+          if (!logDate) throw new Error("Invalid date");
+          await internApi.createDailyLog({
+            logDate,
+            date: logDate,
+            hoursWorked: row.hrs || row.hours || row.hoursworked || row.hoursWorked || "",
+            tasks,
+            learnings,
+            blockers: row.blockers || "",
+            location,
+            source: "import",
+          });
+          success += 1;
+        } catch {
+          failed += 1;
+        } finally {
+          done += 1;
+          setDailyCsvProgress({ done, total: rows.length, failed });
+        }
+      }
+      setDailyCsvSummary(`${success} logs imported successfully, ${failed} failed.`);
+      await reloadLogs();
+    } catch (err) {
+      setDailyCsvSummary(err?.message || "Failed to import CSV.");
+    } finally {
+      setDailyCsvImporting(false);
+    }
+  };
+
+  const runDeleteRange = async () => {
+    if (!deleteStart || !deleteEnd) {
+      setError("Please select both start and end dates to delete.");
+      return;
+    }
+    setDeleting(true);
+    setError("");
+    try {
+      await internApi.deleteDailyLogsRange({ start: deleteStart, end: deleteEnd, source: "import" });
+      if (onImported) onImported();
+      alert(`Deleted logs from ${deleteStart} to ${deleteEnd}.`);
+    } catch (e) {
+      setError(e?.message || "Failed to delete logs for the selected range.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div style={{ 
@@ -2401,7 +2761,27 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
               <Download size={18} />
               Import
             </button>
-
+            <button
+              type="button"
+              onClick={() => downloadCsvTemplate(DAILY_CSV_HEADERS, "daily-log-template.csv")}
+              style={{
+                padding: "12px 18px",
+                background: "rgba(255,255,255,0.08)",
+                color: "white",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                transition: "all 0.2s",
+              }}
+            >
+              <FileText size={16} />
+              Download Daily CSV Template
+            </button>
             <button 
               onClick={() => {
                 if (!showForm) setEditingLog(null);
@@ -2429,8 +2809,12 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
               {showForm ? "Cancel" : "New Entry"}
             </button>
           </div>
+          {(dailyCsvImporting || dailyCsvSummary) && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+              {dailyCsvImporting ? `Importing daily logsâ€¦ ${dailyCsvProgress.done}/${dailyCsvProgress.total} (failed: ${dailyCsvProgress.failed})` : dailyCsvSummary}
+            </div>
+          )}
         </div>
-
         {/* Entry Form */}
         {showForm && (
           <LogEntryForm 
@@ -2442,6 +2826,7 @@ function DailyLogPage({ isMobile = false, assignedPM }) {
               editingLog
                 ? {
                     date: editingLog.date,
+                    location: editingLog.location || "",
                     tasks: editingLog.tasks,
                     learnings: editingLog.learnings,
                     blockers: editingLog.blockers,

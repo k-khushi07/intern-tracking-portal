@@ -86,6 +86,7 @@ create table if not exists public.reports (
   data jsonb not null default '{}'::jsonb,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   submitted_at timestamptz not null default now(),
+  is_late boolean not null default false,
   reviewed_by uuid references public.profiles(id),
   reviewed_at timestamptz,
   review_reason text,

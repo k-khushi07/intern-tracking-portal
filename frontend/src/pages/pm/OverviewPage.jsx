@@ -212,31 +212,64 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
 
         <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
           {myAnnouncements.length === 0 && <div style={{ color: COLORS.muted, fontSize: 13 }}>No PM announcements yet.</div>}
-          {myAnnouncements.map((a) => (
-            <div key={a.id} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>{a.title}</div>
-                  <div style={{ marginTop: 4, fontSize: 12, color: priorityColor(a.priority), fontWeight: 700, textTransform: "uppercase" }}>
-                    {a.priority || "medium"} • {normalizeDepartmentLabel(a.department)} {a.pinned ? "• PINNED" : ""}
+          {myAnnouncements.map((a) => {
+            const badgeColor = priorityColor(a.priority);
+            return (
+              <div key={a.id} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${badgeColor}`, borderRadius: 12, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>{a.title}</div>
+                    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        color: badgeColor,
+                        background: `${badgeColor}22`,
+                        border: `1px solid ${badgeColor}55`,
+                      }}>
+                        {a.priority || "medium"}
+                      </span>
+                      <span style={{ fontSize: 11, color: COLORS.muted, fontWeight: 700 }}>
+                        {normalizeDepartmentLabel(a.department)}
+                      </span>
+                      {a.pinned && (
+                        <span style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: COLORS.text,
+                          background: "rgba(255,255,255,0.08)",
+                          border: `1px solid ${COLORS.border}`,
+                          padding: "3px 8px",
+                          borderRadius: 999,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}>
+                          <Pin size={12} /> PINNED
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => togglePin(a)} disabled={saving} style={btnStyle("ghost")} title="Pin/Unpin">
+                      <Pin size={14} />
+                    </button>
+                    <button onClick={() => openEdit(a)} disabled={saving} style={btnStyle("ghost")} title="Edit">
+                      <Edit3 size={14} />
+                    </button>
+                    <button onClick={() => removeAnnouncement(a.id)} disabled={saving} style={btnStyle("danger")} title="Delete">
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => togglePin(a)} disabled={saving} style={btnStyle("ghost")} title="Pin/Unpin">
-                    <Pin size={14} />
-                  </button>
-                  <button onClick={() => openEdit(a)} disabled={saving} style={btnStyle("ghost")} title="Edit">
-                    <Edit3 size={14} />
-                  </button>
-                  <button onClick={() => removeAnnouncement(a.id)} disabled={saving} style={btnStyle("danger")} title="Delete">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                <div style={{ marginTop: 8, color: "rgba(255,229,217,0.85)", fontSize: 13, lineHeight: 1.5 }}>{a.content}</div>
+                <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>{new Date(a.created_at || a.updated_at || Date.now()).toLocaleString()}</div>
               </div>
-              <div style={{ marginTop: 8, color: "rgba(255,229,217,0.85)", fontSize: 13, lineHeight: 1.5 }}>{a.content}</div>
-              <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>{new Date(a.created_at || a.updated_at || Date.now()).toLocaleString()}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -244,15 +277,37 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
         <div style={{ fontSize: 17, fontWeight: 800, color: COLORS.text }}>HR/Admin Announcements to PM</div>
         <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
           {hrAnnouncements.length === 0 && <div style={{ color: COLORS.muted, fontSize: 13 }}>No HR/Admin announcements.</div>}
-          {hrAnnouncements.map((a) => (
-            <div key={a.id} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>{a.title}</div>
-              <div style={{ marginTop: 6, color: "rgba(255,229,217,0.85)", fontSize: 13 }}>{a.content}</div>
-              <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>
-                By {a?.created_by?.full_name || a?.created_by?.email || "HR"} • {new Date(a.created_at || Date.now()).toLocaleString()}
+          {hrAnnouncements.map((a) => {
+            const badgeColor = priorityColor(a.priority);
+            return (
+              <div key={a.id} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${badgeColor}`, borderRadius: 12, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>{a.title}</div>
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    color: badgeColor,
+                    background: `${badgeColor}22`,
+                    border: `1px solid ${badgeColor}55`,
+                  }}>
+                    {a.priority || "medium"}
+                  </span>
+                </div>
+                <div style={{ marginTop: 6, color: "rgba(255,229,217,0.85)", fontSize: 13 }}>{a.content}</div>
+                {a.pinned && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: COLORS.text, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Pin size={12} /> Pinned
+                  </div>
+                )}
+                <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>
+                  By {a?.created_by?.full_name || a?.created_by?.email || "HR"} • {new Date(a.created_at || Date.now()).toLocaleString()}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

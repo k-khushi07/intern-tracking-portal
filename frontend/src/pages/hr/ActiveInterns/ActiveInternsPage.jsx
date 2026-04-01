@@ -3,6 +3,7 @@ import { Search, Mail, Eye, Award, TrendingUp, Clock, FileDown, CheckCircle2, Br
 import InternProfilePage from "./InternProfilePage";
 import { Modal } from "../HRComponents";
 import { hrApi } from "../../../lib/apiClient";
+import { getRealtimeSocket } from "../../../lib/realtime";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -39,12 +40,57 @@ const resolveDepartment = (intern) => {
   return "Other";
 };
 
-const statusColor = (status) => {
-  const normalized = String(status || "").toLowerCase();
-  if (normalized === "active") return "#4ade80";
-  if (normalized === "completed") return COLORS.jungleTeal;
-  if (normalized === "inactive") return "#f59e0b";
-  return "#ef4444";
+const getApprovedIntern = (intern) => intern?.approvedIntern || intern?.approved_intern || null;
+
+const getInternStartDate = (intern) =>
+  intern?.startDate ||
+  intern?.start_date ||
+  getApprovedIntern(intern)?.start_date ||
+  null;
+
+const getInternEndDate = (intern) =>
+  intern?.endDate ||
+  intern?.end_date ||
+  getApprovedIntern(intern)?.end_date ||
+  null;
+
+const parseDateOnly = (value) => {
+  if (!value) return null;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  dt.setHours(0, 0, 0, 0);
+  return dt;
+};
+
+const getLifecycleMeta = (intern) => {
+  const startLabel = getInternStartDate(intern);
+  const start = parseDateOnly(startLabel);
+  const endLabel = getInternEndDate(intern);
+  const end = parseDateOnly(endLabel);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overrideReason = intern?.overrideReason || intern?.override_reason || null;
+  const profileStatus = String(intern?.profileStatus || intern?.status || "").trim().toLowerCase();
+
+  if (overrideReason && profileStatus === "active") {
+    return { label: "Manually Activated by Admin", color: "#60a5fa", outlined: true };
+  }
+  if (overrideReason && profileStatus === "inactive") {
+    return { label: "Manually Deactivated by Admin", color: "#9ca3af", outlined: false };
+  }
+
+  if (start && today < start) return { label: `Pending — starts ${startLabel}`, color: "#f97316", outlined: false };
+  if (end) {
+    const graceEnd = new Date(end);
+    graceEnd.setDate(graceEnd.getDate() + 7);
+    if (today <= end) return { label: "Active", color: "#22c55e", outlined: false };
+    if (today <= graceEnd) {
+      const daysLeft = Math.max(0, Math.ceil((graceEnd - today) / 86400000));
+      return { label: `Grace Period — ${daysLeft} days left`, color: "#facc15", outlined: false };
+    }
+    return { label: "Inactive", color: "#ef4444", outlined: false };
+  }
+  return { label: "Active", color: "#22c55e", outlined: false };
 };
 
 const ActiveInternsPage = ({
@@ -59,12 +105,15 @@ const ActiveInternsPage = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [allUsers, setAllUsers] = useState(usersProp || []);
   const [activeInterns, setActiveInterns] = useState([]);
+  const [activeInternsLoading, setActiveInternsLoading] = useState(false);
+  const [activeInternsError, setActiveInternsError] = useState("");
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
   const [internProfileSection, setInternProfileSection] = useState("profile");
   const [departmentFilter, setDepartmentFilter] = useState("Overall");
   const [pmFilterCode, setPmFilterCode] = useState(initialPmCode || "");
   const [pmFilterName, setPmFilterName] = useState(initialPmName || "");
+  const [avatarFailures, setAvatarFailures] = useState({});
 
   const [pmSelections, setPmSelections] = useState({});
   const [pmEditing, setPmEditing] = useState({});
@@ -110,6 +159,25 @@ const ActiveInternsPage = ({
     }
   }, [usersProp]);
 
+  const loadActiveInterns = useCallback(async () => {
+    try {
+      setActiveInternsLoading(true);
+      setActiveInternsError("");
+      const res = await hrApi.activeInterns({});
+      setActiveInterns(res?.interns || []);
+    } catch (err) {
+      console.error("Error loading active interns:", err);
+      setActiveInternsError(err?.message || "Failed to load active interns");
+      setActiveInterns([]);
+    } finally {
+      setActiveInternsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadActiveInterns();
+  }, [loadActiveInterns]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -136,14 +204,20 @@ const ActiveInternsPage = ({
   }, [usersProp]);
 
   useEffect(() => {
-    const interns = (allUsers || []).filter((user) => user.role === "intern" && user.status === "active");
-    const uniqueInterns = interns.reduce((acc, current) => {
-      const duplicate = acc.find((item) => item.email === current.email);
-      if (!duplicate) return acc.concat([current]);
-      return acc;
-    }, []);
-    setActiveInterns(uniqueInterns);
-  }, [allUsers]);
+    const socket = getRealtimeSocket();
+    const onChanged = (payload) => {
+      if (!payload) return;
+      if (["daily_logs", "reports", "profiles", "approved_interns"].includes(payload.entity)) {
+        loadActiveInterns();
+        return;
+      }
+      if (["profile_updated", "intern_dates_updated"].includes(payload.type)) {
+        loadActiveInterns();
+      }
+    };
+    socket.on("itp:changed", onChanged);
+    return () => socket.off("itp:changed", onChanged);
+  }, [loadActiveInterns]);
 
   const pmDirectoryFetchedRef = useRef(false);
   const allPMs = pmDirectory;
@@ -253,6 +327,7 @@ const ActiveInternsPage = ({
     }
   };
 
+
   const internsForScope = filterMode === "mine"
     ? activeInterns.filter((intern) => {
         if (!currentHrId) return false;
@@ -292,11 +367,11 @@ const ActiveInternsPage = ({
       : searchFiltered.filter((intern) => intern.departmentResolved === departmentFilter);
 
   const stats = {
-    total: enrichedInterns.length,
-    active: enrichedInterns.filter((i) => i.status === "active").length,
-    avgPerformance: enrichedInterns.length > 0
+    total: filteredInterns.length,
+    active: filteredInterns.filter((i) => String(i.status || "").toLowerCase() === "active").length,
+    avgPerformance: filteredInterns.length > 0
       ? Math.round(
-          enrichedInterns.reduce((sum, i) => sum + (i.performance || 0), 0) / enrichedInterns.length
+          filteredInterns.reduce((sum, i) => sum + (i.performance || 0), 0) / filteredInterns.length
         )
       : 0,
   };
@@ -444,13 +519,19 @@ const ActiveInternsPage = ({
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, color: COLORS.peachGlow, fontSize: 22, fontWeight: 800 }}>
-            {filterMode === "mine" ? "My Interns" : "Active Interns"}
+            {"Active Interns"}
           </h2>
           <div style={{ marginTop: 4, color: "rgba(255, 229, 217, 0.65)", fontSize: 13 }}>
             {filterMode === "mine" ? "Interns approved by you" : "All active interns in the system"}
           </div>
         </div>
       </div>
+
+      {activeInternsLoading && (
+        <div style={{ marginBottom: 12, color: "rgba(255,229,217,0.75)", fontSize: 13 }}>
+          Loading active interns...
+        </div>
+      )}
       {/* REDUCED Stats Cards - 1/3 size */}
       <div
         style={{
@@ -688,11 +769,21 @@ const ActiveInternsPage = ({
           gap: 16,
         }}
       >
-        {filteredInterns.map((intern, index) => (
-          <div
-            key={intern.id || intern.email || index}
-            className={`intern-card animate-fadeIn stagger-${(index % 5) + 1}`}
-          >
+        {filteredInterns.map((intern, index) => {
+            const lifecycle = getLifecycleMeta(intern);
+            const profileData = intern?.profile_data && typeof intern.profile_data === "object" ? intern.profile_data : intern?.profileData || {};
+            const profilePictureUrl =
+              profileData.profilePictureUrl ||
+              profileData.profile_picture_url ||
+              intern?.profilePictureUrl ||
+              null;
+          const endDate = getInternEndDate(intern);
+          const showAvatarImage = !!profilePictureUrl && !avatarFailures[intern.id];
+          return (
+            <div
+              key={intern.id || intern.email || index}
+              className={`intern-card animate-fadeIn stagger-${(index % 5) + 1}`}
+            >
             {/* ── Card Header ── */}
             <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
               {/* Avatar */}
@@ -712,14 +803,26 @@ const ActiveInternsPage = ({
                   flexShrink: 0,
                 }}
               >
-                {(intern.fullName || intern.name || "IN")
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")
-                  .toUpperCase()
-                  .slice(0, 2)}
+                {showAvatarImage ? (
+                  <img
+                    src={profilePictureUrl}
+                    alt="Profile"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      setAvatarFailures((prev) => ({ ...prev, [intern.id]: true }));
+                    }}
+                  />
+                ) : (
+                  (intern.fullName || intern.name || "IN")
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2)
+                )}
                 <div
-                  title={intern.status || "active"}
+                  title={lifecycle.label}
                   style={{
                     position: "absolute",
                     bottom: 1,
@@ -727,7 +830,7 @@ const ActiveInternsPage = ({
                     width: 13,
                     height: 13,
                     borderRadius: "50%",
-                    background: statusColor(intern.status || "active"),
+                    background: lifecycle.color,
                     border: "2px solid rgba(7, 30, 34, 0.9)",
                   }}
                 />
@@ -762,15 +865,15 @@ const ActiveInternsPage = ({
                   fontSize: 10,
                   fontWeight: 900,
                   letterSpacing: "0.07em",
-                  color: statusColor(intern.status || "active"),
-                  border: `1px solid ${statusColor(intern.status || "active")}55`,
-                  background: `${statusColor(intern.status || "active")}18`,
+                  color: lifecycle.color,
+                  border: `1px solid ${lifecycle.color}`,
+                  background: lifecycle.outlined ? "transparent" : `${lifecycle.color}18`,
                   flexShrink: 0,
                   alignSelf: "flex-start",
                   marginTop: 2,
                 }}
               >
-                {(intern.status || "active").toUpperCase()}
+                {lifecycle.label}
               </div>
             </div>
 
@@ -791,7 +894,7 @@ const ActiveInternsPage = ({
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <Calendar size={13} className="info-row-icon" />
                 <span style={{ fontSize: 12, color: "rgba(255, 229, 217, 0.75)" }}>
-                  {intern.endDate ? new Date(intern.endDate).toLocaleDateString() : "—"}
+                  {endDate ? new Date(endDate).toLocaleDateString() : "—"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1023,7 +1126,8 @@ const ActiveInternsPage = ({
               </div>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* ── Inline Reports Modal ── */}
@@ -1194,6 +1298,20 @@ const ActiveInternsPage = ({
                   ? "No interns are assigned to you yet"
                   : "No interns in the system yet"}
           </p>
+        </div>
+      )}
+      {activeInternsError && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderRadius: 12,
+            background: "rgba(217, 4, 41, 0.12)",
+            border: "1px solid rgba(217, 4, 41, 0.35)",
+            color: COLORS.peachGlow,
+          }}
+        >
+          {activeInternsError}
         </div>
       )}
 

@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User } from "lucide-react";
+import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User, GraduationCap } from "lucide-react";
 import { pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 import AttendancePanel from "../../components/AttendancePanel";
@@ -36,8 +36,9 @@ function normalizeReportsForIntern(reports, internId) {
     .map((report) => ({
       ...report,
       status: String(report.status || "").toLowerCase(),
-      reportType: report.reportType || (report.weekNumber ? "weekly" : "monthly"),
+      reportType: report.reportType || report.report_type || (report.weekNumber ? "weekly" : "monthly"),
       submittedAt: report.submittedAt || report.submitted_at || null,
+      isLate: report.isLate ?? report.is_late ?? false,
       periodStart: report.periodStart || report.period_start || null,
       periodEnd: report.periodEnd || report.period_end || null,
       totalHours: report.totalHours ?? report.total_hours ?? 0,
@@ -105,7 +106,26 @@ function resolveMonthLabel(report) {
   return dt.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile", api = pmApi }) => {
+function buildAddressLine({ address, city, state, pincode }) {
+  const parts = [];
+  if (address) parts.push(String(address).trim());
+  if (city) parts.push(String(city).trim());
+  if (state) parts.push(String(state).trim());
+  const base = parts.filter(Boolean).join(", ");
+  const pin = String(pincode || "").trim();
+  if (pin) return base ? `${base} - ${pin}` : pin;
+  return base;
+}
+
+function formatLateSubmission(iso) {
+  const d = new Date(iso || "");
+  if (Number.isNaN(d.getTime())) return "";
+  const datePart = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${datePart} at ${timePart}`;
+}
+
+const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile", api = pmApi, showBack = true }) => {
   const params = useParams();
   const internIdParam = params?.id || params?.internId || null;
   const [internDetails, setInternDetails] = useState(intern || null);
@@ -134,29 +154,32 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     setInternDetails(intern);
   }, [intern]);
 
+  const reloadIntern = useCallback(async () => {
+    if (!internId) return;
+    setInternLoading(true);
+    setInternLoadError("");
+    try {
+      if (typeof api?.getIntern !== "function") throw new Error("getIntern is not available");
+      const res = await api.getIntern(internId);
+      setInternDetails(res?.intern || null);
+    } catch (err) {
+      setInternLoadError(err?.message || "Failed to load intern profile.");
+    } finally {
+      setInternLoading(false);
+    }
+  }, [internId, api]);
+
   useEffect(() => {
     let cancelled = false;
-    const loadIntern = async () => {
-      if (!internId) return;
-      setInternLoading(true);
-      setInternLoadError("");
-      try {
-        if (typeof api?.getIntern !== "function") throw new Error("getIntern is not available");
-        const res = await api.getIntern(internId);
-        if (cancelled) return;
-        setInternDetails(res?.intern || null);
-      } catch (err) {
-        if (cancelled) return;
-        setInternLoadError(err?.message || "Failed to load intern profile.");
-      } finally {
-        if (!cancelled) setInternLoading(false);
-      }
+    const load = async () => {
+      if (cancelled) return;
+      await reloadIntern();
     };
-    loadIntern();
+    load();
     return () => {
       cancelled = true;
     };
-  }, [internId, api]);
+  }, [reloadIntern]);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,6 +247,12 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     const onChanged = (payload) => {
       if (!payload) return;
       if (payload.internId && internId && String(payload.internId) !== String(internId)) return;
+      if (payload.type === "profile_updated") {
+        if (!payload.profileId || String(payload.profileId) === String(internId)) {
+          reloadIntern();
+        }
+        return;
+      }
       if (!["tna", "blueprint", "report_links", "reports"].includes(payload.entity)) return;
       loadInternArtifacts();
     };
@@ -334,7 +363,16 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
     .join("")
     .toUpperCase();
   const status = String(internDetails?.status || intern?.status || "active").toLowerCase();
-  const department = resolveDepartment({ ...internDetails, profile_data: profileData });
+  const approvedIntern =
+    internDetails?.approved_intern ||
+    internDetails?.approvedIntern ||
+    intern?.approved_intern ||
+    intern?.approvedIntern ||
+    null;
+  const department = approvedIntern?.department || resolveDepartment({ ...internDetails, profile_data: profileData });
+  const approvedStartDate = approvedIntern?.start_date || profileData.startDate || profileData.start_date || null;
+  const approvedEndDate = approvedIntern?.end_date || profileData.endDate || profileData.end_date || null;
+  const approvedMentor = approvedIntern?.mentor || profileData.mentor || profileData.mentorName || null;
   const profilePictureUrl = profileData.profilePictureUrl || profileData.profile_picture_url || null;
   const resumeUrl =
     profileData.resumeUrl ||
@@ -348,29 +386,52 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
   const displayInternId = profileData.internId || profileData.intern_id || internDetails?.intern_id || internDetails?.internId || "-";
   const joinedAt = profileData.joinedAt || profileData.joinDate || internDetails?.created_at || null;
   const lastActivity = profileData.lastLogDate || profileData.lastActivity || internDetails?.lastLogDate || null;
+  const phoneNumber =
+    profileData.phone ||
+    profileData.phoneNumber ||
+    profileData.mobile ||
+    profileData.contactPhone ||
+    profileData.contact_number ||
+    "-";
+  const dateOfBirth =
+    profileData.dateOfBirth ||
+    profileData.dob ||
+    profileData.birthDate ||
+    profileData.birth_date ||
+    null;
+  const gender = profileData.gender || profileData.sex || "-";
+  const address = profileData.address || "";
+  const city = String(profileData.city || "").trim();
+  const state = String(profileData.state || "").trim();
+  const pincode = profileData.pincode || profileData.zip || profileData.postalCode || "";
+  const fullAddress = buildAddressLine({ address, city, state, pincode }) || "-";
+  const collegeName = profileData.collegeName || profileData.college || profileData.university || "-";
+  const degree = profileData.degree || profileData.qualification || "-";
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <button
-        onClick={onBack}
-        style={{
-          width: "fit-content",
-          padding: "10px 18px",
-          borderRadius: 12,
-          border: `1px solid ${COLORS.jungleTeal}`,
-          background: "rgba(103,146,137,0.18)",
-          color: COLORS.peachGlow,
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          fontWeight: 700,
-          fontSize: 13,
-        }}
-      >
-        <ArrowLeft size={16} />
-        Back to Interns
-      </button>
+      {showBack && (
+        <button
+          onClick={onBack}
+          style={{
+            width: "fit-content",
+            padding: "10px 18px",
+            borderRadius: 12,
+            border: `1px solid ${COLORS.jungleTeal}`,
+            background: "rgba(103,146,137,0.18)",
+            color: COLORS.peachGlow,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          <ArrowLeft size={16} />
+          Back to Interns
+        </button>
+      )}
 
       <div
         style={{
@@ -397,7 +458,6 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               position: "relative",
             }}
           >
-            <span>{avatar || "IN"}</span>
             {profilePictureUrl ? (
               <img
                 src={profilePictureUrl}
@@ -407,14 +467,16 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                   e.currentTarget.style.display = "none";
                 }}
               />
-            ) : null}
+            ) : (
+              <span>{avatar || "IN"}</span>
+            )}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "white" }}>{name}</div>
             <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.9)", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.4 }}>
               {displayEmail} | Intern ID: {displayInternId} | Department: {department}
             </div>
-            <div style={{ marginTop: 8 }}>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span
                 style={{
                   display: "inline-block",
@@ -430,6 +492,31 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               >
                 {status}
               </span>
+              {resumeUrl ? (
+                <button
+                  type="button"
+                  onClick={() => window.open(resumeUrl, "_blank", "noopener,noreferrer")}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.4)",
+                    background: "rgba(0,0,0,0.2)",
+                    color: "white",
+                    borderRadius: 999,
+                    padding: "6px 12px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  <FileText size={14} /> Open Resume
+                </button>
+              ) : (
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: 700 }}>
+                  Resume not uploaded
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -531,43 +618,27 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
 
       {activeTab === "profile" && (
         <div style={{ display: "grid", gap: 16 }}>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-            {resumeUrl ? (
-              <button
-                type="button"
-                onClick={() => window.open(resumeUrl, "_blank", "noopener,noreferrer")}
-                style={{
-                  border: `1px solid ${COLORS.border}`,
-                  background: "rgba(255,255,255,0.06)",
-                  color: COLORS.peachGlow,
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 12,
-                }}
-              >
-                <FileText size={14} /> Open Resume
-              </button>
-            ) : (
-              <div style={{ fontSize: 12, color: "rgba(255,229,217,0.7)", fontWeight: 800 }}>
-                Resume not uploaded (profile setup pending)
-              </div>
-            )}
-          </div>
           <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16 }}>
             <div style={{ color: COLORS.peachGlow, fontWeight: 900, fontSize: 18 }}>
               Intern Information
             </div>
             <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+              <ProfileField icon={<User size={15} />} label="Full Name" value={name || "-"} />
               <ProfileField icon={<Mail size={15} />} label="Email" value={displayEmail} />
               <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={displayInternId} />
               <ProfileField icon={<ListChecks size={15} />} label="Department" value={department || "-"} />
+              <ProfileField icon={<User size={15} />} label="Mentor" value={approvedMentor || "-"} />
+              <ProfileField icon={<Calendar size={15} />} label="Start Date" value={approvedStartDate ? new Date(approvedStartDate).toLocaleDateString() : "-"} />
+              <ProfileField icon={<Calendar size={15} />} label="End Date" value={approvedEndDate ? new Date(approvedEndDate).toLocaleDateString() : "-"} />
               <ProfileField icon={<Calendar size={15} />} label="Joined" value={joinedAt ? new Date(joinedAt).toLocaleDateString() : "-"} />
               <ProfileField icon={<Clock size={15} />} label="Last Activity" value={lastActivity ? new Date(lastActivity).toLocaleDateString() : "No logs"} />
+              <ProfileField icon={<User size={15} />} label="Phone" value={phoneNumber} />
+              <ProfileField icon={<Calendar size={15} />} label="Date of Birth" value={dateOfBirth ? new Date(dateOfBirth).toLocaleDateString() : "-"} />
+              <ProfileField icon={<User size={15} />} label="Gender" value={gender} />
+              <ProfileField icon={<User size={15} />} label="Address" value={fullAddress} />
+              <ProfileField icon={<User size={15} />} label="Pincode" value={pincode} />
+              <ProfileField icon={<GraduationCap size={15} />} label="College / University" value={collegeName} />
+              <ProfileField icon={<GraduationCap size={15} />} label="Degree" value={degree} />
             </div>
           </div>
 
@@ -610,13 +681,13 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13 }}>
                     <span style={{ color: "rgba(255,229,217,0.9)" }}>TNA Sheet</span>
                     {links.tnaSheetUrl ? (
-                      <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ?</a>
+                      <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open</a>
                     ) : <span style={{ color: COLORS.muted }}>Not set</span>}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13 }}>
                     <span style={{ color: "rgba(255,229,217,0.9)" }}>Blueprint Doc</span>
                     {links.blueprintDocUrl ? (
-                      <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open ?</a>
+                      <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontWeight: 800, textDecoration: "none" }}>Open</a>
                     ) : <span style={{ color: COLORS.muted }}>Not set</span>}
                   </div>
                 </div>
@@ -649,7 +720,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               </div>
 
               {tnaByWeek.length === 0 ? (
-                <div style={{ padding: 20, textAlign: "center", background: "rgba(0,0,0,0.15)", borderRadius: 12, color: COLORS.muted, fontSize: 13 }}>
+                <div style={{ padding: 20, textAlign: "center", background: "rgba(0,0,0,0.15)", borderRadius: 12, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
                   No TNA progress rows available.
                 </div>
               ) : (
@@ -714,7 +785,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               TNA Tracking Sheet
             </div>
             {links.tnaSheetUrl && (
-              <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ?</a>
+              <a href={links.tnaSheetUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab</a>
             )}
           </div>
           {links.tnaSheetUrl ? (
@@ -740,7 +811,7 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               Blueprint Document
             </div>
             {links.blueprintDocUrl && (
-              <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab ?</a>
+              <a href={links.blueprintDocUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.jungleTeal, fontSize: 13, fontWeight: 800, textDecoration: "none" }}>Open in New Tab</a>
             )}
           </div>
           {links.blueprintDocUrl ? (
@@ -963,6 +1034,12 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
     report.daysWorked != null ? `Days: ${report.daysWorked}` : null,
   ].filter(Boolean).join(" | ");
 
+  const lateLabel = report.isLate && report.submittedAt
+    ? `Late Submission — Submitted on ${formatLateSubmission(report.submittedAt)}`
+    : report.isLate
+      ? "Late Submission"
+      : "";
+
   return (
     <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, background: "rgba(0,0,0,0.2)", position: "relative", overflow: "hidden" }}>
       {/* Top Status Accent Bar */}
@@ -971,11 +1048,11 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
       <div style={{ padding: 16, paddingLeft: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ color: "white", fontWeight: 900, fontSize: 16 }}>{label}</div>
-              <span
-                style={{
-                  border: `1px solid ${currentStatusColor}66`,
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ color: "white", fontWeight: 900, fontSize: 16 }}>{label}</div>
+            <span
+              style={{
+                border: `1px solid ${currentStatusColor}66`,
                   background: `${currentStatusColor}20`,
                   color: currentStatusColor,
                   borderRadius: 6,
@@ -986,10 +1063,15 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
                 }}
               >
                 {report.status || "pending"}
-              </span>
-            </div>
-            <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 12, marginTop: 4 }}>{meta || "-"}</div>
+            </span>
           </div>
+          <div style={{ color: "rgba(255,229,217,0.6)", fontSize: 12, marginTop: 4 }}>{meta || "-"}</div>
+          {lateLabel && (
+            <div style={{ marginTop: 6, color: COLORS.warning, fontSize: 12, fontWeight: 700 }}>
+              {lateLabel}
+            </div>
+          )}
+        </div>
           <div style={{ background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 8, color: COLORS.peachGlow, fontSize: 12, fontWeight: 700, border: `1px solid ${COLORS.border}` }}>
             {statsList}
           </div>
