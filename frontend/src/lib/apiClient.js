@@ -621,6 +621,16 @@ export const attendanceApi = {
     const query = searchParams.toString();
     return apiFetch(`/attendance/intern/${internId}${query ? `?${query}` : ""}`, { method: "GET" });
   },
+  internSummary(internId, params = {}) {
+    if (!internId) return Promise.reject(new Error("internId is required"));
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return apiFetch(`/attendance/intern/${internId}/summary${query ? `?${query}` : ""}`, { method: "GET" });
+  },
   upsert(internId, payload) {
     if (!internId) return Promise.reject(new Error("internId is required"));
     return apiFetch(`/attendance/intern/${internId}`, {

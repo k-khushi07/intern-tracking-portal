@@ -1,7 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XCircle, MessageSquare, Link2, ListChecks, User, GraduationCap } from "lucide-react";
-import { pmApi } from "../../lib/apiClient";
+import { attendanceApi, pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 import AttendancePanel from "../../components/AttendancePanel";
 
@@ -914,6 +914,8 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                               savingReviewId={savingReviewId}
                               onApprove={(id) => reviewReport(id, "approved")}
                               onReject={(id) => reviewReport(id, "rejected")}
+                              tnaItems={tnaItems}
+                              blueprint={blueprint}
                             />
                           ))}
                         </div>
@@ -940,6 +942,8 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
                             savingReviewId={savingReviewId}
                             onApprove={(id) => reviewReport(id, "approved")}
                             onReject={(id) => reviewReport(id, "rejected")}
+                            tnaItems={tnaItems}
+                            blueprint={blueprint}
                           />
                         ))}
                       </div>
@@ -978,7 +982,7 @@ function ProfileField({ icon, label, value }) {
   );
 }
 
-function ReportsSection({ title, bgAccent, borderAccent, reports = [], remarks, setRemarks, savingReviewId, onApprove, onReject }) {
+function ReportsSection({ title, bgAccent, borderAccent, reports = [], remarks, setRemarks, savingReviewId, onApprove, onReject, tnaItems, blueprint }) {
   const items = Array.isArray(reports) ? reports : [];
   return (
     <div style={{ border: `1px solid ${borderAccent || COLORS.border}`, borderRadius: 14, overflow: "hidden", background: "rgba(255,255,255,0.02)" }}>
@@ -1007,6 +1011,8 @@ function ReportsSection({ title, bgAccent, borderAccent, reports = [], remarks, 
                 savingReviewId={savingReviewId}
                 onApprove={onApprove}
                 onReject={onReject}
+                tnaItems={tnaItems}
+                blueprint={blueprint}
               />
             ))}
           </div>
@@ -1016,14 +1022,94 @@ function ReportsSection({ title, bgAccent, borderAccent, reports = [], remarks, 
   );
 }
 
-function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, onReject }) {
+function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, onReject, tnaItems, blueprint }) {
   const readOnly = String(report.status || "").toLowerCase() !== "pending";
   const currentStatusColor = statusColor(report.status);
   const isWeekly = String(report.reportType || "").toLowerCase() === "weekly";
   const label = isWeekly ? `Week ${report.weekNumber || "-"}` : resolveMonthLabel(report);
   const extra = report?.data && typeof report.data === "object" ? report.data : {};
-  const attendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
-  const progressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
+  const savedAttendanceSummary = extra.attendanceSummary && typeof extra.attendanceSummary === "object" ? extra.attendanceSummary : null;
+  const savedProgressSummary = extra.progressSummary && typeof extra.progressSummary === "object" ? extra.progressSummary : null;
+
+  const [attendanceSummary, setAttendanceSummary] = useState(savedAttendanceSummary);
+  const attendanceFetchKeyRef = useRef("");
+
+  useEffect(() => {
+    setAttendanceSummary(savedAttendanceSummary);
+  }, [savedAttendanceSummary]);
+
+  useEffect(() => {
+    const internId = report?.internId || report?.intern_profile_id || null;
+    const start = report?.periodStart || report?.period_start || null;
+    const end = report?.periodEnd || report?.period_end || null;
+
+    const alreadyHasRecordedDays = (attendanceSummary?.totalRecordedDays ?? 0) > 0;
+    if (alreadyHasRecordedDays) return;
+    if (!internId || !start || !end) return;
+
+    const fetchKey = `${internId}|${start}|${end}`;
+    if (attendanceFetchKeyRef.current === fetchKey) return;
+    attendanceFetchKeyRef.current = fetchKey;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await attendanceApi.internSummary(internId, { start, end });
+        if (cancelled) return;
+        const summary = res?.summary && typeof res.summary === "object" ? res.summary : null;
+        if (summary) setAttendanceSummary(summary);
+      } catch {
+        // ignore: keep whatever is saved on the report
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attendanceSummary?.totalRecordedDays, report?.internId, report?.periodStart, report?.periodEnd]);
+
+  const progressSummary = useMemo(() => {
+    const savedTnaTotal = savedProgressSummary?.tna?.counts?.total ?? 0;
+    const savedBpTotal = savedProgressSummary?.blueprint?.milestones?.total ?? 0;
+
+    const computed = {};
+
+    const list = Array.isArray(tnaItems) ? tnaItems : [];
+    const tnaCounts = list.reduce(
+      (acc, i) => {
+        const s = String(i?.status || "pending").toLowerCase();
+        if (acc[s] === undefined) acc.other += 1;
+        else acc[s] += 1;
+        acc.total += 1;
+        return acc;
+      },
+      { total: 0, pending: 0, in_progress: 0, completed: 0, blocked: 0, other: 0 }
+    );
+
+    computed.tna = {
+      counts: tnaCounts,
+      completionPercent: tnaCounts.total ? Math.round((tnaCounts.completed / tnaCounts.total) * 100) : 0,
+    };
+
+    const bp = blueprint?.data && typeof blueprint.data === "object" ? blueprint.data : {};
+    const milestones = Array.isArray(bp.milestones) ? bp.milestones : [];
+    const total = milestones.length;
+    const completed = milestones.filter((m) => String(m?.status || "").toLowerCase() === "completed").length;
+    computed.blueprint = {
+      milestones: {
+        total,
+        completed,
+        completionPercent: total ? Math.round((completed / total) * 100) : 0,
+      },
+    };
+
+    const computedHasData = (computed.tna.counts.total || 0) > 0 || (computed.blueprint.milestones.total || 0) > 0;
+    const savedHasData = (savedTnaTotal || 0) > 0 || (savedBpTotal || 0) > 0;
+
+    if (savedHasData) return savedProgressSummary;
+    if (computedHasData) return computed;
+    return savedProgressSummary || computed;
+  }, [blueprint, savedProgressSummary, tnaItems]);
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
     report.submittedAt ? `Submitted: ${new Date(report.submittedAt).toLocaleDateString()}` : null,

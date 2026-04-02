@@ -62,15 +62,45 @@ async function fetchText(url, { timeoutMs = 20000 } = {}) {
   }
 }
 
-function looksLikeGoogleLoginPage(text) {
-  const t = String(text || "").toLowerCase();
-  return (
-    t.includes("accounts.google.com") ||
-    t.includes("servicelogin") ||
+function looksLikeGoogleLoginPage(resOrText) {
+  if (!resOrText) return false;
+
+  // Back-compat: callers may pass `body` as plain text.
+  const body =
+    typeof resOrText === "string" ? resOrText : String(resOrText.body || "");
+  const contentType =
+    typeof resOrText === "string"
+      ? ""
+      : String(resOrText.contentType || "").toLowerCase();
+
+  if (!body) return false;
+  const t = body.toLowerCase();
+
+  // Avoid false-positives when CSV/text contains phrases like "sign in".
+  // Only treat as a login page when the response looks like an HTML document.
+  const looksHtml =
+    contentType.includes("text/html") || /^\s*</.test(body.slice(0, 200));
+  if (!looksHtml) return false;
+
+  const isHtmlDocument =
+    t.includes("<html") ||
+    t.includes("<!doctype") ||
+    t.includes("<head") ||
+    t.includes("<form") ||
+    t.includes("<title");
+  if (!isHtmlDocument) return false;
+
+  const hasAccounts =
+    t.includes("accounts.google.com") || t.includes("servicelogin");
+  const hasPasswordField =
+    t.includes('type=\"password\"') || t.includes('name=\"pass\"');
+  const hasSignInHeading =
     t.includes("to continue to google") ||
-    t.includes("sign in") ||
-    t.includes("signin")
-  );
+    t.includes("<title>sign in") ||
+    t.includes(">sign in<") ||
+    t.includes(">signin<");
+
+  return hasAccounts || (hasSignInHeading && hasPasswordField);
 }
 
 function decodeHtmlEntities(input) {
@@ -446,7 +476,7 @@ async function fetchFirstOk(candidates) {
     attempts.push({ url, status: res?.status || 0, ok: !!res?.ok });
     last = { url, res, attempts };
     if (!res.ok) continue;
-    if (looksLikeGoogleLoginPage(res.body)) continue;
+    if (looksLikeGoogleLoginPage(res)) continue;
     return { url, res, attempts };
   }
   return last;
@@ -465,7 +495,7 @@ async function syncTnaFromPublicGoogle({ tnaSheetUrl }) {
   const attempt = await fetchFirstOk(candidates);
   const exportUrl = attempt?.url || candidates[0];
   const res = attempt?.res;
-  if (!res || !res.ok || looksLikeGoogleLoginPage(res.body)) {
+  if (!res || !res.ok || looksLikeGoogleLoginPage(res)) {
     const status = res?.status || 0;
     const statusLabel = status ? `status ${status}` : "no response";
     const tried = (attempt?.attempts || [])
@@ -498,7 +528,7 @@ async function syncBlueprintFromPublicGoogle({ blueprintDocUrl }) {
   const exportUrl = attempt?.url || candidates[0];
   const res = attempt?.res;
 
-  if (!res || !res.ok || looksLikeGoogleLoginPage(res.body)) {
+  if (!res || !res.ok || looksLikeGoogleLoginPage(res)) {
     const status = res?.status || 0;
     const statusLabel = status ? `status ${status}` : "no response";
     const tried = (attempt?.attempts || [])

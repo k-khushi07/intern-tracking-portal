@@ -180,6 +180,24 @@ function mapAttendanceRow(row) {
   };
 }
 
+function summarizeAttendanceRows(rows) {
+  const counts = { present: 0, remote: 0, half_day: 0, leave: 0, absent: 0, unknown: 0 };
+  const list = Array.isArray(rows) ? rows : [];
+  list.forEach((row) => {
+    const status = String(row?.status || "").trim().toLowerCase();
+    if (counts[status] !== undefined) counts[status] += 1;
+    else counts.unknown += 1;
+  });
+  return { totalRecordedDays: list.length, counts };
+}
+
+function inferAttendanceStatusFromDailyLog(row) {
+  const location = String(row?.location || "").toLowerCase();
+  if (!location) return "present";
+  if (/(^|[^a-z])(remote|wfh|work\s*from\s*home)([^a-z]|$)/i.test(location)) return "remote";
+  return "present";
+}
+
 function missingAttendanceTable(err) {
   if (!isMissingTableError(err, "attendance")) return err;
   const next = httpError(
@@ -436,6 +454,94 @@ function createAttendanceRouter() {
       });
 
       res.status(200).json({ success: true, attendance: (rows || []).map(mapAttendanceRow) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/intern/:internId/summary", async (req, res, next) => {
+    try {
+      const role = String(req.auth?.profile?.role || "").trim().toLowerCase();
+      const requesterId = req.auth?.profile?.id;
+      const internId = req.params.internId;
+      if (!internId) throw httpError(400, "internId is required", true);
+
+      if (role === "intern") {
+        if (String(internId) !== String(requesterId)) throw httpError(403, "Forbidden", true);
+      } else if (role === "pm") {
+        await assertInternBelongsToPm({ pmId: requesterId, internId });
+      } else if (role === "hr" || role === "admin") {
+        await assertInternExists(internId);
+      } else {
+        throw httpError(403, "Forbidden", true);
+      }
+
+      const { start, end } = parseRange({ start: req.query.start, end: req.query.end });
+
+      const rows = await restSelect({
+        table: "attendance",
+        select: "id,status,attendance_date",
+        filters: {
+          intern_profile_id: `eq.${internId}`,
+          and: `(attendance_date.gte.${start},attendance_date.lte.${end})`,
+          order: "attendance_date.desc",
+        },
+        accessToken: null,
+        useServiceRole: true,
+      }).catch((err) => {
+        throw missingAttendanceTable(err);
+      });
+
+      const summary = summarizeAttendanceRows(rows);
+      if (summary.totalRecordedDays > 0) {
+        res.status(200).json({ success: true, summary: { ...summary, periodStart: start, periodEnd: end, inferred: false } });
+        return;
+      }
+
+      // Backfill-friendly fallback: if attendance wasn't recorded historically, infer from daily logs.
+      // This makes old reports useful when interns backfill their daily logs in bulk.
+      let daily = [];
+      try {
+        daily = await restSelect({
+          table: "daily_logs",
+          select: "log_date,location",
+          filters: {
+            intern_profile_id: `eq.${internId}`,
+            and: `(log_date.gte.${start},log_date.lte.${end})`,
+            order: "log_date.desc",
+          },
+          accessToken: null,
+          useServiceRole: true,
+        });
+      } catch {
+        daily = [];
+      }
+
+      const byDate = new Map();
+      (daily || []).forEach((row) => {
+        const date = String(row?.log_date || "").trim();
+        if (!isIsoDateString(date)) return;
+        if (byDate.has(date)) return;
+        byDate.set(date, inferAttendanceStatusFromDailyLog(row));
+      });
+
+      const inferredCounts = { present: 0, remote: 0, half_day: 0, leave: 0, absent: 0, unknown: 0 };
+      Array.from(byDate.values()).forEach((status) => {
+        if (inferredCounts[status] !== undefined) inferredCounts[status] += 1;
+        else inferredCounts.unknown += 1;
+      });
+
+      res.status(200).json({
+        success: true,
+        summary: {
+          periodStart: start,
+          periodEnd: end,
+          totalRecordedDays: byDate.size,
+          counts: inferredCounts,
+          inferred: true,
+          source: "daily_logs",
+        },
+      });
     } catch (err) {
       next(err);
     }
