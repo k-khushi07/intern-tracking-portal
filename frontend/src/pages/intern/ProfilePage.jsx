@@ -7,6 +7,7 @@ import {
   BookOpen, Users, FileText, Sparkles, Upload
 } from "lucide-react";
 import { internApi } from "../../lib/apiClient";
+import { formatDmy } from "../../lib/dateFormat";
 
 // ==================== CONSTANTS ====================
 const COLORS = {
@@ -1182,7 +1183,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
                   display: "flex",
                   justifyContent: "space-between"
                 }}>
-                  <span>Started: {new Date(startDate).toLocaleDateString()}</span>
+                  <span>Started: {formatDmy(startDate)}</span>
                   <span style={{ color: daysRemaining < 30 ? COLORS.warning : "rgba(255,255,255,0.6)" }}>
                     {daysRemaining} days remaining
                   </span>
@@ -1252,7 +1253,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Date of Birth" 
-                value={dob ? new Date(dob).toLocaleDateString() : null}
+                value={dob ? formatDmy(dob) : null}
                 editable={isEditing("personal")}
                 editValue={editData?.dob}
                 onChange={(v) => updateField("dob", v)}
@@ -1584,7 +1585,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="Start Date" 
-                value={startDate ? new Date(startDate).toLocaleDateString() : null}
+                value={startDate ? formatDmy(startDate) : null}
                 editable={isEditing("internship")}
                 editValue={editData?.profile?.startDate}
                 onChange={(v) => updateProfileField("startDate", v)}
@@ -1592,7 +1593,7 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
               />
               <InfoItem 
                 label="End Date" 
-                value={endDate ? new Date(endDate).toLocaleDateString() : null}
+                value={endDate ? formatDmy(endDate) : null}
                 editable={isEditing("internship")}
                 editValue={editData?.profile?.endDate}
                 onChange={(v) => updateProfileField("endDate", v)}

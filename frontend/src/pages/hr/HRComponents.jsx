@@ -7,7 +7,7 @@ import {
   GraduationCap, Calendar, Activity, Pin, Trash2, Plus, Download, Send,
   Search
 } from "lucide-react";
-import { COLORS, GRADIENTS, glassCardStyle, inputStyle, primaryButtonStyle, secondaryButtonStyle, smallButtonStyle, actionButtonStyle, tinyButtonStyle } from "./HRConstants";
+import { COLORS, GRADIENTS, glassCardStyle, inputStyle, primaryButtonStyle, secondaryButtonStyle, smallButtonStyle, actionButtonStyle, tinyButtonStyle, formatDate } from "./HRConstants";
 import { hrApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 
@@ -126,7 +126,7 @@ export function PendingCard({ intern, onApprove, onReject, compact = false, show
             )}
             {showTimestamp && intern.registeredAt && (
               <div style={{ fontSize: 11, color: COLORS.orange, marginTop: 4 }}>
-                Registered: {new Date(intern.registeredAt).toLocaleDateString()}
+                Registered: {formatDate(intern.registeredAt)}
               </div>
             )}
           </div>
@@ -246,7 +246,7 @@ export function ActiveInternCard({ intern, onViewProfile, onToggleDisable, onCha
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         <InfoItem icon={<Key size={14} />} label="PM Code" value={intern.pmCode || "—"} />
         <InfoItem icon={<GraduationCap size={14} />} label="Degree" value={intern.degree || "—"} />
-        <InfoItem icon={<Calendar size={14} />} label="Joined" value={intern.approvedAt ? new Date(intern.approvedAt).toLocaleDateString() : "—"} />
+        <InfoItem icon={<Calendar size={14} />} label="Joined" value={intern.approvedAt ? formatDate(intern.approvedAt) : "—"} />
         <InfoItem icon={<Activity size={14} />} label="Last Log" value={intern.lastLogTime || "—"} />
       </div>
 
@@ -320,7 +320,7 @@ export function AnnouncementCard({ announcement, onDelete, onPin }) {
             {announcement.content}
           </p>
           <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 8 }}>
-            {new Date(announcement.date).toLocaleDateString()}
+            {formatDate(announcement.date)}
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
@@ -749,7 +749,7 @@ export function ProfileModal({ user, profileTab, setProfileTab, onChat }) {
             <ProfileField label="PM Code" value={user?.pmCode || "Not assigned"} />
             <ProfileField label="Status" value={user?.status || "Pending"} />
             <ProfileField label="Approved By" value={user?.approvedBy || "—"} />
-            <ProfileField label="Approved At" value={user?.approvedAt ? new Date(user.approvedAt).toLocaleDateString() : "—"} />
+            <ProfileField label="Approved At" value={user?.approvedAt ? formatDate(user.approvedAt) : "—"} />
           </div>
         )}
         {profileTab === "logs" && <LogsTable />}

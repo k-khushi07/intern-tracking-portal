@@ -4,6 +4,7 @@ import { ArrowLeft, Mail, Calendar, Briefcase, Clock, FileText, CheckCircle2, XC
 import { attendanceApi, pmApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 import AttendancePanel from "../../components/AttendancePanel";
+import { formatDmy, formatDmyTime } from "../../lib/dateFormat";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -118,11 +119,7 @@ function buildAddressLine({ address, city, state, pincode }) {
 }
 
 function formatLateSubmission(iso) {
-  const d = new Date(iso || "");
-  if (Number.isNaN(d.getTime())) return "";
-  const datePart = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${datePart} at ${timePart}`;
+  return formatDmyTime(iso);
 }
 
 const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "profile", api = pmApi, showBack = true }) => {
@@ -628,12 +625,12 @@ const InternProfilePage = ({ intern, onBack, reports = [], initialSection = "pro
               <ProfileField icon={<Briefcase size={15} />} label="Intern ID" value={displayInternId} />
               <ProfileField icon={<ListChecks size={15} />} label="Department" value={department || "-"} />
               <ProfileField icon={<User size={15} />} label="Mentor" value={approvedMentor || "-"} />
-              <ProfileField icon={<Calendar size={15} />} label="Start Date" value={approvedStartDate ? new Date(approvedStartDate).toLocaleDateString() : "-"} />
-              <ProfileField icon={<Calendar size={15} />} label="End Date" value={approvedEndDate ? new Date(approvedEndDate).toLocaleDateString() : "-"} />
-              <ProfileField icon={<Calendar size={15} />} label="Joined" value={joinedAt ? new Date(joinedAt).toLocaleDateString() : "-"} />
-              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={lastActivity ? new Date(lastActivity).toLocaleDateString() : "No logs"} />
+              <ProfileField icon={<Calendar size={15} />} label="Start Date" value={approvedStartDate ? formatDmy(approvedStartDate) : "-"} />
+              <ProfileField icon={<Calendar size={15} />} label="End Date" value={approvedEndDate ? formatDmy(approvedEndDate) : "-"} />
+              <ProfileField icon={<Calendar size={15} />} label="Joined" value={joinedAt ? formatDmy(joinedAt) : "-"} />
+              <ProfileField icon={<Clock size={15} />} label="Last Activity" value={lastActivity ? formatDmy(lastActivity) : "No logs"} />
               <ProfileField icon={<User size={15} />} label="Phone" value={phoneNumber} />
-              <ProfileField icon={<Calendar size={15} />} label="Date of Birth" value={dateOfBirth ? new Date(dateOfBirth).toLocaleDateString() : "-"} />
+              <ProfileField icon={<Calendar size={15} />} label="Date of Birth" value={dateOfBirth ? formatDmy(dateOfBirth) : "-"} />
               <ProfileField icon={<User size={15} />} label="Gender" value={gender} />
               <ProfileField icon={<User size={15} />} label="Address" value={fullAddress} />
               <ProfileField icon={<User size={15} />} label="Pincode" value={pincode} />
@@ -1112,7 +1109,7 @@ function ReportCard({ report, remarks, setRemarks, savingReviewId, onApprove, on
   }, [blueprint, savedProgressSummary, tnaItems]);
   const meta = [
     report.periodStart && report.periodEnd ? `${report.periodStart} to ${report.periodEnd}` : null,
-    report.submittedAt ? `Submitted: ${new Date(report.submittedAt).toLocaleDateString()}` : null,
+    report.submittedAt ? `Submitted: ${formatDmy(report.submittedAt)}` : null,
   ].filter(Boolean).join(" • ");
 
   const statsList = [

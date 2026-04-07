@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { announcementsApi, pmApi } from "../../lib/apiClient";
 import { Bell, Plus, Trash2, Edit3, Pin, Users, Clock, CheckCircle2, FileText } from "lucide-react";
+import { formatDmyTime } from "../../lib/dateFormat";
 
 const COLORS = {
   bg: "#071e22",
@@ -266,7 +267,7 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
                   </div>
                 </div>
                 <div style={{ marginTop: 8, color: "rgba(255,229,217,0.85)", fontSize: 13, lineHeight: 1.5 }}>{a.content}</div>
-                <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>{new Date(a.created_at || a.updated_at || Date.now()).toLocaleString()}</div>
+                <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>{formatDmyTime(a.created_at || a.updated_at || Date.now())}</div>
               </div>
             );
           })}
@@ -303,7 +304,7 @@ export default function OverviewPage({ pm, interns = [], stats = null }) {
                   </div>
                 )}
                 <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 11 }}>
-                  By {a?.created_by?.full_name || a?.created_by?.email || "HR"} • {new Date(a.created_at || Date.now()).toLocaleString()}
+                  By {a?.created_by?.full_name || a?.created_by?.email || "HR"} • {formatDmyTime(a.created_at || Date.now())}
                 </div>
               </div>
             );

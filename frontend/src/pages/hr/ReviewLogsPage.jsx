@@ -1,6 +1,7 @@
 // ReviewLogsPage.jsx - HR Dashboard with All PM Features
 import React, { useState } from "react";
 import { FileText, Calendar, Clock, CheckCircle, XCircle, Eye, Download, ChevronDown, User, TrendingUp, Target, Layers, FileCode, Send, X, Loader, ArrowLeft } from "lucide-react";
+import { formatDmy, formatDmyTime } from "../../lib/dateFormat";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -635,7 +636,7 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
     content += `=========================================\n\n`;
     content += `Intern: ${item.internName}\n`;
     content += `Email: ${item.internEmail}\n`;
-    content += `Generated: ${new Date().toLocaleString()}\n\n`;
+    content += `Generated: ${formatDmyTime(new Date())}\n\n`;
     content += `=========================================\n\n`;
     
     if (type === "Weekly Report") {
@@ -678,8 +679,8 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
       content += `Project Name: ${item.projectName}\n`;
       content += `Status: ${item.status}\n`;
       content += `Progress: ${item.progress}%\n`;
-      content += `Start Date: ${new Date(item.startDate).toLocaleDateString()}\n`;
-      content += `Deadline: ${new Date(item.deadline).toLocaleDateString()}\n\n`;
+      content += `Start Date: ${formatDmy(item.startDate)}\n`;
+      content += `Deadline: ${formatDmy(item.deadline)}\n\n`;
       content += `DESCRIPTION:\n${'-'.repeat(50)}\n${item.description}\n\n`;
       
       if (item.technologies && item.technologies.length > 0) {
@@ -698,8 +699,8 @@ export default function ReviewLogsPage({ hrEmail = "hr@company.com", addNotifica
     } else if (type === "Blueprint") {
       content += `Title: ${item.title}\n`;
       content += `Status: ${item.status}\n`;
-      content += `Created: ${new Date(item.createdAt).toLocaleDateString()}\n`;
-      content += `Last Updated: ${new Date(item.lastUpdated).toLocaleDateString()}\n\n`;
+      content += `Created: ${formatDmy(item.createdAt)}\n`;
+      content += `Last Updated: ${formatDmy(item.lastUpdated)}\n\n`;
       content += `DESCRIPTION:\n${'-'.repeat(50)}\n${item.description}\n\n`;
       
       if (item.sections && item.sections.length > 0) {
@@ -1267,8 +1268,8 @@ function ProjectsSection({ projects, onDownloadPDF, onDownloadTXT }) {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 20 }}>
-            <InfoItem label="Start Date" value={new Date(project.startDate).toLocaleDateString()} icon="🚀" />
-            <InfoItem label="Deadline" value={new Date(project.deadline).toLocaleDateString()} icon="🎯" />
+            <InfoItem label="Start Date" value={formatDmy(project.startDate)} icon="🚀" />
+            <InfoItem label="Deadline" value={formatDmy(project.deadline)} icon="🎯" />
             <InfoItem label="Status" value={project.status} icon="📊" />
           </div>
 
@@ -1593,8 +1594,8 @@ function BlueprintSection({ blueprints, internBlueprintUrl, onDownloadPDF }) {
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
-              <InfoItem label="Created" value={new Date(blueprint.createdAt).toLocaleDateString()} icon="📅" />
-              <InfoItem label="Last Updated" value={new Date(blueprint.lastUpdated).toLocaleDateString()} icon="🔄" />
+              <InfoItem label="Created" value={formatDmy(blueprint.createdAt)} icon="📅" />
+              <InfoItem label="Last Updated" value={formatDmy(blueprint.lastUpdated)} icon="🔄" />
               <InfoItem label="Sections" value={blueprint.sections.length} icon="📑" />
             </div>
 

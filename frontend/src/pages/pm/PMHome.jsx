@@ -8,6 +8,7 @@ import InternProfilePage from './InternProfilePage';
 import { authApi, pmApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 import AccountModal from "../../components/AccountModal";
+import { formatDmyTime } from "../../lib/dateFormat";
 
 const COLORS = {
   bgPrimary: "#020617",
@@ -244,7 +245,7 @@ function ProjectSubmissionsSection({ isMobile }) {
               )}
             </div>
             <div style={{ color: "rgba(248,250,252,0.4)", fontSize: 11 }}>
-              Submitted: {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "?"}
+              Submitted: {s.submitted_at ? formatDmyTime(s.submitted_at) : "?"}
             </div>
           </div>
 

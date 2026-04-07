@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Search, Mail, Eye, MessageCircle, Calendar, Briefcase, Clock, FileText, Users } from "lucide-react";
+import { formatDmy } from "../../lib/dateFormat";
 
 const DEPARTMENTS = ["SAP", "Oracle", "Accounts", "HR"];
 
@@ -29,7 +30,7 @@ const toDateOnly = (value) => {
 const formatDateLabel = (value) => {
   const d = toDateOnly(value);
   if (!d) return "";
-  return d.toLocaleDateString();
+  return formatDmy(d);
 };
 
 function getLifecycleMeta(intern) {
@@ -329,8 +330,8 @@ export default function MyInternsPage({ onNavigateToMessages, onViewProfile, onV
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12, color: "rgba(255,255,255,0.7)", background: "rgba(0,0,0,0.15)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.03)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Briefcase size={14} color={COLORS.accent} /> <span>{intern.intern_id || intern.internId || "-"}</span></div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Users size={14} color={COLORS.accent} /> <span>{intern.departmentResolved}</span></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Calendar size={14} color={COLORS.accent} /> <span>{intern.created_at ? new Date(intern.created_at).toLocaleDateString() : "-"}</span></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock size={14} color={COLORS.accent} /> <span>{intern.lastLogDate ? new Date(intern.lastLogDate).toLocaleDateString() : "No logs"}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Calendar size={14} color={COLORS.accent} /> <span>{intern.created_at ? formatDmy(intern.created_at) : "-"}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock size={14} color={COLORS.accent} /> <span>{intern.lastLogDate ? formatDmy(intern.lastLogDate) : "No logs"}</span></div>
                   </div>
 
                   {/* Stats Grid */}

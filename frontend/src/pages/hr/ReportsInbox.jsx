@@ -3,13 +3,10 @@ import { FileText, X } from "lucide-react";
 import { hrApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
 import { COLORS, glassCardStyle } from "./HRConstants";
+import { formatDmyTime } from "../../lib/dateFormat";
 
 const formatLateSubmission = (iso) => {
-  const d = new Date(iso || "");
-  if (Number.isNaN(d.getTime())) return "";
-  const datePart = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${datePart} at ${timePart}`;
+  return formatDmyTime(iso);
 };
 
 export default function ReportsInbox() {
@@ -109,7 +106,7 @@ export default function ReportsInbox() {
               r.reportType === "weekly"
                 ? `Weekly Report • Week ${r.weekNumber || "?"}`
                 : `Monthly Report • ${r.month || "Month"}`;
-            const submitted = r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "";
+            const submitted = r.submittedAt ? formatDmyTime(r.submittedAt) : "";
             const lateLabel = r.isLate && r.submittedAt
               ? `Late Submission — Submitted on ${formatLateSubmission(r.submittedAt)}`
               : r.isLate

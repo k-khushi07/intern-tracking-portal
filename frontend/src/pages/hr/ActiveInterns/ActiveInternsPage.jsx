@@ -4,6 +4,7 @@ import InternProfilePage from "./InternProfilePage";
 import { Modal } from "../HRComponents";
 import { hrApi } from "../../../lib/apiClient";
 import { getRealtimeSocket } from "../../../lib/realtime";
+import { formatDate } from "../HRConstants";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -67,6 +68,7 @@ const getLifecycleMeta = (intern) => {
   const start = parseDateOnly(startLabel);
   const endLabel = getInternEndDate(intern);
   const end = parseDateOnly(endLabel);
+  const formattedStart = startLabel ? formatDate(startLabel) : "";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const overrideReason = intern?.overrideReason || intern?.override_reason || null;
@@ -79,7 +81,7 @@ const getLifecycleMeta = (intern) => {
     return { label: "Manually Deactivated by Admin", color: "#9ca3af", outlined: false };
   }
 
-  if (start && today < start) return { label: `Pending — starts ${startLabel}`, color: "#f97316", outlined: false };
+  if (start && today < start) return { label: `Pending — starts ${formattedStart}`, color: "#f97316", outlined: false };
   if (end) {
     const graceEnd = new Date(end);
     graceEnd.setDate(graceEnd.getDate() + 7);
@@ -894,7 +896,7 @@ const ActiveInternsPage = ({
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <Calendar size={13} className="info-row-icon" />
                 <span style={{ fontSize: 12, color: "rgba(255, 229, 217, 0.75)" }}>
-                  {endDate ? new Date(endDate).toLocaleDateString() : "—"}
+                  {endDate ? formatDate(endDate) : "—"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

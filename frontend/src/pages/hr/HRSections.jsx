@@ -16,6 +16,7 @@ import {
   SummaryReport, TNAReport, AttendanceReport, PMPerformanceReport
 } from "./HRComponents";
 import { hrApi } from "../../lib/apiClient";
+import { formatDmy, formatDmyTime } from "../../lib/dateFormat";
 
 import ReviewLogsPage from "./ReviewLogsPage";
 import ActiveInternsPage from "./ActiveInterns/ActiveInternsPage.jsx";
@@ -95,14 +96,7 @@ const normalizeTimeInputValue = (value) => {
 
 const formatMeetingDate = (meetingDate) => {
   if (!meetingDate) return "";
-  const date = new Date(meetingDate);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return formatDmy(meetingDate);
 };
 
 const getOfferEmailTemplate = (intern) => {
@@ -638,7 +632,7 @@ function AnnouncementCardPM({ announcement, onDelete, onEdit, onPin }) {
       </p>
       <div style={{ fontSize: 12, color: COLORS.textMuted, display: "flex", alignItems: "center", gap: 6 }}>
         <Calendar size={12} />
-        {new Date(announcement.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        {formatDmyTime(announcement.date)}
       </div>
     </div>
   );
@@ -1316,7 +1310,7 @@ export function ApprovalSection({ interns, searchTerm, setSearchTerm, onApprove,
                     internId: nextInternId || selectedIntern.internId || selectedIntern.applicationId || "",
                     domain: resolveDepartmentValue() || selectedIntern.internshipDomain || selectedIntern.domain || "",
                     duration: computeOfferDuration(),
-                    startDate: startDate ? new Date(startDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "",
+                    startDate: startDate ? formatDmy(startDate) : "",
                     pmCode: String(pmCode || "").trim(),
                   }}
                   onTemplateReady={(payload) => setOfferLetterAttachment(payload || null)}

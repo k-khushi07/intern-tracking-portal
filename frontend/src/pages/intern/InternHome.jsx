@@ -8,6 +8,7 @@ import AttendancePage from "./AttendancePage";
 import DocumentsPage from "./DocumentsPage";
 import { authApi, internApi, announcementsApi, notificationsApi } from "../../lib/apiClient";
 import { getRealtimeSocket } from "../../lib/realtime";
+import { formatDmy, formatDmyTime } from "../../lib/dateFormat";
 
 import { 
   User, Bell, MessageCircle, FileText, 
@@ -476,17 +477,18 @@ export default function InternDashboard() {
                   style={{ display: "flex", alignItems: "center", gap: 12 }}
                 >
                   <div style={{
-                    width: 48, height: 48, borderRadius: "50%", background: GRADIENTS.accent,
+                    width: 48, height: 48, aspectRatio: "1 / 1", borderRadius: "50%", background: GRADIENTS.accent,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 18, fontWeight: 700, color: "white",
                     overflow: "hidden",
                     position: "relative",
+                    flexShrink: 0,
                   }}>
                   {profilePictureUrl ? (
                     <img
                       src={profilePictureUrl}
                       alt="Profile"
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", display: "block" }}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -771,11 +773,12 @@ export default function InternDashboard() {
 
               {/* User Avatar */}
               <div style={{
-                width: 40, height: 40, borderRadius: "50%", background: GRADIENTS.accent,
+                width: 40, height: 40, aspectRatio: "1 / 1", borderRadius: "50%", background: GRADIENTS.accent,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 700, color: "white", cursor: "pointer",
                 overflow: "hidden",
                 position: "relative",
+                flexShrink: 0,
               }}>
                 <button
                   type="button"
@@ -787,7 +790,7 @@ export default function InternDashboard() {
                     <img
                       src={profilePictureUrl}
                       alt="Profile"
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", display: "block" }}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -1211,7 +1214,7 @@ function AnnouncementCard({ announcement, index }) {
         fontSize: 12, 
         color: COLORS.textMuted 
       }}>
-        <div>{new Date(announcement.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                        <div>{formatDmy(announcement.date)}</div>
         <div style={{ fontStyle: "italic" }}>{announcement.from}</div>
       </div>
     </div>
@@ -1550,8 +1553,8 @@ function ProjectSubmissionPage({ isMobile, currentIntern, profilePictureUrl }) {
             )}
 
             <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>
-              Submitted: {sub.submitted_at ? new Date(sub.submitted_at).toLocaleString() : "?"}
-              {sub.reviewed_at ? ` ? Reviewed: ${new Date(sub.reviewed_at).toLocaleString()}` : ""}
+              Submitted: {sub.submitted_at ? formatDmyTime(sub.submitted_at) : "?"}
+              {sub.reviewed_at ? ` • Reviewed: ${formatDmyTime(sub.reviewed_at)}` : ""}
             </div>
           </div>
         );
