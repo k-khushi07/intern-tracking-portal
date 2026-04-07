@@ -432,7 +432,6 @@ function ProfilePage({ intern: propIntern, isMobile = false, onBack, onProfileUp
       if (editData?.email !== undefined) nextProfileData.email = editData.email;
       if (editData?.phone !== undefined) nextProfileData.phone = editData.phone;
       if (editData?.dob !== undefined) nextProfileData.dob = editData.dob;
-      if (editData?.degree !== undefined) nextProfileData.degree = editData.degree;
 
       const res = await internApi.updateMe({ profileData: nextProfileData });
       const updated = res?.profile;
