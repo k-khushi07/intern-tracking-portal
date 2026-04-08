@@ -5,6 +5,8 @@ import { Modal } from "../HRComponents";
 import { hrApi } from "../../../lib/apiClient";
 import { getRealtimeSocket } from "../../../lib/realtime";
 import { formatDate } from "../HRConstants";
+import JSZip from "jszip";
+import mammoth from "mammoth/mammoth.browser";
 
 const COLORS = {
   inkBlack: "#071e22",
@@ -54,6 +56,58 @@ const getInternEndDate = (intern) =>
   intern?.end_date ||
   getApprovedIntern(intern)?.end_date ||
   null;
+
+const escapeXmlText = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",").pop() : dataUrl;
+      resolve(base64 || "");
+    };
+    reader.readAsDataURL(blob);
+  });
+
+const arrayBufferToBase64 = (buffer) => {
+  const bytes = new Uint8Array(buffer || []);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+};
+
+async function fillDocxTemplateArrayBuffer({ templateArrayBuffer, replacements }) {
+  const zip = await JSZip.loadAsync(templateArrayBuffer);
+  const fileNames = Object.keys(zip.files || {});
+
+  for (const fileName of fileNames) {
+    const file = zip.files[fileName];
+    if (!file || file.dir) continue;
+    if (!fileName.startsWith("word/")) continue;
+    if (!fileName.endsWith(".xml")) continue;
+
+    const raw = await file.async("string");
+    let next = raw;
+    for (const [placeholder, value] of Object.entries(replacements || {})) {
+      if (!placeholder) continue;
+      next = next.split(placeholder).join(escapeXmlText(value));
+    }
+    if (next !== raw) zip.file(fileName, next);
+  }
+
+  return await zip.generateAsync({ type: "arraybuffer" });
+}
 
 const parseDateOnly = (value) => {
   if (!value) return null;
@@ -134,6 +188,44 @@ const ActiveInternsPage = ({
   const openFeedback = ({ title, message, tone = "info" }) => {
     setFeedback({ open: true, title, message, tone });
   };
+
+  const docUrlRef = useRef(null);
+  const [documentModal, setDocumentModal] = useState(null);
+
+  const closeDocumentModal = useCallback(() => {
+    if (docUrlRef.current) {
+      URL.revokeObjectURL(docUrlRef.current);
+      docUrlRef.current = null;
+    }
+    setDocumentModal(null);
+  }, []);
+
+  const sendEmailWithAttachment = useCallback(async ({ to, subject, html, attachment }) => {
+    if (!to) throw new Error("Intern email is missing.");
+    if (!attachment?.filename || !attachment?.contentBase64) throw new Error("Attachment is missing.");
+
+    const res = await fetch("/api/send-email", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to,
+        subject,
+        html,
+        attachments: [{ filename: attachment.filename, content: attachment.contentBase64 }],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const serverMessage = body?.message || body?.error || (typeof body === "string" ? body : null) || null;
+      throw new Error(serverMessage || `Email failed (HTTP ${res.status})`);
+    }
+
+    return await res.json().catch(() => ({}));
+  }, []);
+
+  useEffect(() => () => closeDocumentModal(), [closeDocumentModal]);
 
   // Legacy inline reports modal (replaced by PM-style intern profile "Reports" tab).
   // Kept disabled to avoid a huge diff in this file.
@@ -328,6 +420,116 @@ const ActiveInternsPage = ({
       setPendingCompleteIntern(null);
     }
   };
+
+  const openOfferLetterModal = useCallback(
+    async (intern) => {
+      closeDocumentModal();
+      setDocumentModal({
+        kind: "offer",
+        intern,
+        title: `Offer Letter — ${intern?.fullName || intern?.name || "Intern"}`,
+        loading: true,
+        error: "",
+        sendError: "",
+        sending: false,
+        success: "",
+        pdfBlob: null,
+        previewUrl: "",
+      });
+
+      try {
+        const res = await fetch(hrApi.downloadOfferLetter(intern.id), { method: "GET", credentials: "include" });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const serverMessage = body?.message || body?.error || (typeof body === "string" ? body : null) || null;
+          throw new Error(serverMessage || `Failed to load offer letter (HTTP ${res.status})`);
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        docUrlRef.current = url;
+
+        setDocumentModal((prev) => (prev ? { ...prev, loading: false, pdfBlob: blob, previewUrl: url } : prev));
+      } catch (err) {
+        setDocumentModal((prev) => (prev ? { ...prev, loading: false, error: err?.message || "Failed to load offer letter" } : prev));
+      }
+    },
+    [closeDocumentModal]
+  );
+
+  const openCertificateModal = useCallback(
+    async (intern) => {
+      closeDocumentModal();
+      setDocumentModal({
+        kind: "certificate",
+        intern,
+        title: `Certificate — ${intern?.fullName || intern?.name || "Intern"}`,
+        loading: true,
+        error: "",
+        sendError: "",
+        sending: false,
+        success: "",
+        html: "",
+        docxBlob: null,
+        downloadName: "",
+        attachmentBase64: "",
+      });
+
+      try {
+        const templateRes = await fetch(hrApi.downloadCertificateTemplate(), { method: "GET", credentials: "include" });
+        if (!templateRes.ok) {
+          const body = await templateRes.json().catch(() => null);
+          const serverMessage = body?.message || body?.error || (typeof body === "string" ? body : null) || null;
+          throw new Error(serverMessage || `Certificate template not available (HTTP ${templateRes.status}). Upload it in HR → Documents.`);
+        }
+
+        const templateArrayBuffer = await templateRes.arrayBuffer();
+
+        const internName = String(intern?.fullName || intern?.name || "Intern");
+        const department = String(intern?.departmentResolved || resolveDepartment(intern) || "—");
+        const startLabel = getInternStartDate(intern);
+        const endLabel = getInternEndDate(intern);
+        const startDate = startLabel ? formatDate(startLabel) : "—";
+        const endDate = endLabel ? formatDate(endLabel) : "—";
+        const internId = String(intern?.internId || intern?.intern_id || "");
+        const certSuffix = (internId.match(/\d+/g)?.join("") || internId || "0000").slice(-4).padStart(4, "0");
+
+        const replacements = {
+          "[INTERN NAME]": internName,
+          "[INTERN_ID]": internId,
+          "[INTERN ID]": internId,
+          "[DEPARTMENT]": department,
+          "[START DATE]": startDate,
+          "[END DATE]": endDate,
+          "[XXXX]": certSuffix,
+        };
+
+        const filledArrayBuffer = await fillDocxTemplateArrayBuffer({ templateArrayBuffer, replacements });
+        const filledBlob = new Blob([filledArrayBuffer], {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        });
+
+        const { value: html } = await mammoth.convertToHtml({ arrayBuffer: filledArrayBuffer });
+        const downloadName = `certificate-${(internId || internName).replace(/[^a-zA-Z0-9-_]+/g, "_") || "intern"}.docx`;
+
+        setDocumentModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                html: html || "<p>(Preview unavailable)</p>",
+                docxBlob: filledBlob,
+                downloadName,
+                attachmentBase64: arrayBufferToBase64(filledArrayBuffer),
+              }
+            : prev
+        );
+      } catch (err) {
+        setDocumentModal((prev) => (prev ? { ...prev, loading: false, error: err?.message || "Failed to prepare certificate" } : prev));
+      }
+    },
+    [closeDocumentModal]
+  );
 
 
   const internsForScope = filterMode === "mine"
@@ -1106,10 +1308,10 @@ const ActiveInternsPage = ({
 
               {/* Documents + Complete */}
               <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" onClick={() => window.open(hrApi.downloadOfferLetter(intern.id), "_blank", "noopener,noreferrer")} className="action-btn secondary" style={{ fontSize: 12 }}>
+                <button type="button" onClick={() => openOfferLetterModal(intern)} className="action-btn secondary" style={{ fontSize: 12 }}>
                   <FileDown size={14} /> Offer
                 </button>
-                <button type="button" onClick={() => window.open(hrApi.downloadCertificate(intern.id), "_blank", "noopener,noreferrer")} className="action-btn secondary" style={{ fontSize: 12 }}>
+                <button type="button" onClick={() => openCertificateModal(intern)} className="action-btn secondary" style={{ fontSize: 12 }}>
                   <FileDown size={14} /> Certificate
                 </button>
                 <button
@@ -1259,6 +1461,173 @@ const ActiveInternsPage = ({
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Preview + Email */}
+      {documentModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.78)",
+            backdropFilter: "blur(10px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 4000,
+            padding: 18,
+          }}
+          onClick={closeDocumentModal}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 980,
+              maxHeight: "92vh",
+              borderRadius: 20,
+              background: "linear-gradient(135deg, #071e22, #0a2528)",
+              border: "1px solid rgba(103, 146, 137, 0.3)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: "16px 18px",
+                borderBottom: "1px solid rgba(103, 146, 137, 0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <div style={{ fontWeight: 900, color: COLORS.peachGlow, fontSize: 14 }}>{documentModal.title}</div>
+                <div style={{ color: "rgba(255,229,217,0.65)", fontSize: 12 }}>{documentModal?.intern?.email || "—"}</div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {documentModal.kind === "offer" && !documentModal.loading && !documentModal.error ? (
+                  <button
+                    type="button"
+                    className="action-btn secondary"
+                    style={{ fontSize: 12 }}
+                    onClick={() => window.open(hrApi.downloadOfferLetter(documentModal.intern.id), "_blank", "noopener,noreferrer")}
+                  >
+                    <FileDown size={14} /> Download
+                  </button>
+                ) : null}
+
+                {documentModal.kind === "certificate" && !documentModal.loading && !documentModal.error && documentModal.docxBlob ? (
+                  <button
+                    type="button"
+                    className="action-btn secondary"
+                    style={{ fontSize: 12 }}
+                    onClick={() => {
+                      const url = URL.createObjectURL(documentModal.docxBlob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = documentModal.downloadName || "certificate.docx";
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    <FileDown size={14} /> Download
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="action-btn primary"
+                  style={{ fontSize: 12, opacity: documentModal.loading || documentModal.sending ? 0.75 : 1 }}
+                  disabled={documentModal.loading || documentModal.sending || !!documentModal.error}
+                  onClick={async () => {
+                    try {
+                      setDocumentModal((prev) => (prev ? { ...prev, sending: true, success: "", sendError: "" } : prev));
+
+                      const internName = String(documentModal?.intern?.fullName || documentModal?.intern?.name || "Intern");
+                      const internEmail = String(documentModal?.intern?.email || "").trim();
+
+                      if (documentModal.kind === "offer") {
+                        if (!documentModal.pdfBlob) throw new Error("Offer letter preview is not loaded yet.");
+                        const base64 = await blobToBase64(documentModal.pdfBlob);
+                        await sendEmailWithAttachment({
+                          to: internEmail,
+                          subject: `Offer Letter — ${internName}`,
+                          html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;"><p>Hi ${internName},</p><p>Please find your offer letter attached.</p></div>`,
+                          attachment: {
+                            filename: `offer-letter-${(documentModal?.intern?.internId || documentModal?.intern?.intern_id || internName).replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`,
+                            contentBase64: base64,
+                          },
+                        });
+                      } else {
+                        if (!documentModal.attachmentBase64) throw new Error("Certificate document is not ready yet.");
+                        await sendEmailWithAttachment({
+                          to: internEmail,
+                          subject: `Certificate — ${internName}`,
+                          html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;"><p>Hi ${internName},</p><p>Please find your internship certificate attached.</p></div>`,
+                          attachment: {
+                            filename: documentModal.downloadName || "certificate.docx",
+                            contentBase64: documentModal.attachmentBase64,
+                          },
+                        });
+                      }
+
+                      setDocumentModal((prev) => (prev ? { ...prev, sending: false, success: "Email sent." } : prev));
+                    } catch (err) {
+                      setDocumentModal((prev) => (prev ? { ...prev, sending: false, sendError: err?.message || "Email failed" } : prev));
+                    }
+                  }}
+                >
+                  <Mail size={14} /> {documentModal.sending ? "Sending..." : "Send Email"}
+                </button>
+
+                <button type="button" className="action-btn secondary" style={{ fontSize: 12 }} onClick={closeDocumentModal}>
+                  <X size={14} /> Close
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: 16, overflow: "auto" }}>
+              {documentModal.loading ? (
+                <div style={{ color: "rgba(255,229,217,0.75)", fontWeight: 800 }}>Preparing preview...</div>
+              ) : documentModal.error ? (
+                <div style={{ color: "#ffb4a2", fontWeight: 800 }}>{documentModal.error}</div>
+              ) : documentModal.sendError ? (
+                <div style={{ color: "#ffb4a2", fontWeight: 800, marginBottom: 10 }}>{documentModal.sendError}</div>
+              ) : documentModal.success ? (
+                <div style={{ color: "#8cf5c9", fontWeight: 900, marginBottom: 10 }}>{documentModal.success}</div>
+              ) : null}
+
+              {documentModal.kind === "offer" && !documentModal.loading && !documentModal.error ? (
+                <div style={{ width: "100%", height: "72vh", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(103, 146, 137, 0.25)" }}>
+                  <iframe title="Offer letter preview" src={documentModal.previewUrl} style={{ width: "100%", height: "100%", border: "none", background: "white" }} />
+                </div>
+              ) : null}
+
+              {documentModal.kind === "certificate" && !documentModal.loading && !documentModal.error ? (
+                <div
+                  style={{
+                    width: "100%",
+                    minHeight: "72vh",
+                    borderRadius: 16,
+                    overflow: "auto",
+                    border: "1px solid rgba(103, 146, 137, 0.25)",
+                    background: "white",
+                    color: "#111",
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ maxWidth: 920, margin: "0 auto" }} dangerouslySetInnerHTML={{ __html: documentModal.html || "<p>(Preview unavailable)</p>" }} />
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
